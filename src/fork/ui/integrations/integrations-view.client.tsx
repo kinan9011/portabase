@@ -86,7 +86,6 @@ function Inner({view, lockedReason, forceTransient, initialVerification}: Integr
                         connection={c} keyRef={keyRef} pending={actions.save.isPending} lockedReason={lockedReason} endpointError={formError}
                         onSubmit={(v) => { announce("Verifying…"); actions.save.mutate(v); }} onCancel={c ? () => { keyRef.current?.clear(); setEditing(false); setFormError(null); } : undefined}
                     />
-                    {!c && <p className="sr-only" data-testid="state-text">{CONNECTION_STATE_LABELS[state].label}</p>}
                 </section>
             )}
             {c && <EnvironmentTable view={view} lockedReason={lockedReason} busyId={busyEnv} onChange={(v) => { announce("Saving environment settings…"); actions.environment.mutate(v); }}/>}

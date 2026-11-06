@@ -70,7 +70,7 @@ describe("all 9 connection states render with label, inline description, alert c
         it(s, async () => {
             const f = FIX[s];
             const {container} = renderView({view: view({connection: f.c === null ? null : conn(f.c)}), forceTransient: f.t});
-            if (s === "not_configured") expect(screen.getByTestId("state-text").textContent).toBe(CONNECTION_STATE_LABELS[s].label);
+            if (s === "not_configured") { expect(screen.getByRole("heading", {level: 2, name: "Connect your Arcane Manager"}).parentElement?.textContent).toContain(CONNECTION_STATE_LABELS[s].label); expect(container.textContent).toContain(CONNECTION_STATE_LABELS[s].description); }
             else {
                 expect(screen.getByRole("heading", {level: 2, name: "Arcane"}).parentElement?.textContent).toContain(CONNECTION_STATE_LABELS[s].label);
                 expect(container.textContent).toContain(CONNECTION_STATE_LABELS[s].description); // inline text, not hover-only

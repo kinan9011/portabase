@@ -70,16 +70,16 @@ export function EnvironmentTable({view, lockedReason, busyId, onChange}: {view: 
                                                 <AgentStatus status={e.agentStatus}/>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-sm">{fmt(e.lastSyncAt)}{e.lastSyncStatus && e.lastSyncStatus !== "ok" ? ` · ${e.lastSyncStatus}` : ""}</TableCell>
-                                        <TableCell><span>{ENVIRONMENT_COPY.stacksUnknown}<span className="sr-only"> not available yet</span></span><span className="block text-xs text-muted-foreground">{ENVIRONMENT_COPY.stacksUnknownReason}</span></TableCell>
-                                        <TableCell>
+                                        <TableCell className="whitespace-normal text-sm">{fmt(e.lastSyncAt)}{e.lastSyncStatus && e.lastSyncStatus !== "ok" ? ` · ${e.lastSyncStatus}` : ""}</TableCell>
+                                        <TableCell className="whitespace-normal"><span>{ENVIRONMENT_COPY.stacksUnknown}<span className="sr-only"> not available yet</span></span><span className="block text-xs text-muted-foreground">{ENVIRONMENT_COPY.stacksUnknownReason}</span></TableCell>
+                                        <TableCell className="min-w-48 whitespace-normal">
                                             <Select value={e.hostRole} open={block ? false : undefined} onValueChange={(v) => { if (block || v === e.hostRole) return; if (v === "test") setPendingRole({env: e}); else onChange({environmentId: e.id, hostRole: v as "production" | "test"}); }}>
                                                 <SelectTrigger aria-label={`Host role for ${e.name}`} aria-disabled={block || undefined} aria-describedby={locked ? reasonId : undefined} className="w-40"><SelectValue/></SelectTrigger>
                                                 <SelectContent>{(Object.keys(HOST_ROLE_LABELS) as (keyof typeof HOST_ROLE_LABELS)[]).map((r) => <SelectItem key={r} value={r}>{HOST_ROLE_LABELS[r].label}</SelectItem>)}</SelectContent>
                                             </Select>
-                                            <span className="mt-1 block max-w-48 text-xs text-muted-foreground">{HOST_ROLE_LABELS[e.hostRole].description}</span>
+                                            <span className="mt-1 block max-w-56 text-xs text-muted-foreground">{HOST_ROLE_LABELS[e.hostRole].description}</span>
                                         </TableCell>
-                                        <TableCell className="text-right">
+                                        <TableCell className="whitespace-normal text-right">
                                             <Switch checked={e.enabled} aria-label={`Discovery for ${e.name}`} aria-disabled={block || undefined} aria-describedby={locked ? reasonId : undefined} onCheckedChange={(v) => { if (!block) onChange({environmentId: e.id, enabled: v}); }}/>
                                             <span className="mt-1 block text-xs text-muted-foreground">{e.enabled ? "Enabled" : "Disabled"}</span>
                                         </TableCell>

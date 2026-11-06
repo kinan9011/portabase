@@ -1,5 +1,6 @@
 import {Info} from "lucide-react";
-import {NON_ADMIN_EXPLANATION, SETUP_PATH} from "@/fork/ui/labels";
+import {StateBadge} from "@/fork/ui/integrations/connection-card";
+import {CONNECTION_STATE_LABELS, NON_ADMIN_EXPLANATION, SETUP_PATH} from "@/fork/ui/labels";
 
 /** Role-aware empty state (D35, CH-20): a signed-in user who is not a system administrator gets a plain explanation, no data. */
 export function NonAdminExplanation() {
@@ -15,7 +16,8 @@ export function NonAdminExplanation() {
 export function SetupPath() {
     return (
         <div className="border-b p-6">
-            <h2 id="arcane-heading" className="text-lg font-semibold">{SETUP_PATH.title}</h2>
+            <div className="flex flex-wrap items-center gap-2.5"><h2 id="arcane-heading" className="text-lg font-semibold">{SETUP_PATH.title}</h2><StateBadge state="not_configured"/></div>
+            <p className="mt-1 text-sm text-muted-foreground">{CONNECTION_STATE_LABELS.not_configured.description}</p>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">{SETUP_PATH.steps.map((s) => <li key={s}>{s}</li>)}</ol>
         </div>
     );
