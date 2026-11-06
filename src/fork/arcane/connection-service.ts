@@ -94,7 +94,7 @@ async function audit(d: ServiceDeps, a: ActionName, o: {organizationId?: string 
     });
 }
 
-async function soleOrganization(db: ForkDb): Promise<string | null> {
+export async function soleOrganization(db: ForkDb): Promise<string | null> {
     const r = await db.execute(sql`select id from organization where deleted_at is null limit 2`);
     return r.rows.length === 1 ? (r.rows[0] as {id: string}).id : null;
 }
