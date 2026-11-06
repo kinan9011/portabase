@@ -29,10 +29,23 @@ describe("central fork-migration numbering (ARCH-14)", () => {
     it("no DDL/DML on upstream objects: every statement targets a fork_-prefixed object", () => {
         const stmt = /\b(?:create\s+(?:unique\s+)?(?:table|index|type|sequence)(?:\s+if\s+not\s+exists)?|alter\s+table(?:\s+if\s+exists)?|drop\s+(?:table|index|type)(?:\s+if\s+exists)?|insert\s+into|update|delete\s+from|truncate(?:\s+table)?)\s+(?:only\s+)?(?:"?public"?\.)?("?)([a-z0-9_]+)\1/gi;
         for (const e of MIGRATION_LEDGER) {
-            const sql = readFileSync(path.join(dir, `${e.tag}.sql`), "utf8");
+            const sql = readFileSync(path.join(dir, `${e.tag}.sql`), "utf8")
+                .replace(/\bon\s+(?:update|delete)\s+(?:no action|cascade|set null|restrict)/gi, "") // FK actions, not statements
+                .replace(/\bbefore\s+(?:update\s+or\s+delete|truncate)\b/gi, ""); // trigger timing, not statements
             const targets = [...sql.matchAll(stmt)].map((m) => m[2]);
             expect(targets.length, `${e.tag} has statements`).toBeGreaterThan(0);
             for (const t of targets) expect(t.startsWith("fork_") || /^idx_fork_|^fork_/.test(t), `${e.tag}: ${t}`).toBe(true);
+        }
+    });
+    it("FKs into upstream tables are limited to the D32 set and every one is ON DELETE SET NULL or CASCADE-to-organization", () => {
+        const upstream = new Set(["organization", "agents", "projects", "backups", "backup_storage"]);
+        for (const e of MIGRATION_LEDGER) {
+            const sql = readFileSync(path.join(dir, `${e.tag}.sql`), "utf8");
+            for (const m of sql.matchAll(/REFERENCES "public"\."([a-z_]+)"\("id"\) ON DELETE ([a-z ]+?) ON UPDATE/gi)) {
+                if (m[1].startsWith("fork_")) continue;
+                expect(upstream.has(m[1]), `${e.tag} references upstream ${m[1]}`).toBe(true);
+                expect(m[2].toLowerCase() === "set null" || (m[1] === "organization" && m[2].toLowerCase() === "cascade"), `${m[1]} ${m[2]}`).toBe(true);
+            }
         }
     });
 });

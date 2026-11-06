@@ -20,6 +20,14 @@ const dumpPolicy = z
         return p === "required" || p === "off" ? p : "auto";
     });
 
+const auditDays = z
+    .string()
+    .optional()
+    .transform((v) => {
+        const n = Number(v?.trim());
+        return Number.isInteger(n) && n >= 1 && n <= 3650 ? n : 400; // ADR-004 §7 default; audit.ts enforces the 90-day floor
+    });
+
 const schema = z.object({
     FORK_STACKS_ENABLED: flag,
     FORK_ARCANE_ENABLED: flag,
@@ -29,6 +37,8 @@ const schema = z.object({
     FORK_MIGRATE_DUMP: dumpPolicy,
     /** pg_dump binary used by the pre-migration dump (default `pg_dump` from PATH). */
     FORK_PG_DUMP_BIN: z.string().optional().transform((v) => v?.trim() || "pg_dump"),
+    /** Audit retention in days (default 400; values below 90 are raised to 90 by the purge, SEC-07). */
+    FORK_AUDIT_RETENTION_DAYS: auditDays,
     /** Test seam only: fork-lane migration folder override. */
     FORK_MIGRATIONS_DIR: z.string().optional(),
 });
@@ -42,6 +52,7 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_MIRRORS_ENABLED: source.FORK_MIRRORS_ENABLED,
         FORK_MIGRATE_DUMP: source.FORK_MIGRATE_DUMP,
         FORK_PG_DUMP_BIN: source.FORK_PG_DUMP_BIN,
+        FORK_AUDIT_RETENTION_DAYS: source.FORK_AUDIT_RETENTION_DAYS,
         FORK_MIGRATIONS_DIR: source.FORK_MIGRATIONS_DIR,
     });
 }

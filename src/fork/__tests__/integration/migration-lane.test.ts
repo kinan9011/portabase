@@ -3,8 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {runForkMigrations} from "@/fork/db/migrate";
+import {MIGRATION_LEDGER} from "@/fork/db/migration-ledger";
 import {applyUpstreamMigrations, createTestDb, type TestDb} from "@/fork/__tests__/db-helpers";
 
+const N = MIGRATION_LEDGER.length; // W04 added 0001: counts follow the ledger instead of hard-coding
 let t: TestDb;
 beforeEach(async () => { t = await createTestDb(); });
 afterEach(async () => { await t.drop(); });
@@ -23,14 +25,14 @@ describe("fork migration lane — fresh DB + re-run", () => {
     it("fresh: applies after the REAL upstream migrations; re-run is idempotent", async () => {
         await applyUpstreamMigrations(t.pool);
         const first = await run();
-        expect(first).toMatchObject({state: "applied", appliedNow: 1, total: 1});
+        expect(first).toMatchObject({state: "applied", appliedNow: N, total: N});
         expect(await exists("public.fork_meta")).toBe(true);
-        expect(await forkRows()).toBe(1);
+        expect(await forkRows()).toBe(N);
         await t.pool.query("insert into fork_meta(key,value) values('k','v')");
 
         const second = await run();
-        expect(second).toMatchObject({state: "applied", appliedNow: 0, total: 1});
-        expect(await forkRows()).toBe(1);
+        expect(second).toMatchObject({state: "applied", appliedNow: 0, total: N});
+        expect(await forkRows()).toBe(N);
         expect((await t.pool.query("select value from fork_meta where key='k'")).rows).toEqual([{value: "v"}]);
     });
 
@@ -55,8 +57,8 @@ describe("fork migration lane — fresh DB + re-run", () => {
         await applyUpstreamMigrations(t.pool);
         const [a, b] = await Promise.all([run(), run()]);
         expect([a.state, b.state]).toEqual(["applied", "applied"]);
-        expect(a.appliedNow! + b.appliedNow!).toBe(1);
-        expect(await forkRows()).toBe(1);
+        expect(a.appliedNow! + b.appliedNow!).toBe(N);
+        expect(await forkRows()).toBe(N);
     });
 });
 
@@ -82,7 +84,7 @@ describe("fork migration lane — gated on upstream migration success (ARCH-08)"
     it("recovers on the next boot once upstream is complete", async () => {
         expect((await run()).state).toBe("skipped-upstream-incomplete");
         await applyUpstreamMigrations(t.pool);
-        expect(await run()).toMatchObject({state: "applied", appliedNow: 1});
+        expect(await run()).toMatchObject({state: "applied", appliedNow: N});
     });
 });
 
@@ -94,9 +96,11 @@ describe("fork migration lane — pre-migration pg_dump, fail closed (ARCH-08, p
         const journalPath = path.join(dir, "meta/_journal.json");
         const base = JSON.parse(await readFile(journalPath, "utf8"));
         const append = async () => {
-            base.entries.push({idx: 1, version: "7", when: base.entries[0].when + 1000, tag: "0001_fork_probe", breakpoints: true});
+            const idx = base.entries.length;
+            const tag = `${String(idx).padStart(4, "0")}_fork_probe`;
+            base.entries.push({idx, version: "7", when: base.entries[idx - 1].when + 1000, tag, breakpoints: true});
             await writeFile(journalPath, JSON.stringify(base));
-            await writeFile(path.join(dir, "0001_fork_probe.sql"), 'CREATE TABLE "fork_probe" ("id" text PRIMARY KEY NOT NULL);\n');
+            await writeFile(path.join(dir, `${tag}.sql`), 'CREATE TABLE "fork_probe" ("id" text PRIMARY KEY NOT NULL);\n');
         };
         return {dir, append};
     }
@@ -106,7 +110,7 @@ describe("fork migration lane — pre-migration pg_dump, fail closed (ARCH-08, p
         await applyUpstreamMigrations(t.pool);
         const {dir, append} = await forkDirWithUpgrade();
         const dump = vi.fn(async () => "/x/y.dump");
-        expect(await run({env: prod, forkDir: dir, dump})).toMatchObject({state: "applied", appliedNow: 1});
+        expect(await run({env: prod, forkDir: dir, dump})).toMatchObject({state: "applied", appliedNow: N});
         expect(dump).not.toHaveBeenCalled();
 
         await append();
@@ -125,7 +129,7 @@ describe("fork migration lane — pre-migration pg_dump, fail closed (ARCH-08, p
         const r = await run({env: prod, forkDir: dir, dump: async () => { throw new Error("pg_dump failed: no space"); }});
         expect(r).toMatchObject({state: "blocked-no-dump", detail: "pg_dump failed: no space"});
         expect(await exists("public.fork_probe")).toBe(false);
-        expect(await forkRows()).toBe(1);
+        expect(await forkRows()).toBe(N);
     });
 
     it("policy off is an explicit, warned opt-out; dev never dumps under auto", async () => {

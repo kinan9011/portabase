@@ -13,7 +13,7 @@ export type LedgerEntry = { tag: string; wave: string; note: string };
 
 export const MIGRATION_LEDGER: readonly LedgerEntry[] = [
     {tag: "0000_fork_meta", wave: "W01", note: "fork_meta: proves the lane"},
-    // W04: fork schema v1 (RP states incl. pending_verification D43, FK policy D32, ...) → 0001+
+    {tag: "0001_fork_schema_v1", wave: "W04", note: "schema v1: arcane/stack/inventory/audit(+append-only trigger)/locks/schedule/outbox/RP+artifact (D32, D43, D44)"},
     // W12/W14/R2: append here; one entry per generated migration, in order.
 ];
 

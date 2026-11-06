@@ -19,6 +19,14 @@ pnpm drizzle-kit generate --config drizzle.fork.config.ts --name <name>   # then
 ## Flags (all default off; only the literal `true` enables)
 `FORK_STACKS_ENABLED`, `FORK_ARCANE_ENABLED`, `FORK_MIRRORS_ENABLED`. Pre-migration dump: `FORK_MIGRATE_DUMP=auto|required|off`.
 
+## Single-tenant requirement (D21, ADR-011) and fork secrets (D23)
+The fork refuses to configure itself unless the instance is single-tenant: exactly one organization, `AUTH_SIGNUP_ENABLED=false`, no agent/storage channel used by fork rows bound to another organization.
+Set `AUTH_SIGNUP_ENABLED=false` (upstream default is `true`; with it `false` NO new account can be created, not even by an admin) and keep `MCP_ENABLED=false` (advisory).
+On failure the fork *locks configuration only* (activated schedules, finalisation, drift job and notifications keep running): `/api/fork/status` carries the banner text; an audit event + one pending notification record are written per state change.
+
+**Fork KEK:** `${PRIVATE_PATH}/keys/fork-kek/` (`<kid>.key` 0600 + `active`), generated on first use, separate from the master key. **Back it up together with the database** — fork secrets (Arcane API keys) are unreadable without it, and a DB dump alone does not contain it.
+Audit retention: `FORK_AUDIT_RETENTION_DAYS` (default 400, floor 90).
+
 ## Rollback
 Fork and upstream migrations are forward-only. Take a dump before every deploy / upstream sync
 (`DATABASE_URL=... scripts/fork/predeploy-dump.sh`); rollback = stop the app, drop + recreate the database, `pg_restore --no-owner`.

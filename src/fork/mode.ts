@@ -23,7 +23,7 @@ export type ForkModeInput = {
     laneOk: boolean;
 };
 
-export type ForkModeResult = { mode: ForkMode; lockReason?: ForkLockReason; detail?: string };
+export type ForkModeResult = { mode: ForkMode; lockReason?: ForkLockReason; detail?: string; warnings?: string[] };
 
 export function resolveForkMode(i: ForkModeInput): ForkModeResult {
     if (i.flagsOn && i.selfCheckOk && i.laneOk) return {mode: "on"};
@@ -47,7 +47,8 @@ export type LaneState =
 
 export type LaneStatus = { state: LaneState; appliedNow?: number; total?: number; detail?: string };
 
-export type SelfCheckResult = { ok: boolean; failed?: string };
+/** `failed` = comma-separated stable codes (ADR-011); `warnings` = advisory codes (C5) that never lock. */
+export type SelfCheckResult = { ok: boolean; failed?: string; warnings?: string[] };
 
 type ForkGlobal = {
     lane: LaneStatus;
@@ -110,10 +111,14 @@ export async function currentForkMode(opts: { now?: number; env?: Record<string,
         activePolicyCount = 1;
     }
     let selfCheck: SelfCheckResult = {ok: true};
-    try {
-        selfCheck = await s.selfCheck();
-    } catch {
-        selfCheck = {ok: false, failed: "self-check threw"};
+    // Inert fork (flags off, nothing activated) is "off" whatever the check says: skip it, so flags-off parity costs no
+    // queries and writes no audit/notification (ADR-010).
+    if (flagsOn || activePolicyCount > 0) {
+        try {
+            selfCheck = await s.selfCheck();
+        } catch {
+            selfCheck = {ok: false, failed: "check-error"};
+        }
     }
     const lane = s.lane.state;
     const laneOk = lane === "applied" || lane === "not-run";
@@ -122,6 +127,7 @@ export async function currentForkMode(opts: { now?: number; env?: Record<string,
         result.detail =
             result.lockReason === "self-check-failed" ? selfCheck.failed : result.lockReason === "lane-failed" ? s.lane.detail ?? lane : undefined;
     }
+    if (selfCheck.warnings?.length) result.warnings = selfCheck.warnings;
     s.cache = {at: now, result};
     return result;
 }

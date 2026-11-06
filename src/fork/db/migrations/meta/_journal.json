@@ -8,6 +8,13 @@
       "when": 1793993222401,
       "tag": "0000_fork_meta",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794004054879,
+      "tag": "0001_fork_schema_v1",
+      "breakpoints": true
     }
   ]
 }
