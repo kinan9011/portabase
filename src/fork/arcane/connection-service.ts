@@ -251,11 +251,14 @@ export async function saveConnection(d: ServiceDeps, raw: unknown): Promise<Outc
         await audit(d, "save", {organizationId, resourceId: existing.id, result: "denied", details: {reason: "key-reentry-required", from: endpointIdentity(existing.baseUrl), to: endpointIdentity(baseUrl)}});
         return refuse("key_reentry_required", "The Arcane host, port or scheme changed: enter the API key again. A stored key is never sent to a different endpoint.");
     }
-    if (!existing && !input.apiKey) return refuse("invalid_input", "An API key is required.");
 
     const tlsInsecure = input.tlsInsecure ?? existing?.tlsInsecure ?? false;
     const allowProjectsRead = input.allowProjectsRead ?? existing?.allowProjectsRead ?? false;
-    const apiKey = input.apiKey ?? (await readConnectionApiKey(d.db, organizationId, existing!.id, d.kekDir));
+    let apiKey = input.apiKey;
+    if (!apiKey) {
+        if (!existing) return refuse("invalid_input", "An API key is required.");
+        apiKey = await readConnectionApiKey(d.db, organizationId, existing.id, d.kekDir);
+    }
     const v = await verifyConnection(d, {baseUrl, apiKey, tlsInsecure, allowProjectsRead});
     const cfg = {baseUrl, tlsInsecure, allowProjectsRead};
 

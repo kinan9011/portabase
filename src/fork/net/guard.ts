@@ -62,7 +62,7 @@ function v6Bytes(ipIn: string): number[] | null {
     const dotted = ip.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
     if (dotted) {
         tail.push(...dotted.slice(1, 5).map(Number));
-        head = ip.slice(0, ip.length - dotted[0].length) + "0:0";
+        head = `${ip.slice(0, ip.length - dotted[0].length)}0:0`;
     }
     const [l, r] = head.split("::");
     const groups = (x: string) => (x ? x.split(":") : []);
