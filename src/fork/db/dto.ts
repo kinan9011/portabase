@@ -18,6 +18,10 @@ export const CONNECTION_PUBLIC_COLUMNS = {
     pinnedApiVersion: forkArcaneConnection.pinnedApiVersion,
     healthStatus: forkArcaneConnection.healthStatus,
     lastErrorClass: forkArcaneConnection.lastErrorClass,
+    tlsInsecure: forkArcaneConnection.tlsInsecure,
+    allowProjectsRead: forkArcaneConnection.allowProjectsRead,
+    keyId: forkArcaneConnection.keyId,
+    lastCheckedAt: forkArcaneConnection.lastCheckedAt,
     createdAt: forkArcaneConnection.createdAt,
     updatedAt: forkArcaneConnection.updatedAt,
 } as const;
@@ -31,6 +35,10 @@ export const ConnectionDtoSchema = z.strictObject({
     pinnedApiVersion: z.string().nullable(),
     healthStatus: z.enum(HEALTH_STATUSES),
     lastErrorClass: z.string().nullable(),
+    tlsInsecure: z.boolean(),
+    allowProjectsRead: z.boolean(),
+    keyId: z.string().nullable(),
+    lastCheckedAt: z.date().nullable(),
     createdAt: z.date(),
     updatedAt: z.date(),
 });
@@ -73,4 +81,21 @@ export async function readConnectionApiKey(db: ForkDb, organizationId: string, i
         .where(and(eq(forkArcaneConnection.id, id), eq(forkArcaneConnection.organizationId, organizationId)));
     if (!row) throw new Error("connection not found");
     return decryptForkSecret(row.apiKeyEnc, connectionAad(row.id), kekDir);
+}
+
+/** Reads one connection through the public allowlist (never the key). */
+export async function getConnectionDto(db: ForkDb, organizationId: string, id: string): Promise<ConnectionDto | null> {
+    const [row] = await db.select(CONNECTION_PUBLIC_COLUMNS).from(forkArcaneConnection).where(and(eq(forkArcaneConnection.id, id), eq(forkArcaneConnection.organizationId, organizationId)));
+    return row ? toConnectionDto(row) : null;
+}
+
+/** Re-encrypts `apiKey` for an existing row (rotation / key re-entry). The ciphertext is bound to the row id by the AAD. Writer #2 of `api_key_enc` (with the insert above). */
+export async function replaceConnectionApiKey(db: ForkDb, organizationId: string, id: string, apiKey: string, kekDir?: string): Promise<void> {
+    const apiKeyEnc = await encryptForkSecret(apiKey, connectionAad(id), kekDir);
+    const res = await db
+        .update(forkArcaneConnection)
+        .set({apiKeyEnc, updatedAt: new Date()})
+        .where(and(eq(forkArcaneConnection.id, id), eq(forkArcaneConnection.organizationId, organizationId)))
+        .returning({id: forkArcaneConnection.id});
+    if (res.length !== 1) throw new Error("connection not found");
 }

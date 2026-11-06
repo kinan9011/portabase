@@ -14,7 +14,7 @@ describe("api_key_enc never reaches a DTO (explicit column allowlist)", () => {
     it("toConnectionDto drops a stray apiKeyEnc and rejects malformed rows", () => {
         const row = {
             id: "11111111-1111-4111-8111-111111111111", organizationId: "22222222-2222-4222-8222-222222222222", name: "arcane", baseUrl: "https://a.test",
-            pinnedApiVersion: null, healthStatus: "unknown", lastErrorClass: null, createdAt: new Date(), updatedAt: new Date(),
+            pinnedApiVersion: null, healthStatus: "unknown", lastErrorClass: null, tlsInsecure: false, allowProjectsRead: false, keyId: null, lastCheckedAt: null, createdAt: new Date(), updatedAt: new Date(),
             apiKeyEnc: {kid: "k1", iv: "x", ct: "canary", tag: "t"},
         };
         const dto = toConnectionDto(row);
