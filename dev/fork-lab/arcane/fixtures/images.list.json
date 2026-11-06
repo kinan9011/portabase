@@ -1,0 +1,55 @@
+{
+  "data": [
+    {
+      "created": 1792623452,
+      "id": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+      "inUse": true,
+      "labels": {},
+      "pinnedReferences": [
+        "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b"
+      ],
+      "repo": "postgres",
+      "repoDigests": [
+        "postgres@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b"
+      ],
+      "repoTags": [
+        "postgres:17-alpine"
+      ],
+      "size": 423832583,
+      "tag": "17-alpine",
+      "updateInfo": {
+        "checkTime": "2026-11-06T22:00:09.945960893Z",
+        "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+        "currentVersion": "17-alpine",
+        "error": "",
+        "hasUpdate": false,
+        "latestDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+        "latestVersion": "17-alpine",
+        "responseTimeMs": 0,
+        "updateType": "digest",
+        "usedCredential": false
+      },
+      "usedBy": [
+        {
+          "id": "b6f49477-35ca-4ac0-bc4a-a9b639d8eb9f",
+          "name": "forklab-demo",
+          "type": "project"
+        },
+        {
+          "name": "forklab-portabase",
+          "type": "project"
+        }
+      ],
+      "virtualSize": -1
+    }
+  ],
+  "maxImageUploadSize": 500,
+  "pagination": {
+    "currentPage": 1,
+    "grandTotalItems": 40,
+    "itemsPerPage": 100,
+    "totalItems": 40,
+    "totalPages": 1
+  },
+  "success": true
+}

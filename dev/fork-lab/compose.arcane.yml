@@ -8,13 +8,13 @@ services:
     ports: ["127.0.0.1:13552:3552"]
     environment:
       ENCRYPTION_KEY: ${LAB_ARCANE_ENCRYPTION_KEY:?run lab.sh up}
-      ARCANE_PROJECTS_DIRECTORY: /projects
       APP_URL: http://127.0.0.1:13552
       TZ: UTC
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # accepted lab risk: Docker-admin (see 05-Security-Model, W02)
       - arcane-data:/app/data
-      - ./demo-stack:/projects/forklab-demo
+      # Arcane 2.17.3 watches /app/data/projects (ARCANE_PROJECTS_DIRECTORY is NOT honoured, W03): mount the demo stack there so it becomes an Arcane project
+      - ./demo-stack:/app/data/projects/forklab-demo
     cgroup: host
     healthcheck:
       test: ["CMD", "./arcane", "health", "--timeout", "2s"]
@@ -32,6 +32,7 @@ services:
     environment:
       ARCANE_AGENT: "true"
       ARCANE_AGENT_TOKEN: ${LAB_ARCANE_AGENT_TOKEN:-}
+      AGENT_TOKEN: ${LAB_ARCANE_AGENT_TOKEN:-} # Arcane 2.17.3 direct mode reads AGENT_TOKEN (W03); ARCANE_AGENT_TOKEN kept for older images
       ARCANE_MANAGER_API_URL: http://forklab-arcane:3552
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

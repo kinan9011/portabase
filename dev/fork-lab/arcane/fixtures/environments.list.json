@@ -1,0 +1,30 @@
+{
+  "data": [
+    {
+      "apiUrl": "http://lab-arcane.invalid",
+      "enabled": true,
+      "id": "0",
+      "isEdge": false,
+      "lastSeen": "2026-01-01T00:00:00Z",
+      "name": "lab-env-0",
+      "status": "online"
+    },
+    {
+      "apiUrl": "http://lab-arcane.invalid",
+      "enabled": true,
+      "id": "aaef6341-1671-4b7b-921e-5093c239a339",
+      "isEdge": false,
+      "lastSeen": "2026-01-01T00:00:00Z",
+      "name": "lab-env-aaef6341-1671-4b7b-921e-5093c239a339",
+      "status": "online"
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "grandTotalItems": 0,
+    "itemsPerPage": 100,
+    "totalItems": 2,
+    "totalPages": 1
+  },
+  "success": true
+}

@@ -35,3 +35,6 @@ Admin login for the dashboard: `LAB_ADMIN_EMAIL` / `LAB_ADMIN_PASSWORD` in `.env
 - The dashboard has no create-source API; `drills/bootstrap-dashboard.sh` writes the same rows the UI actions write (the first lab was onboarded through the real UI once).
 - The demo stack env file is `stack.env` (not `.env`).
 - Arcane's own agent environment is not started by default (token comes from the Arcane UI); Arcane API pinning is W03.
+
+## Arcane API spike (W03)
+`arcane/` holds the pinned Arcane OpenAPI, capability map, permission matrix, scrubbed fixtures and `spike.sh` (see `arcane/README.md`). The demo stack is mounted under `/app/data/projects` so Arcane lists it as a project.

@@ -1,0 +1,41 @@
+{
+  "data": {
+    "fileTreeRevision": "8b14be395803",
+    "fileTreeTruncated": false,
+    "files": [
+      {
+        "editable": true,
+        "isDirectory": true,
+        "isSymlink": false,
+        "name": "uploads",
+        "relativePath": "uploads",
+        "size": 0
+      },
+      {
+        "editable": true,
+        "isDirectory": true,
+        "isSymlink": false,
+        "name": "web",
+        "relativePath": "web",
+        "size": 0
+      },
+      {
+        "editable": true,
+        "isDirectory": false,
+        "isSymlink": false,
+        "name": "expected.json",
+        "relativePath": "expected.json",
+        "size": 432
+      },
+      {
+        "editable": true,
+        "isDirectory": false,
+        "isSymlink": false,
+        "name": "seed.sh",
+        "relativePath": "seed.sh",
+        "size": 4065
+      }
+    ]
+  },
+  "success": true
+}

@@ -1,0 +1,137 @@
+[
+  {
+    "permission": "containers:edit",
+    "allows": [
+      "env.list"
+    ]
+  },
+  {
+    "permission": "containers:list",
+    "allows": [
+      "cont.list",
+      "env.list"
+    ]
+  },
+  {
+    "permission": "containers:logs",
+    "allows": [
+      "env.list"
+    ]
+  },
+  {
+    "permission": "containers:read",
+    "allows": [
+      "cont.edit-config",
+      "cont.get",
+      "env.list"
+    ]
+  },
+  {
+    "permission": "dashboard:read",
+    "allows": [
+      "env.list"
+    ]
+  },
+  {
+    "permission": "environments:list",
+    "allows": [
+      "env.list"
+    ]
+  },
+  {
+    "permission": "environments:read",
+    "allows": [
+      "env.get",
+      "env.list"
+    ]
+  },
+  {
+    "permission": "images:list",
+    "allows": [
+      "env.list",
+      "img.list"
+    ]
+  },
+  {
+    "permission": "images:read",
+    "allows": [
+      "env.list",
+      "img.get"
+    ]
+  },
+  {
+    "permission": "networks:list",
+    "allows": [
+      "env.list",
+      "net.list"
+    ]
+  },
+  {
+    "permission": "networks:read",
+    "allows": [
+      "env.list",
+      "net.get",
+      "net.topology"
+    ]
+  },
+  {
+    "permission": "projects:list",
+    "allows": [
+      "env.list",
+      "proj.list"
+    ]
+  },
+  {
+    "permission": "projects:logs",
+    "allows": [
+      "env.list"
+    ]
+  },
+  {
+    "permission": "projects:read",
+    "allows": [
+      "env.list",
+      "proj.compose",
+      "proj.get",
+      "proj.runtime",
+      "proj.workspace",
+      "proj.workspace.file"
+    ]
+  },
+  {
+    "permission": "projects:update",
+    "allows": [
+      "env.list"
+    ]
+  },
+  {
+    "permission": "system:read",
+    "allows": [
+      "env.list"
+    ]
+  },
+  {
+    "permission": "volumes:backup",
+    "allows": [
+      "env.list"
+    ]
+  },
+  {
+    "permission": "volumes:list",
+    "allows": [
+      "env.list",
+      "vol.list",
+      "vol.sizes"
+    ]
+  },
+  {
+    "permission": "volumes:read",
+    "allows": [
+      "env.list",
+      "vol.get",
+      "vol.usage",
+      "vol.workspace",
+      "vol.workspace.file"
+    ]
+  }
+]

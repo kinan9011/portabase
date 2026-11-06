@@ -1,0 +1,169 @@
+{
+  "data": {
+    "composeContent": "# Synthetic demo stack protected by the spike: http service + postgres + named volume + bind-mounted uploads/\n# + sqlite file in a volume. Names are prefixed forklab-demo / forklab_ so lab.sh never touches foreign resources.\nname: forklab-demo\nservices:\n  db:\n    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b\n    env_file: stack.env\n    volumes: [pgdata:/var/lib/postgresql/data]\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}\"]\n      interval: 3s\n      timeout: 3s\n      retries: 20\n    networks:\n      internal:\n        # unique alias: an agent attached to BOTH the lab net and this net would otherwise resolve `db` to either Postgres\n        aliases: [demo-db]\n\n  web:\n    # http service that reads DB rows + the uploads dir and serves them (busybox nc; no build, no extra image)\n    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b\n    env_file: stack.env\n    depends_on:\n      db: {condition: service_healthy}\n    entrypoint: [\"/bin/sh\", \"/app/serve.sh\"]\n    volumes:\n      - ./web/serve.sh:/app/serve.sh:ro\n      - ./web/handle.sh:/app/handle.sh:ro\n      - ./uploads:/uploads:ro\n      - appdata:/appdata\n    ports: [\"192.0.2.1:18080:8080\"]\n    networks: [internal, lab_proxy]\n\n  sqlite-writer:\n    # keeps writing to a WAL-mode sqlite file inside a volume (D29 consistency probe); started by the drills, not by default\n    image: ghcr.io/portabase/agent:1.25.2@sha256:e8f2b52eb4e59ed652d63d853a6bf517c31e9d41e3556115a2534ecbdde9df9f\n    profiles: [sqlite]\n    entrypoint: [\"/bin/sh\", \"/app/sqlite-writer.sh\"]\n    volumes:\n      - ./web/sqlite-writer.sh:/app/sqlite-writer.sh:ro\n      - sqlitedata:/data\n    networks: [internal]\n\n  failing-webhook:\n    # optional: calls a blackhole address (RFC 5737 doc range) forever and fails; never reaches a real host\n    image: busybox:latest@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4\n    profiles: [failing-webhook]\n    command: [\"sh\", \"-c\", \"while true; do wget -q -T 2 -O /dev/null http://192.0.2.1/hook || echo webhook-failed; sleep 5; done\"]\n    networks: [internal]\n\nvolumes:\n  pgdata:\n  appdata:\n  sqlitedata:\n\nnetworks:\n  internal:\n    internal: true\n  lab_proxy:\n    name: lab_proxy\n    external: true\n",
+    "composeFileName": "compose.yml",
+    "createdAt": "2026-11-06T21:46:42Z",
+    "dirName": "forklab-demo",
+    "hasBuildDirective": false,
+    "id": "b6f49477-35ca-4ac0-bc4a-a9b639d8eb9f",
+    "isArchived": false,
+    "isDiscovered": false,
+    "name": "forklab-demo",
+    "overrideContent": "# Override file (part of the compose-dir `files` source): labels and restart policy only.\nservices:\n  web:\n    restart: unless-stopped\n    labels:\n      forklab.role: app\n  db:\n    restart: unless-stopped\n    labels:\n      forklab.role: database\n",
+    "overrideFileName": "compose.override.yml",
+    "path": "/app/data/projects/forklab-demo",
+    "redeployDisabled": false,
+    "relativePath": "forklab-demo",
+    "runningCount": 2,
+    "serviceCount": 2,
+    "services": [
+      {
+        "command": [],
+        "cpu_count": 0,
+        "cpu_percent": 0,
+        "cpu_period": 0,
+        "cpu_quota": 0,
+        "cpu_rt_period": 0,
+        "cpu_rt_runtime": 0,
+        "cpu_shares": 0,
+        "cpus": 0,
+        "depends_on": {
+          "db": {
+            "condition": "service_healthy",
+            "required": true,
+            "restart": false
+          }
+        },
+        "entrypoint": [
+          "/bin/sh",
+          "/app/serve.sh"
+        ],
+        "image": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+        "labels": {
+          "forklab.role": "app"
+        },
+        "mem_limit": "0",
+        "mem_reservation": "0",
+        "mem_swappiness": "0",
+        "memswap_limit": "0",
+        "networks": {
+          "internal": null,
+          "lab_proxy": null
+        },
+        "oom_kill_disable": false,
+        "oom_score_adj": 0,
+        "pids_limit": 0,
+        "ports": [
+          {
+            "host_ip": "192.0.2.1",
+            "mode": "ingress",
+            "protocol": "tcp",
+            "published": "18080",
+            "target": 8080
+          }
+        ],
+        "privileged": false,
+        "read_only": false,
+        "restart": "unless-stopped",
+        "shm_size": "0",
+        "stdin_open": false,
+        "tty": false,
+        "use_api_socket": false,
+        "volumes": [
+          {
+            "read_only": true,
+            "source": "/srv/fork-lab/demo-stack/web/serve.sh",
+            "target": "/app/serve.sh",
+            "type": "bind"
+          },
+          {
+            "read_only": true,
+            "source": "/srv/fork-lab/demo-stack/web/handle.sh",
+            "target": "/app/handle.sh",
+            "type": "bind"
+          },
+          {
+            "read_only": true,
+            "source": "/srv/fork-lab/demo-stack/uploads",
+            "target": "/uploads",
+            "type": "bind"
+          },
+          {
+            "read_only": false,
+            "source": "appdata",
+            "target": "/appdata",
+            "type": "volume",
+            "volume": {
+              "nocopy": false
+            }
+          }
+        ]
+      },
+      {
+        "command": [],
+        "cpu_count": 0,
+        "cpu_percent": 0,
+        "cpu_period": 0,
+        "cpu_quota": 0,
+        "cpu_rt_period": 0,
+        "cpu_rt_runtime": 0,
+        "cpu_shares": 0,
+        "cpus": 0,
+        "entrypoint": [],
+        "healthcheck": {
+          "disable": false,
+          "interval": "3s",
+          "retries": 20,
+          "test": [
+            "CMD-SHELL",
+            "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+          ],
+          "timeout": "3s"
+        },
+        "image": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+        "labels": {
+          "forklab.role": "database"
+        },
+        "mem_limit": "0",
+        "mem_reservation": "0",
+        "mem_swappiness": "0",
+        "memswap_limit": "0",
+        "networks": {
+          "internal": {
+            "aliases": [
+              "demo-db"
+            ],
+            "gw_priority": 0,
+            "priority": 0
+          }
+        },
+        "oom_kill_disable": false,
+        "oom_score_adj": 0,
+        "pids_limit": 0,
+        "privileged": false,
+        "read_only": false,
+        "restart": "unless-stopped",
+        "shm_size": "0",
+        "stdin_open": false,
+        "tty": false,
+        "use_api_socket": false,
+        "volumes": [
+          {
+            "read_only": false,
+            "source": "pgdata",
+            "target": "/var/lib/postgresql/data",
+            "type": "volume",
+            "volume": {
+              "nocopy": false
+            }
+          }
+        ]
+      }
+    ],
+    "status": "running",
+    "statusReason": "Project discovered from filesystem, status pending Docker service query",
+    "tags": [],
+    "updatedAt": "2026-11-06T21:46:42Z"
+  },
+  "success": true
+}
