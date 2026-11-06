@@ -134,6 +134,8 @@ COPY --from=builder /app/drizzle.config.ts ./
 COPY --from=builder --chown=1001:1001 /app/.next/standalone ./
 COPY --from=builder --chown=1001:1001 /app/.next/static ./.next/static
 COPY --chown=1001:1001 src/db ./src/db
+# FORK(stack-recovery): P15 fork migration lane SQL must exist at runtime (standalone image has no src/)
+COPY --chown=1001:1001 src/fork/db/migrations ./src/fork/db/migrations
 
 ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
 RUN mkdir -p /tmp/sharp-install \

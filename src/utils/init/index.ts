@@ -8,6 +8,8 @@ import {createDefaultOrganization} from "@/utils/init/organization";
 import {createDefaultUser} from "@/utils/init/user";
 import {markOnboardingDoneIfSkipped} from "@/utils/init/onboarding";
 import {startLocalStorageServers} from "@/lib/local-storage/servers";
+// FORK(stack-recovery): P02 fork boot entry (import)
+import {initFork} from "@/fork/init";
 
 const log = logger.child({module: "init"});
 
@@ -18,6 +20,7 @@ export async function init() {
     startLocalStorageServers(masterKey);
     await generateRSAKeys();
     await makeMigration();
+    await initFork(); // FORK(stack-recovery): P02 fork lane + mode + runtime, after upstream migrations
     await createDefaultOrganization();
     await createSettingsIfNotExist();
     await createDefaultUser();

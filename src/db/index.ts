@@ -18,6 +18,8 @@ import * as backupStorage from "@/db/schema/14_storage-backup";
 import * as healthcheckLog from "@/db/schema/15_healthcheck-log";
 import * as apiKey from "@/db/schema/16_apikey";
 import * as jobLog from "@/db/schema/17_job-log";
+// FORK(stack-recovery): P01 fork-owned tables for db.query.* (schemas object, spread below)
+import * as forkSchema from "@/fork/db/schema";
 
 const log = logger.child({module: "db"});
 
@@ -44,6 +46,7 @@ const poolConfig = {
 const pool = new Pool(poolConfig);
 
 export const schemas = {
+    ...forkSchema, // FORK(stack-recovery): P01 spread fork schema into schemas (first line: no upstream line touched)
     ...settings,
     ...user,
     ...organisation,
