@@ -6,7 +6,7 @@ import {Button} from "@/components/ui/button";
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/components/ui/dialog";
 import type {Verification} from "@/fork/arcane/connection-service";
 import type {IntegrationsConnection} from "@/fork/arcane/integrations-view";
-import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
+import {DangerousActionConfirm, useReturnFocus} from "@/fork/ui/dangerous-action-confirm";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {connectionAlert} from "@/fork/ui/integrations/connection-state";
 import {SecretKeyInput, type SecretKeyHandle} from "@/fork/ui/integrations/secret-key-input";
@@ -48,9 +48,10 @@ export function VerificationPanel({v}: {v: Verification}) {
 }
 
 function RotateDialog({open, onOpenChange, keyRef, pending, onRotate, error}: {open: boolean; onOpenChange: (o: boolean) => void; keyRef: React.RefObject<SecretKeyHandle | null>; pending: boolean; onRotate: () => void; error: string | null}) {
+    const focus = useReturnFocus(open);
     return (
         <Dialog open={open} onOpenChange={(o) => { if (!o) keyRef.current?.clear(); onOpenChange(o); }}>
-            <DialogContent className="sm:max-w-xl">
+            <DialogContent className="sm:max-w-xl" {...focus}>
                 <form method="post" onSubmit={(e) => { e.preventDefault(); if (!pending) onRotate(); }} className="grid gap-4">
                     <DialogHeader>
                         <DialogTitle>Rotate the Arcane key</DialogTitle>

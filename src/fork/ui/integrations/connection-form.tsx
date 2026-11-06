@@ -82,7 +82,7 @@ export function ConnectionForm({connection, keyRef, pending, lockedReason, onSub
                     <p className="text-xs text-muted-foreground">HTTPS. Private or loopback addresses work only when the server operator allow-listed them.</p>
                 </div>
                 {endpointChanged && (
-                    <p role="status" className={`flex items-start gap-2 rounded-md border p-3 text-sm ${TONE_MAP.warning.panel} ${TONE_MAP.warning.body}`}>
+                    <p role="note" className={`flex items-start gap-2 rounded-md border p-3 text-sm ${TONE_MAP.warning.panel} ${TONE_MAP.warning.body}`}>
                         <ToneIcon tone="warning" className="mt-0.5"/>{ARCANE_KEY_FIELD_COPY.endpointChange}
                     </p>
                 )}
@@ -91,12 +91,12 @@ export function ConnectionForm({connection, keyRef, pending, lockedReason, onSub
 
                 <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
                     <div><Label htmlFor="tls-insecure">Skip TLS certificate verification</Label><p className="text-xs text-muted-foreground">Off by default. Lab or private CA only.</p>
-                        {tlsInsecure && <p role="status" className={`mt-1 flex items-start gap-1.5 text-xs ${TONE_MAP.warning.title}`}><ToneIcon tone="warning" className="mt-0.5"/>{ARCANE_KEY_FIELD_COPY.tlsWarning}</p>}</div>
+                        {tlsInsecure && <p role="note" className={`mt-1 flex items-start gap-1.5 text-xs ${TONE_MAP.warning.title}`}><ToneIcon tone="warning" className="mt-0.5"/>{ARCANE_KEY_FIELD_COPY.tlsWarning}</p>}</div>
                     <Switch id="tls-insecure" checked={tlsInsecure} onCheckedChange={setTlsInsecure}/>
                 </div>
                 <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
                     <div><Label htmlFor="tier2">Allow reading Compose files ({ARCANE_KEY_FIELD_COPY.tier2.permission})</Label><p className="text-xs text-muted-foreground">Off by default.</p>
-                        {tier2 && <p role="status" className={`mt-1 flex items-start gap-1.5 text-xs ${TONE_MAP.warning.title}`}><ToneIcon tone="warning" className="mt-0.5"/>{ARCANE_KEY_FIELD_COPY.tier2.warning}</p>}</div>
+                        {tier2 && <p role="note" className={`mt-1 flex items-start gap-1.5 text-xs ${TONE_MAP.warning.title}`}><ToneIcon tone="warning" className="mt-0.5"/>{ARCANE_KEY_FIELD_COPY.tier2.warning}</p>}</div>
                     <Switch id="tier2" checked={tier2} onCheckedChange={setTier2}/>
                 </div>
 

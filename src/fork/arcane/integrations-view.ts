@@ -11,7 +11,7 @@ import {forkArcaneConnection, forkArcaneEnvironment} from "@/fork/db/schema/arca
 /**
  * Read model of the Integrations page (W06). ONE strict, JSON-serialisable object that crosses from the server component to
  * the client: dates are ISO strings, and every field is allowlisted. There is no place for the Arcane key in it — the
- * `ConnectionDto` allowlist excludes `api_key_enc`, the schema below is `strictObject`, and `w06-integrations-view` asserts a
+ * `ConnectionDto` allowlist excludes the encrypted-key column, the schema below is `strictObject`, and `w06-integrations-view` asserts a
  * canary key is absent from the serialised result (and the rendered page). Only the caller's authorisation (system admin)
  * decides whether this is loaded at all: callers must check `arcane.manage` first.
  */

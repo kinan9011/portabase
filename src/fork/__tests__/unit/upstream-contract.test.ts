@@ -36,6 +36,19 @@ describe("upstream contract — symbols the fork imports", () => {
         ["src/db/schema/12_storage-channel.ts", "organizationStorageChannel"],
         ["src/db/schema/14_storage-backup.ts", "backupStorage"],
         ["src/db/index.ts", "db"],
+        // W06: Integrations UI reuses the upstream design-system primitives (Radix/shadcn) and the agent-status util
+        ["src/components/ui/alert-dialog.tsx", "AlertDialog"],
+        ["src/components/ui/alert.tsx", "Alert"],
+        ["src/components/ui/button.tsx", "Button"],
+        ["src/components/ui/dialog.tsx", "Dialog"],
+        ["src/components/ui/input.tsx", "Input"],
+        ["src/components/ui/label.tsx", "Label"],
+        ["src/components/ui/select.tsx", "Select"],
+        ["src/components/ui/switch.tsx", "Switch"],
+        ["src/components/ui/table.tsx", "Table"],
+        ["src/lib/utils.ts", "cn"],
+        ["src/features/agents/utils/status/agent-status.ts", "getAgentStatus"],
+        ["src/features/agents/utils/status/agent-status.ts", "DASHBOARD_THRESHOLDS"],
     ])("%s still exports %s", (file, symbol) => {
         expect(exportsOf(read(file))).toContain(symbol);
     });
@@ -45,6 +58,9 @@ describe("upstream contract — symbols the fork imports", () => {
             "@/lib/auth/current-user", "@/lib/logger", "@/lib/safe-actions/actions", "@/features/layout/components/menu-sidebar", "@/components/ui/sidebar",
             "@/db/schema/03_organization", "@/db/schema/04_member", "@/db/schema/06_project", "@/db/schema/07_database",
             "@/db/schema/08_agent", "@/db/schema/14_storage-backup",
+            // W06
+            "@/components/ui/alert-dialog", "@/components/ui/alert", "@/components/ui/button", "@/components/ui/dialog", "@/components/ui/input", "@/components/ui/label",
+            "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/lib/utils", "@/features/agents/utils/status/agent-status",
         ]);
         const walk = (dir: string): string[] =>
             readdirSync(dir, {withFileTypes: true}).flatMap((e) =>

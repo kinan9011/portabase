@@ -61,7 +61,8 @@ describe("W05 read-only / no-leak structure", () => {
         // checked structurally elsewhere by check-patches; here: the W05 modules import upstream only through allowed seams
         for (const f of W05) {
             const imports = [...src(f).matchAll(/from "(@\/[^"]+)"/g)].map((m) => m[1]).filter((i) => !i.startsWith("@/fork/"));
-            for (const i of imports) expect(["@/lib/safe-actions/actions"], `${f} imports ${i}`).toContain(i);
+            for (const i of imports) // W06 read model: the agents table + the upstream agent-status util (pinned in upstream-contract.test.ts)
+            expect(["@/lib/safe-actions/actions", "@/db/schema/08_agent", "@/features/agents/utils/status/agent-status"], `${f} imports ${i}`).toContain(i);
         }
     });
 });

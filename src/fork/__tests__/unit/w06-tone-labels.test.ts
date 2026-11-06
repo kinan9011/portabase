@@ -5,12 +5,12 @@ import {CONNECTION_ERROR_COPY, CONNECTION_STATE_LABELS, CONNECTION_STATES, HOST_
 import {TONE_MAP, TONES, type Tone} from "@/fork/ui/tone";
 import {ARCANE_KEY_FIELD_COPY} from "@/fork/arcane/key-input-contract";
 
-const lin = (c: number) => (c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+const lin = (v: number) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
 const lum = (hex: string) => {
     const n = parseInt(hex.slice(1), 16);
     return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
 };
-export const contrast = (a: string, b: string) => {
+const contrast = (a: string, b: string) => {
     const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
     return (x + 0.05) / (y + 0.05);
 };

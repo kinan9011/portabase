@@ -69,7 +69,7 @@ function Inner({view, lockedReason, forceTransient, initialVerification}: Integr
                 <Alert data-testid="locked-banner"><ToneIcon tone="warning"/><AlertTitle>{lockedReason}</AlertTitle><AlertDescription>Existing schedules and notifications keep running. Fix the cause shown above, then reload this page.</AlertDescription></Alert>
             )}
             {view.additionalConnections > 0 && <p role="note" className="text-sm text-muted-foreground">{view.additionalConnections} more Arcane connection{view.additionalConnections === 1 ? " exists" : "s exist"} in the database; only the first is shown.</p>}
-            {warnings.map((w) => <Alert key={w} role="status"><ToneIcon tone="warning"/><AlertDescription>{w}</AlertDescription></Alert>)}
+            {warnings.map((w) => <Alert key={w} role="note"><ToneIcon tone="warning"/><AlertDescription>{w}</AlertDescription></Alert>)}
             {c && !editing ? (
                 <ConnectionCard
                     connection={c} state={state} errorClass={c.lastErrorClass} lastVerification={verification} lockedReason={lockedReason} pending={pending} keyRef={keyRef}
