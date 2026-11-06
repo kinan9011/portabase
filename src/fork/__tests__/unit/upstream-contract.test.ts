@@ -13,7 +13,7 @@ const read = (p: string) => readFileSync(path.join(process.cwd(), p), "utf8");
 const exportsOf = (src: string) => [
     ...[...src.matchAll(/export\s+(?:const|function|async function|type|interface)\s+([A-Za-z0-9_]+)/g)].map((m) => m[1]),
     // `export { A, B as C }` lists (shadcn-style files)
-    ...[...src.matchAll(/export\s*\{([^}]*)\}/g)].flatMap((m) => m[1].split(",").map((x) => x.trim().split(/\s+as\s+/).pop()!).filter(Boolean)),
+    ...[...src.matchAll(/export\s*\{([^}]*)\}/g)].flatMap((m) => m[1].split(",").map((x) => x.trim().split(/\s+as\s+/).pop() ?? "").filter(Boolean)),
 ];
 
 describe("upstream contract — symbols the fork imports", () => {
