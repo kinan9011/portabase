@@ -1,0 +1,8 @@
+# Variant D (ARCH-11, sqlite-in-volume): mount ONLY the one volume the sqlite source needs (explicit, narrowest).
+services:
+  agent:
+    volumes:
+      - forklab-demo_sqlitedata:/lab/sqlite:ro
+volumes:
+  forklab-demo_sqlitedata:
+    external: true

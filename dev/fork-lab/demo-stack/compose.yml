@@ -1,0 +1,60 @@
+# Synthetic demo stack protected by the spike: http service + postgres + named volume + bind-mounted uploads/
+# + sqlite file in a volume. Names are prefixed forklab-demo / forklab_ so lab.sh never touches foreign resources.
+name: forklab-demo
+services:
+  db:
+    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    env_file: stack.env
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      internal:
+        # unique alias: an agent attached to BOTH the lab net and this net would otherwise resolve `db` to either Postgres
+        aliases: [demo-db]
+
+  web:
+    # http service that reads DB rows + the uploads dir and serves them (busybox nc; no build, no extra image)
+    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    env_file: stack.env
+    depends_on:
+      db: {condition: service_healthy}
+    entrypoint: ["/bin/sh", "/app/serve.sh"]
+    volumes:
+      - ./web/serve.sh:/app/serve.sh:ro
+      - ./uploads:/uploads:ro
+      - appdata:/appdata
+    ports: ["127.0.0.1:18080:8080"]
+    networks: [internal, lab_proxy]
+
+  sqlite-writer:
+    # keeps writing to a WAL-mode sqlite file inside a volume (D29 consistency probe); started by the drills, not by default
+    image: ghcr.io/portabase/agent:1.25.2@sha256:e8f2b52eb4e59ed652d63d853a6bf517c31e9d41e3556115a2534ecbdde9df9f
+    profiles: [sqlite]
+    entrypoint: ["/bin/sh", "/app/sqlite-writer.sh"]
+    volumes:
+      - ./web/sqlite-writer.sh:/app/sqlite-writer.sh:ro
+      - sqlitedata:/data
+    networks: [internal]
+
+  failing-webhook:
+    # optional: calls a blackhole address (RFC 5737 doc range) forever and fails; never reaches a real host
+    image: busybox:latest
+    profiles: [failing-webhook]
+    command: ["sh", "-c", "while true; do wget -q -T 2 -O /dev/null http://192.0.2.1/hook || echo webhook-failed; sleep 5; done"]
+    networks: [internal]
+
+volumes:
+  pgdata:
+  appdata:
+  sqlitedata:
+
+networks:
+  internal:
+    internal: true
+  lab_proxy:
+    name: lab_proxy
+    external: true

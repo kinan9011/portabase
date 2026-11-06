@@ -1,0 +1,8 @@
+# Variant A (ARCH-11): attach the agent to the demo stack's INTERNAL network so postgres sources use the service name `db`.
+services:
+  agent:
+    networks: [forklab_net, demo_internal]
+networks:
+  demo_internal:
+    name: forklab-demo_internal
+    external: true

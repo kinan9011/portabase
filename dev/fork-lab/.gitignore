@@ -1,0 +1,7 @@
+# Lab-only secrets and raw run output never enter git (W02 security check)
+.env.lab
+data/
+results/
+*.local
+demo-stack/uploads/*
+!demo-stack/uploads/.gitkeep
