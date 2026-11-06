@@ -178,7 +178,11 @@ describe("flag ON: Integrations wiring (nav + route + ACL)", () => {
 
         const page = await get(base, "/dashboard/integrations", cookie);
         expect(page.status).toBe(200);
-        expect(await page.text()).toContain("Arcane (coming)");
+        const pageHtml = await page.text();
+        expect(pageHtml).toContain("Connect your Arcane Manager"); // W06: real page, setup path (nothing connected)
+        expect(pageHtml).toContain("Not configured");
+        expect(pageHtml).toContain("arcane-discovery-key"); // the write-only key field is rendered empty (no value attribute)
+        expect(pageHtml).not.toMatch(/name="arcane-discovery-key"[^>]*value="[^"]/);
 
         const status = await get(base, "/api/fork/status", cookie);
         expect(status.status).toBe(200);
