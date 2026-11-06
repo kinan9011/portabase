@@ -5,6 +5,8 @@ import { auth } from "@/lib/auth/auth";
 import { headers } from "next/headers";
 import { env } from "@/env.mjs";
 import { User } from "@/db/schema/02_user";
+// FORK(stack-recovery): P04 flag-gated /api/fork/ allowlist (import)
+import { forkPageHidden, forkRoutePatterns } from "@/fork/routes";
 
 export async function proxy(request: NextRequest) {
   const url = request.nextUrl.clone();
@@ -31,6 +33,8 @@ export async function proxy(request: NextRequest) {
         new URL(`/login?error=pending?redirect=${redirectUrl}`, request.url),
       );
     }
+    // FORK(stack-recovery): P04 flag/role-gated fork pages answer with a real 404 status
+    if (forkPageHidden(url.pathname, user.role)) return NextResponse.rewrite(new URL("/dashboard/__fork-not-found", request.url));
     if (url.pathname === "/dashboard") {
       return NextResponse.redirect(new URL(`/dashboard/home`, request.url));
     }
@@ -140,6 +144,7 @@ function checkRouteExists(pathname: string) {
     /^\/api\/v1\/organizations\/[^/]+\/(storage|notification)-channels\/?$/,
     /^\/api\/v1\/organizations\/[^/]+\/(storage|notification)-channels\/[^/]+\/?$/,
     /^\/api\/v1\/organizations\/[^/]+\/(storage|notification)-channels\/[^/]+\/test\/?$/,
+    ...forkRoutePatterns(), // FORK(stack-recovery): P04 flag-gated /api/fork/ allowlist
   ];
   return routePatterns.some((pattern) => pattern.test(pathname));
 }

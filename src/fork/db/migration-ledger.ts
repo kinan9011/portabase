@@ -1,0 +1,27 @@
+/**
+ * Central fork-migration numbering (ARCH-14, ADR-003).
+ *
+ * drizzle-kit numbers migrations by journal position, so two waves generating a migration on
+ * parallel branches would both claim the same number. The ledger makes ownership explicit:
+ *  - every fork migration tag MUST be listed here, in journal order, with its owning wave;
+ *  - a later wave appends its entry in the SAME PR that generates the migration;
+ *  - parallel branches then conflict on this file (and on meta/_journal.json) in review/CI,
+ *    never at deploy; `__tests__/unit/migration-ledger.test.ts` fails on any mismatch.
+ * Fork migrations are forward-only (rollback = restore the pre-deploy pg_dump, ADR-003).
+ */
+export type LedgerEntry = { tag: string; wave: string; note: string };
+
+export const MIGRATION_LEDGER: readonly LedgerEntry[] = [
+    {tag: "0000_fork_meta", wave: "W01", note: "fork_meta: proves the lane"},
+    // W04: fork schema v1 (RP states incl. pending_verification D43, FK policy D32, ...) → 0001+
+    // W12/W14/R2: append here; one entry per generated migration, in order.
+];
+
+/** Informational reservation of ownership by wave (not enforced; drizzle numbers by position). */
+export const WAVE_MIGRATION_OWNERS = {
+    W01: "lane bootstrap",
+    W04: "schema v1, ACL/audit tables, fork KEK metadata",
+    "W05-W14": "R1 tables: discovery cache, stack policy, runs, RP, manifest",
+    "W15-W19": "R2: fork_agent_task, restore plans",
+    "W20+": "R3 only if the go/no-go opens",
+} as const;
