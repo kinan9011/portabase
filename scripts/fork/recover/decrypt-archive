@@ -143,15 +143,15 @@ def main(argv):
         os.fsync(fd)
         os.close(fd)
         fd = None
-        os.link(tmp, a.dst)  # fails if OUT appeared meanwhile (no overwrite); then the partial is removed below
-        os.unlink(tmp)
+        os.link(tmp, a.dst)  # fails if OUT appeared meanwhile (never overwrites)
     except (Fail, OSError) as e:
+        sys.stderr.write(f"decrypt-archive: FAILED: {e if isinstance(e, Fail) else type(e).__name__ + ': ' + (e.strerror or 'I/O error')}\n")
+        return 1
+    finally:  # also on Ctrl-C / kill by exception: never leave a partial plaintext file behind
         if fd is not None:
             os.close(fd)
         if os.path.lexists(tmp):
             os.unlink(tmp)
-        sys.stderr.write(f"decrypt-archive: FAILED: {e if isinstance(e, Fail) else type(e).__name__ + ': ' + (e.strerror or 'I/O error')}\n")
-        return 1
     print(f"sha256={hexd} size={size}")
     return 0
 
