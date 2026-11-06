@@ -1,0 +1,49 @@
+# Disposable Arcane (Docker management UI) manager + agent for the fork lab (W02). Lab only: 127.0.0.1.
+# Arcane is the *discovery* source for later waves (read-only API key); W02 only proves it runs beside the demo stack.
+name: forklab-arcane
+services:
+  arcane:
+    image: getarcaneapp/manager:latest@sha256:2e0dc9f5ef03599181a49baf6470055d82e24d9cb15bbc62498ea642c0f882a7
+    container_name: forklab-arcane
+    ports: ["127.0.0.1:13552:3552"]
+    environment:
+      ENCRYPTION_KEY: ${LAB_ARCANE_ENCRYPTION_KEY:?run lab.sh up}
+      ARCANE_PROJECTS_DIRECTORY: /projects
+      APP_URL: http://127.0.0.1:13552
+      TZ: UTC
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # accepted lab risk: Docker-admin (see 05-Security-Model, W02)
+      - arcane-data:/app/data
+      - ./demo-stack:/projects/forklab-demo
+    cgroup: host
+    healthcheck:
+      test: ["CMD", "./arcane", "health", "--timeout", "2s"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks: [forklab_net]
+
+  arcane-agent:
+    # Optional remote-environment agent; needs a token minted in the manager UI (see README). Not started by default.
+    image: getarcaneapp/agent:latest@sha256:3005364d5aa603a8fe8b51bee26413b473965c3c2dc6c152b0016dd1cdda1cf4
+    profiles: [arcane-agent]
+    container_name: forklab-arcane-agent
+    environment:
+      ARCANE_AGENT: "true"
+      ARCANE_AGENT_TOKEN: ${LAB_ARCANE_AGENT_TOKEN:-}
+      ARCANE_MANAGER_API_URL: http://forklab-arcane:3552
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - arcane-agent-data:/app/data
+    cgroup: host
+    networks: [forklab_net]
+
+volumes:
+  arcane-data:
+  arcane-agent-data:
+
+networks:
+  forklab_net:
+    name: forklab_net
+    external: true

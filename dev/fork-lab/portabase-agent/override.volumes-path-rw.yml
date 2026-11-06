@@ -1,0 +1,6 @@
+# Variant C-rw: Docker volumes directory read-write. DOCUMENTED ONLY AS THE REJECTED OPTION: grants the agent write access to
+# every volume on the host (see 05-Security-Model W02 section).
+services:
+  agent:
+    volumes:
+      - /var/lib/docker/volumes:/var/lib/docker/volumes

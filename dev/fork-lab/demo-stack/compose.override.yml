@@ -1,0 +1,10 @@
+# Override file (part of the compose-dir `files` source): labels and restart policy only.
+services:
+  web:
+    restart: unless-stopped
+    labels:
+      forklab.role: app
+  db:
+    restart: unless-stopped
+    labels:
+      forklab.role: database

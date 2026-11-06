@@ -1,0 +1,27 @@
+# Portabase Rust agent (upstream 1.25.2, = fork-base/v1.25.2) joined to the fork lab (W02). Lab only.
+# Base file = what the upstream prod compose does (docker socket + dashboard network).
+# The W02 decisions (network attachment, host paths, volumes path) are separate override files so each variant is
+# testable on its own:   docker compose -f compose.yml -f override.<variant>.yml up -d
+name: forklab-agent
+services:
+  agent:
+    image: ghcr.io/portabase/agent:1.25.2@sha256:e8f2b52eb4e59ed652d63d853a6bf517c31e9d41e3556115a2534ecbdde9df9f
+    container_name: forklab-agent
+    environment:
+      EDGE_KEY: ${LAB_EDGE_KEY:-}
+      TZ: UTC
+      LOG: debug
+    volumes:
+      # Required by the docker-volume source (bollard default connection). Docker-admin equivalent: see 05-Security-Model (W02).
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agent-data:/config
+    networks: [forklab_net]
+    restart: unless-stopped
+
+volumes:
+  agent-data:
+
+networks:
+  forklab_net:
+    name: forklab_net
+    external: true
