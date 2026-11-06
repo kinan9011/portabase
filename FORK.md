@@ -23,3 +23,8 @@ pnpm drizzle-kit generate --config drizzle.fork.config.ts --name <name>   # then
 Fork and upstream migrations are forward-only. Take a dump before every deploy / upstream sync
 (`DATABASE_URL=... scripts/fork/predeploy-dump.sh`); rollback = stop the app, drop + recreate the database, `pg_restore --no-owner`.
 Every PR on the forks needs `[skip-release]` in its title.
+
+## Syncing upstream
+Runbook (vault `03-Upstream-Sync-Runbook`): `git fetch upstream --tags` → branch `sync/upstream-YYYYMMDD` → `scripts/fork/predeploy-dump.sh` → `git merge upstream/main` →
+`FORK_TEST_DATABASE_URL=... bash scripts/fork/sync-gate.sh` (check-patches, typecheck:fork, D31 contract tests, unit + migration-lane integration; prints one PASS/FAIL table) →
+`pnpm build`, lint vs the ADR-000 baseline, docker image check. A red `upstream-contract.test.ts` means a surface the fork imports/reads moved: adapt the fork in the same sync PR.
