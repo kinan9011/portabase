@@ -1,0 +1,115 @@
+{
+  "data": [
+    {
+      "createdAt": "2026-11-06T21:46:42Z",
+      "dirName": "forklab-demo",
+      "hasBuildDirective": false,
+      "id": "b6f49477-35ca-4ac0-bc4a-a9b639d8eb9f",
+      "isArchived": false,
+      "isDiscovered": false,
+      "name": "forklab-demo",
+      "path": "/app/data/projects/forklab-demo",
+      "redeployDisabled": false,
+      "relativePath": "forklab-demo",
+      "runningCount": 2,
+      "runtimeServices": [
+        {
+          "containerId": "0b134be507c9",
+          "containerName": "forklab-demo-web-1",
+          "image": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+          "name": "web",
+          "ports": [
+            "5432/tcp",
+            "18080:8080/tcp"
+          ],
+          "redeployDisabled": false,
+          "status": "running"
+        },
+        {
+          "containerId": "c98ce7111c6f",
+          "containerName": "forklab-demo-db-1",
+          "health": "healthy",
+          "image": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+          "name": "db",
+          "ports": [
+            "5432/tcp"
+          ],
+          "redeployDisabled": false,
+          "status": "running"
+        }
+      ],
+      "serviceCount": 2,
+      "status": "running",
+      "statusReason": "Project discovered from filesystem, status pending Docker service query",
+      "tags": [],
+      "updateInfo": {
+        "checkedImageCount": 1,
+        "errorCount": 0,
+        "hasUpdate": false,
+        "imageCount": 1,
+        "imageRefs": [
+          "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b"
+        ],
+        "imagesNotPulled": 0,
+        "imagesWithUpdates": 0,
+        "lastCheckedAt": "2026-11-06T21:46:50.441482878Z",
+        "serviceUpdates": {
+          "db": {
+            "imageRef": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+            "updateInfo": {
+              "checkTime": "2026-11-06T21:46:50.441482878Z",
+              "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+              "currentVersion": "17-alpine",
+              "error": "",
+              "hasUpdate": false,
+              "latestDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+              "latestVersion": "17-alpine",
+              "responseTimeMs": 0,
+              "updateType": "digest",
+              "usedCredential": false
+            }
+          },
+          "web": {
+            "imageRef": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+            "updateInfo": {
+              "checkTime": "2026-11-06T21:46:50.441482878Z",
+              "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+              "currentVersion": "17-alpine",
+              "error": "",
+              "hasUpdate": false,
+              "latestDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+              "latestVersion": "17-alpine",
+              "responseTimeMs": 0,
+              "updateType": "digest",
+              "usedCredential": false
+            }
+          }
+        },
+        "status": "up_to_date",
+        "updateInfoByRef": {
+          "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b": {
+            "checkTime": "2026-11-06T21:46:50.441482878Z",
+            "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+            "currentVersion": "17-alpine",
+            "error": "",
+            "hasUpdate": false,
+            "latestDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+            "latestVersion": "17-alpine",
+            "responseTimeMs": 0,
+            "updateType": "digest",
+            "usedCredential": false
+          }
+        }
+      },
+      "updatedAt": "2026-11-06T21:46:42Z"
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "grandTotalItems": 0,
+    "itemsPerPage": 100,
+    "totalItems": 1,
+    "totalPages": 1
+  },
+  "success": true
+}

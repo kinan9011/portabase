@@ -1,0 +1,70 @@
+{
+  "counts": {
+    "kept": 3
+  },
+  "data": [
+    {
+      "containers": [
+        "30f4274c3dff",
+        "0b134be507c9"
+      ],
+      "createdAt": "2026-11-06T22:45:11+01:00",
+      "driver": "local",
+      "id": "forklab-demo_appdata",
+      "inUse": true,
+      "labels": {
+        "com.docker.compose.config-hash": "4fe202316d20",
+        "com.docker.compose.project": "forklab-demo",
+        "com.docker.compose.version": "5.4.0",
+        "com.docker.compose.volume": "appdata"
+      },
+      "mountpoint": "/var/lib/docker/volumes/forklab-demo_appdata/_data",
+      "name": "forklab-demo_appdata",
+      "options": {},
+      "scope": "local",
+      "size": 0
+    },
+    {
+      "containers": [
+        "20b11946040d",
+        "c98ce7111c6f"
+      ],
+      "createdAt": "2026-11-06T22:45:11+01:00",
+      "driver": "local",
+      "id": "forklab-demo_pgdata",
+      "inUse": true,
+      "labels": {
+        "com.docker.compose.config-hash": "5b6281a19d76",
+        "com.docker.compose.project": "forklab-demo",
+        "com.docker.compose.version": "5.4.0",
+        "com.docker.compose.volume": "pgdata"
+      },
+      "mountpoint": "/var/lib/docker/volumes/forklab-demo_pgdata/_data",
+      "name": "forklab-demo_pgdata",
+      "options": {},
+      "scope": "local",
+      "size": 0
+    },
+    {
+      "containers": [],
+      "createdAt": "2026-11-06T22:45:16+01:00",
+      "driver": "local",
+      "id": "forklab-demo_sqlitedata",
+      "inUse": false,
+      "labels": {},
+      "mountpoint": "/var/lib/docker/volumes/forklab-demo_sqlitedata/_data",
+      "name": "forklab-demo_sqlitedata",
+      "options": {},
+      "scope": "local",
+      "size": 0
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "grandTotalItems": 27,
+    "itemsPerPage": 100,
+    "totalItems": 27,
+    "totalPages": 1
+  },
+  "success": true
+}

@@ -1,0 +1,60 @@
+{
+  "counts": {
+    "kept": 2
+  },
+  "data": [
+    {
+      "created": "2026-11-06T22:45:11.364445797+01:00",
+      "driver": "bridge",
+      "id": "4fcbf6666ccd",
+      "inUse": true,
+      "ipam": {
+        "config": [
+          {
+            "gateway": "192.0.2.1",
+            "subnet": "192.0.2.1/16"
+          }
+        ],
+        "driver": "default"
+      },
+      "isDefault": false,
+      "labels": {
+        "com.docker.compose.config-hash": "d62a855fbe93",
+        "com.docker.compose.network": "internal",
+        "com.docker.compose.project": "forklab-demo",
+        "com.docker.compose.version": "5.4.0"
+      },
+      "name": "forklab-demo_internal",
+      "options": {},
+      "scope": "local"
+    },
+    {
+      "created": "2026-11-06T22:45:06.257922186+01:00",
+      "driver": "bridge",
+      "id": "929a10225ba2",
+      "inUse": true,
+      "ipam": {
+        "config": [
+          {
+            "gateway": "192.0.2.1",
+            "subnet": "192.0.2.1/16"
+          }
+        ],
+        "driver": "default"
+      },
+      "isDefault": false,
+      "labels": {},
+      "name": "forklab_net",
+      "options": {},
+      "scope": "local"
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "grandTotalItems": 7,
+    "itemsPerPage": 100,
+    "totalItems": 7,
+    "totalPages": 1
+  },
+  "success": true
+}

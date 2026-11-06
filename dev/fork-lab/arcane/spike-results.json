@@ -1,0 +1,144 @@
+{
+  "arcane_version": "2.17.3",
+  "openapi_sha256": "sha256:68912259415d5cc1d0661fd68db05661dbb0991484653ef85d8c22d91666d9e1",
+  "run_at": "2026-11-06T21:56:36Z",
+  "capabilities": [
+    {
+      "capability": "environments.list",
+      "key": "tier1",
+      "method": "GET",
+      "path": "/environments?limit=100",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "projects.list",
+      "key": "tier1",
+      "method": "GET",
+      "path": "/environments/0/projects?limit=100",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "containers.list",
+      "key": "tier1",
+      "method": "GET",
+      "path": "/environments/0/containers?limit=100",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "volumes.list",
+      "key": "tier1",
+      "method": "GET",
+      "path": "/environments/0/volumes?limit=100",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "networks.list",
+      "key": "tier1",
+      "method": "GET",
+      "path": "/environments/0/networks?limit=100",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "images.list",
+      "key": "tier1",
+      "method": "GET",
+      "path": "/environments/0/images?limit=100",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "projects.get",
+      "key": "deep",
+      "method": "GET",
+      "path": "/environments/0/projects/b6f49477-35ca-4ac0-bc4a-a9b639d8eb9f",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "projects.compose",
+      "key": "deep",
+      "method": "GET",
+      "path": "/environments/0/projects/b6f49477-35ca-4ac0-bc4a-a9b639d8eb9f/compose",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "projects.runtime",
+      "key": "deep",
+      "method": "GET",
+      "path": "/environments/0/projects/b6f49477-35ca-4ac0-bc4a-a9b639d8eb9f/runtime",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "projects.workspace",
+      "key": "deep",
+      "method": "GET",
+      "path": "/environments/0/projects/b6f49477-35ca-4ac0-bc4a-a9b639d8eb9f/workspace",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "pagination",
+      "key": "tier1",
+      "method": "GET",
+      "path": "/environments/0/containers?limit=2[&start=2]",
+      "status": 200,
+      "ok": true,
+      "note": "limit=2: {\"totalPages\":5,\"totalItems\":10,\"currentPage\":1,\"itemsPerPage\":2,\"grandTotalItems\":10} | limit=2,start=2: {\"totalPages\":5,\"totalItems\":10,\"currentPage\":2,\"itemsPerPage\":2,\"grandTotalItems\":10} | start=999999: {\"n\":0,\"p\":{\"totalPages\":1,\"totalItems\":10,\"currentPage\":50000,\"itemsPerPage\":20,\"grandTotalItems\":10}}"
+    }
+  ],
+  "exposure": {
+    "note": "booleans/status only; the lab secret value is never written",
+    "projects_read_compose_services_contain_env_value": true,
+    "projects_read_workspace_file_status_env_file": 200,
+    "projects_read_workspace_file_returns_env_value": true,
+    "projects_read_workspace_file_path_traversal_status": 403,
+    "containers_read_inspect_returns_env_value": true,
+    "containers_read_edit_config_returns_env_value": true,
+    "volumes_read_workspace_file_status": 200,
+    "volumes_read_workspace_file_returns_bytes": true,
+    "tier1_container_list_contains_env_value": false,
+    "tier1_project_workspace_status": 403,
+    "tier1_volume_get_status": 403
+  },
+  "probes": {
+    "no_key": 401,
+    "invalid_key": 401,
+    "forbidden_project_get_with_tier1": {
+      "status": 403,
+      "detail": "permission denied: projects:read"
+    },
+    "forbidden_volume_file_with_tier1": 403,
+    "read_only_key_POST_environment_test": 403,
+    "unscoped_env_permission_reaches_env": 200,
+    "burst_300_gets": {
+      "ok": 300,
+      "status_429": 0
+    },
+    "bad_key_burst_150": {
+      "status_401": 150,
+      "status_429": 0
+    },
+    "bad_login_burst": {
+      "status_401": 5,
+      "status_429": 1,
+      "retry_after_seconds": "60"
+    }
+  }
+}

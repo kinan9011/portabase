@@ -1,0 +1,221 @@
+{
+  "counts": {
+    "kept": 2,
+    "note": "host-wide counts dropped"
+  },
+  "data": [
+    {
+      "autoUpdateEnabled": true,
+      "command": "docker-entrypoint.sh postgres",
+      "created": 1794001511,
+      "hidden": false,
+      "hostConfig": {
+        "autoRemove": false,
+        "memory": 0,
+        "nanoCpus": 0,
+        "networkMode": "forklab-demo_internal",
+        "privileged": false
+      },
+      "id": "c98ce7111c6f",
+      "image": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+      "imageId": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+      "labels": {
+        "com.docker.compose.config-hash": "a1da0fefed16",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:e4cb93687b062cd25a0e8f672d85a7708235009d70d31f8a7698d9370092a9c4",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "forklab-demo",
+        "com.docker.compose.project.config_files": "/srv/fork-lab/demo-stack/compose.override.yml",
+        "com.docker.compose.project.working_dir": "/srv/fork-lab/demo-stack",
+        "com.docker.compose.service": "db",
+        "com.docker.compose.version": "5.4.0",
+        "forklab.role": "database"
+      },
+      "mounts": [
+        {
+          "destination": "/var/lib/postgresql/data",
+          "driver": "local",
+          "mode": "rw",
+          "name": "forklab-demo_pgdata",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/forklab-demo_pgdata/_data",
+          "type": "volume"
+        }
+      ],
+      "names": [
+        "forklab-demo-db-1"
+      ],
+      "networkSettings": {
+        "networks": {
+          "forklab-demo_internal": {
+            "endpointId": "3a29f885aeb8",
+            "globalIPv6PrefixLen": 0,
+            "gwPriority": 0,
+            "ipAddress": "192.0.2.1",
+            "ipPrefixLen": 16,
+            "macAddress": "00:00:5e:00:53:00",
+            "networkId": "4fcbf6666ccd"
+          }
+        }
+      },
+      "ports": [
+        {
+          "privatePort": 5432,
+          "publicPort": 0,
+          "type": "tcp"
+        }
+      ],
+      "redeployDisabled": false,
+      "state": "running",
+      "status": "Up 11 minutes (healthy)",
+      "updateInfo": {
+        "checkTime": "2026-11-06T21:46:50.441482878Z",
+        "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+        "currentVersion": "17-alpine",
+        "error": "",
+        "hasUpdate": false,
+        "latestDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+        "latestVersion": "17-alpine",
+        "responseTimeMs": 0,
+        "updateType": "digest",
+        "usedCredential": false
+      },
+      "updateStrategy": "digest"
+    },
+    {
+      "autoUpdateEnabled": true,
+      "command": "/bin/sh /app/serve.sh",
+      "created": 1794001511,
+      "hidden": false,
+      "hostConfig": {
+        "autoRemove": false,
+        "memory": 0,
+        "nanoCpus": 0,
+        "networkMode": "forklab-demo_internal",
+        "privileged": false
+      },
+      "id": "0b134be507c9",
+      "image": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+      "imageId": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+      "labels": {
+        "com.docker.compose.config-hash": "bf33c55837ca",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "db:service_healthy:false",
+        "com.docker.compose.image": "sha256:e4cb93687b062cd25a0e8f672d85a7708235009d70d31f8a7698d9370092a9c4",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "forklab-demo",
+        "com.docker.compose.project.config_files": "/srv/fork-lab/demo-stack/compose.override.yml",
+        "com.docker.compose.project.working_dir": "/srv/fork-lab/demo-stack",
+        "com.docker.compose.service": "web",
+        "com.docker.compose.version": "5.4.0",
+        "forklab.role": "app"
+      },
+      "mounts": [
+        {
+          "destination": "/app/serve.sh",
+          "mode": "ro",
+          "propagation": "rprivate",
+          "rw": false,
+          "source": "/srv/fork-lab/demo-stack/web/serve.sh",
+          "type": "bind"
+        },
+        {
+          "destination": "/appdata",
+          "driver": "local",
+          "mode": "rw",
+          "name": "forklab-demo_appdata",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/forklab-demo_appdata/_data",
+          "type": "volume"
+        },
+        {
+          "destination": "/uploads",
+          "mode": "ro",
+          "propagation": "rprivate",
+          "rw": false,
+          "source": "/srv/fork-lab/demo-stack/uploads",
+          "type": "bind"
+        },
+        {
+          "destination": "/var/lib/postgresql/data",
+          "driver": "local",
+          "name": "bc912505cd5f",
+          "rw": true,
+          "type": "volume"
+        },
+        {
+          "destination": "/app/handle.sh",
+          "mode": "ro",
+          "propagation": "rprivate",
+          "rw": false,
+          "source": "/srv/fork-lab/demo-stack/web/handle.sh",
+          "type": "bind"
+        }
+      ],
+      "names": [
+        "forklab-demo-web-1"
+      ],
+      "networkSettings": {
+        "networks": {
+          "forklab-demo_internal": {
+            "endpointId": "889109b70e47",
+            "globalIPv6PrefixLen": 0,
+            "gwPriority": 0,
+            "ipAddress": "192.0.2.1",
+            "ipPrefixLen": 16,
+            "macAddress": "00:00:5e:00:53:00",
+            "networkId": "4fcbf6666ccd"
+          },
+          "lab_proxy": {
+            "endpointId": "554de90ca67f",
+            "gateway": "192.0.2.1",
+            "globalIPv6PrefixLen": 0,
+            "gwPriority": 0,
+            "ipAddress": "192.0.2.1",
+            "ipPrefixLen": 16,
+            "macAddress": "00:00:5e:00:53:00",
+            "networkId": "84b9ece90a35"
+          }
+        }
+      },
+      "ports": [
+        {
+          "ip": "192.0.2.1",
+          "privatePort": 8080,
+          "publicPort": 18080,
+          "type": "tcp"
+        },
+        {
+          "privatePort": 5432,
+          "publicPort": 0,
+          "type": "tcp"
+        }
+      ],
+      "redeployDisabled": false,
+      "state": "running",
+      "status": "Up 10 minutes",
+      "updateInfo": {
+        "checkTime": "2026-11-06T21:46:50.441482878Z",
+        "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+        "currentVersion": "17-alpine",
+        "error": "",
+        "hasUpdate": false,
+        "latestDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+        "latestVersion": "17-alpine",
+        "responseTimeMs": 0,
+        "updateType": "digest",
+        "usedCredential": false
+      },
+      "updateStrategy": "digest"
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "itemsPerPage": 100,
+    "totalItems": 10,
+    "totalPages": 1
+  },
+  "resourceSortSupported": true,
+  "success": true
+}

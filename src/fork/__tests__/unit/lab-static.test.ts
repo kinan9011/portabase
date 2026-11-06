@@ -74,7 +74,7 @@ describe("fork lab — supply chain and secrets", () => {
 
     it("contains no secret-looking literals (long hex/base64 outside digests and expected.json)", () => {
         for (const f of files) {
-            if (f.endsWith("expected.json") || f.endsWith(".gitkeep") || /uploads\//.test(f)) continue;
+            if (f.endsWith("expected.json") || f.endsWith(".gitkeep") || f.endsWith(".sha256") /* W03: pinned spec checksum, not a secret */ || /uploads\//.test(f)) continue;
             const t = read(f).replace(/sha256:[0-9a-f]{64}/g, "").replace(/-----BEGIN/g, "BEGIN");
             expect(t, f).not.toMatch(/\b[0-9a-f]{40,}\b/i);
             expect(t, f).not.toMatch(/AKIA[0-9A-Z]{16}/);
