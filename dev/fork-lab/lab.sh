@@ -62,7 +62,7 @@ case "${1:-}" in
     wait_http http://127.0.0.1:13552/api/health 120
     bash drills/minio-init.sh >/dev/null
     bash drills/bootstrap-dashboard.sh
-    "$0" agent    # decided default variants (ADR-001): attach-demo-net host-bind
+    bash "$LAB/lab.sh" agent    # decided default variants (ADR-001): attach-demo-net host-bind
     echo "dashboard http://forklab-dashboard.localhost:18887  arcane http://127.0.0.1:13552  minio-console http://127.0.0.1:19001  demo http://127.0.0.1:18080"
     ;;
   agent)
