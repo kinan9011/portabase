@@ -106,7 +106,7 @@ admin_call GET /roles/available-permissions \
 # ---- 3. keys ------------------------------------------------------------------------------------------------------
 # tier1 = the minimum that still gives discovery (see ADR-002): lists only, environment-scoped, no *:read, no write
 TIER1=$(jq -sc '.' <(G environments:list) <(E projects:list) <(E containers:list) <(E volumes:list) <(E networks:list) <(E images:list))
-mint_key forklab-w03-tier1 "$TIER1"; KEY1=$MINTED
+mint_key forklab-w03-tier1 "$TIER1"; KEY1=$MINTED; KEY1_ID=$MINTED_ID
 mint_key forklab-w03-deep "$(jq -c '. + [{permission:"projects:read",environmentId:"'"$ENV_ID"'"}]' <<<"$TIER1")"; KEY2=$MINTED
 
 # ---- 4. capability runs (read-only) --------------------------------------------------------------------------------
@@ -125,6 +125,10 @@ cap volumes.list tier1 "$KEY1" "/environments/$ENV_ID/volumes?limit=100"; cp "$T
 cap networks.list tier1 "$KEY1" "/environments/$ENV_ID/networks?limit=100"; cp "$TMP/body" "$TMP/networks.list.json"
 cap images.list tier1 "$KEY1" "/environments/$ENV_ID/images?limit=100"; cp "$TMP/body" "$TMP/images.list.json"
 
+cap auth.me.api-keys tier1 "$KEY1" "/auth/me/api-keys"
+OWN_PERMS=$(jq -cS --arg id "$KEY1_ID" '[.data[]? | select(.id==$id)][0].permissions // null | if . == null then null else map(.permission + (if .environmentId then "@"+.environmentId else "" end)) | sort end' "$TMP/body")
+OWN_ROWS=$(jq '.data|length' "$TMP/body")
+api_get "$KEY1" "/auth/me"; ME_ADMIN=$(jq -r '.data.isGlobalAdmin // false' "$TMP/body")
 PID=$(jq -r '[.data[]? | select(.name|startswith("forklab"))][0].id // empty' "$TMP/projects.list.json")
 if [ -n "$PID" ]; then
   cap projects.get deep "$KEY2" "/environments/$ENV_ID/projects/$PID"
@@ -193,14 +197,15 @@ api_get "$KEY1" "/environments/$ENV_ID/projects/$PID/workspace"; X_TIER1_WS=$STA
 api_get "$KEY1" "/environments/$ENV_ID/volumes/$VOL"; X_TIER1_VOLGET=$STATUS
 jq -n --argjson a "$X_COMPOSE_SERVICES" --argjson b "$X_ENVFILE" --argjson c "$X_ENVFILE_STATUS" --argjson d "$X_TRAVERSAL" \
   --argjson e "$X_INSPECT" --argjson f "$X_EDITCFG" --argjson g "$X_VOLFILE_STATUS" --argjson h "$X_VOLFILE_BYTES" \
-  --argjson i "$X_TIER1_CONT_ENV" --argjson j "$X_TIER1_WS" --argjson k "$X_TIER1_VOLGET" '
+  --argjson i "$X_TIER1_CONT_ENV" --argjson j "$X_TIER1_WS" --argjson k "$X_TIER1_VOLGET" --argjson l "$OWN_PERMS" --argjson m "$ME_ADMIN" --argjson n "$OWN_ROWS" '
   {note:"booleans/status only; the lab secret value is never written",
    projects_read_compose_services_contain_env_value:$a,
    projects_read_workspace_file_status_env_file:$c, projects_read_workspace_file_returns_env_value:$b,
    projects_read_workspace_file_path_traversal_status:$d,
    containers_read_inspect_returns_env_value:$e, containers_read_edit_config_returns_env_value:$f,
    volumes_read_workspace_file_status:$g, volumes_read_workspace_file_returns_bytes:$h,
-   tier1_container_list_contains_env_value:$i, tier1_project_workspace_status:$j, tier1_volume_get_status:$k}' >"$TMP/exposure.json"
+   tier1_container_list_contains_env_value:$i, tier1_project_workspace_status:$j, tier1_volume_get_status:$k,
+   tier1_key_own_permissions_via_auth_me_api_keys:$l, tier1_auth_me_reports_owner_is_global_admin:$m, tier1_auth_me_api_keys_rows_visible:$n}' >"$TMP/exposure.json"
 
 # ---- 7. 401 / 403 / 429 probes ------------------------------------------------------------------------------------
 api_get "" "/environments"; S401A=$STATUS

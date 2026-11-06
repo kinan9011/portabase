@@ -1,7 +1,7 @@
 {
   "arcane_version": "2.17.3",
   "openapi_sha256": "sha256:68912259415d5cc1d0661fd68db05661dbb0991484653ef85d8c22d91666d9e1",
-  "run_at": "2026-11-06T21:56:36Z",
+  "run_at": "2026-11-06T22:04:14Z",
   "capabilities": [
     {
       "capability": "environments.list",
@@ -53,6 +53,15 @@
       "key": "tier1",
       "method": "GET",
       "path": "/environments/0/images?limit=100",
+      "status": 200,
+      "ok": true,
+      "note": ""
+    },
+    {
+      "capability": "auth.me.api-keys",
+      "key": "tier1",
+      "method": "GET",
+      "path": "/auth/me/api-keys",
       "status": 200,
       "ok": true,
       "note": ""
@@ -115,7 +124,17 @@
     "volumes_read_workspace_file_returns_bytes": true,
     "tier1_container_list_contains_env_value": false,
     "tier1_project_workspace_status": 403,
-    "tier1_volume_get_status": 403
+    "tier1_volume_get_status": 403,
+    "tier1_key_own_permissions_via_auth_me_api_keys": [
+      "containers:list@0",
+      "environments:list",
+      "images:list@0",
+      "networks:list@0",
+      "projects:list@0",
+      "volumes:list@0"
+    ],
+    "tier1_auth_me_reports_owner_is_global_admin": true,
+    "tier1_auth_me_api_keys_rows_visible": 2
   },
   "probes": {
     "no_key": 401,

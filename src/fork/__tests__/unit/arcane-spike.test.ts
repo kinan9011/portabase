@@ -128,6 +128,16 @@ describe("capability map ↔ pinned spec", () => {
         expect(x.volumes_read_workspace_file_returns_bytes).toBe(true);
     });
 
+    it("a key can introspect its own permissions (W05 self-test) and /auth/me reports the owner, not the key", () => {
+        const x = results.exposure;
+        expect(x.tier1_key_own_permissions_via_auth_me_api_keys).toEqual(
+            caps.minimum_key.grants
+                .map((g: any) => (g.scope === "environment" ? `${g.permission}@0` : g.permission))
+                .sort(),
+        );
+        expect(x.tier1_auth_me_reports_owner_is_global_admin).toBe(true);
+    });
+
     it("401 / 403 behaviour was observed; the read-only key cannot POST", () => {
         const p = results.probes;
         expect([p.no_key, p.invalid_key]).toEqual([401, 401]);

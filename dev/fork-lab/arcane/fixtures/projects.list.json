@@ -52,12 +52,12 @@
         ],
         "imagesNotPulled": 0,
         "imagesWithUpdates": 0,
-        "lastCheckedAt": "2026-11-06T21:46:50.441482878Z",
+        "lastCheckedAt": "2026-11-06T22:00:09.945960893Z",
         "serviceUpdates": {
           "db": {
             "imageRef": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
             "updateInfo": {
-              "checkTime": "2026-11-06T21:46:50.441482878Z",
+              "checkTime": "2026-11-06T22:00:09.945960893Z",
               "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
               "currentVersion": "17-alpine",
               "error": "",
@@ -72,7 +72,7 @@
           "web": {
             "imageRef": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
             "updateInfo": {
-              "checkTime": "2026-11-06T21:46:50.441482878Z",
+              "checkTime": "2026-11-06T22:00:09.945960893Z",
               "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
               "currentVersion": "17-alpine",
               "error": "",
@@ -88,7 +88,7 @@
         "status": "up_to_date",
         "updateInfoByRef": {
           "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b": {
-            "checkTime": "2026-11-06T21:46:50.441482878Z",
+            "checkTime": "2026-11-06T22:00:09.945960893Z",
             "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
             "currentVersion": "17-alpine",
             "error": "",
