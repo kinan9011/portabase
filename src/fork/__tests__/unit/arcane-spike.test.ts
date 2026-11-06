@@ -12,6 +12,7 @@ import {describe, expect, it} from "vitest";
  */
 const ROOT = process.cwd();
 const DIR = path.join(ROOT, "dev/fork-lab/arcane");
+const FIXTURES = path.join(ROOT, "src/fork/arcane/__fixtures__"); // moved here in W05
 const DIFF = path.join(ROOT, "scripts/fork/arcane-openapi-diff.sh");
 const json = (f: string) => JSON.parse(readFileSync(path.join(DIR, f), "utf8"));
 // biome-ignore lint/suspicious/noExplicitAny: parsed JSON documents of the pinned spec / spike output
@@ -24,7 +25,7 @@ const specFile = must(readdirSync(DIR).find((f) => /^openapi\.v[\d.]+\.json$/.te
 const spec = json(specFile);
 const caps = json("capability-map.json");
 const results = json("spike-results.json");
-const fixtures = readdirSync(path.join(DIR, "fixtures"));
+const fixtures = readdirSync(FIXTURES);
 const script = readFileSync(path.join(DIR, "spike.sh"), "utf8");
 
 describe("pinned Arcane OpenAPI", () => {
@@ -162,7 +163,7 @@ describe("capability map ↔ pinned spec", () => {
 });
 
 describe("scrubbed fixtures", () => {
-    const text = fixtures.map((f) => [f, readFileSync(path.join(DIR, "fixtures", f), "utf8")] as const);
+    const text = fixtures.map((f) => [f, readFileSync(path.join(FIXTURES, f), "utf8")] as const);
     const labSecrets = readFileSync(path.join(ROOT, "dev/fork-lab/demo-stack/stack.env"), "utf8")
         .split("\n")
         .filter((l) => /^(POSTGRES_PASSWORD|APP_GREETING)=/.test(l))

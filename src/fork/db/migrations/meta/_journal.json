@@ -15,6 +15,13 @@
       "when": 1794004054879,
       "tag": "0001_fork_schema_v1",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794006733245,
+      "tag": "0002_arcane_connection_flags",
+      "breakpoints": true
     }
   ]
 }

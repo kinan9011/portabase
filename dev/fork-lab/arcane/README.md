@@ -10,7 +10,7 @@ Findings, capability table and decisions: ADR-002 in the project vault (`ADR/ADR
 | `permission-catalogue.json` | every permission the server recognises (from `/roles/available-permissions`) |
 | `permission-matrix.json` | per single permission: which GET endpoints answer 200 (observed) |
 | `spike-results.json` | capability runs, exposure probes (booleans only), 401/403/429 probes |
-| `fixtures/` | scrubbed payloads of `forklab-*` resources only. Seed for W05's `src/fork/arcane/__fixtures__/` |
+| `fixtures/` (moved in W05 to `src/fork/arcane/__fixtures__/`; `spike.sh` still writes `fixtures/` here when re-run: copy over, then re-run the W05 contract tests) | scrubbed payloads of `forklab-*` resources only |
 
 ## Run
 ```

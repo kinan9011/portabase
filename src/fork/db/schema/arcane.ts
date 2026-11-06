@@ -20,6 +20,13 @@ export const forkArcaneConnection = pgTable("fork_arcane_connection", {
     pinnedApiVersion: text("pinned_api_version"),
     healthStatus: text("health_status").notNull().default("unknown"),
     lastErrorClass: text("last_error_class"),
+    /** W05 (SEC-10): per-connection TLS-verification opt-out — explicit, audited, warned in the UI. Default = verify. */
+    tlsInsecure: boolean("tls_insecure").notNull().default(false),
+    /** W05 (ADR-002 A3): tier-2 opt-in (`projects:read` allowed on the key). System admin, audited. */
+    allowProjectsRead: boolean("allow_projects_read").notNull().default(false),
+    /** W05: Arcane's id of this key (non-secret), for the permission self-test and rotation tracking. */
+    keyId: text("key_id"),
+    lastCheckedAt: ts("last_checked_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [

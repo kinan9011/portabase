@@ -1,3 +1,4 @@
+import {MIGRATION_LEDGER} from "@/fork/db/migration-ledger";
 import {cp, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -31,10 +32,10 @@ describe("W04 migration 0001 — E1 applies on upstream head + previous fork hea
             expect((await t.pool.query("select to_regclass('public.fork_stack') t")).rows[0].t).toBeNull();
 
             const second = await runForkMigrations({databaseUrl: t.url, env: {NODE_ENV: "development"}});
-            expect(second).toMatchObject({state: "applied", appliedNow: 1, total: 2});
+            expect(second).toMatchObject({state: "applied", appliedNow: MIGRATION_LEDGER.length - 1, total: MIGRATION_LEDGER.length}); // follows the ledger (W05 added 0002)
             const third = await runForkMigrations({databaseUrl: t.url, env: {NODE_ENV: "development"}});
-            expect(third).toMatchObject({state: "applied", appliedNow: 0, total: 2});
-            expect(Number((await t.pool.query("select count(*) c from drizzle.__fork_migrations")).rows[0].c)).toBe(2);
+            expect(third).toMatchObject({state: "applied", appliedNow: 0, total: MIGRATION_LEDGER.length});
+            expect(Number((await t.pool.query("select count(*) c from drizzle.__fork_migrations")).rows[0].c)).toBe(MIGRATION_LEDGER.length);
 
             for (const tbl of ["fork_arcane_connection", "fork_arcane_environment", "fork_stack", "fork_stack_inventory", "fork_stack_policy", "fork_audit_event", "fork_lock", "fork_schedule_state", "fork_notification_outbox", "fork_recovery_point", "fork_recovery_point_artifact"])
                 expect((await t.pool.query("select to_regclass($1) t", [`public.${tbl}`])).rows[0].t, tbl).not.toBeNull();
