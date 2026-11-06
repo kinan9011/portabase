@@ -33,7 +33,9 @@ const defaultExec: NonNullable<DumpOptions["exec"]> = (bin, args, env, timeoutMs
 
 export function dumpArgsFromUrl(databaseUrl: string, file: string): { args: string[]; env: NodeJS.ProcessEnv } {
     const u = new URL(databaseUrl);
-    const env: NodeJS.ProcessEnv = {...process.env};
+    // Minimal child env: never hand the dashboard's own secrets (PROJECT_SECRET, SMTP_*, ...) to pg_dump.
+    const env = {} as NodeJS.ProcessEnv;
+    for (const [k, v] of Object.entries(process.env)) if (k === "PATH" || k === "LANG" || k === "TZ" || k.startsWith("PG")) env[k] = v;
     if (u.password) env.PGPASSWORD = decodeURIComponent(u.password);
     const sslmode = u.searchParams.get("sslmode");
     if (sslmode) env.PGSSLMODE = sslmode;

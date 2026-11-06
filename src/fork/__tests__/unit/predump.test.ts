@@ -5,6 +5,16 @@ import {describe, expect, it} from "vitest";
 import {dumpArgsFromUrl, preMigrationDump} from "@/fork/db/predump";
 
 describe("pre-migration dump", () => {
+    it("child env is minimal: dashboard secrets are not inherited", () => {
+        process.env.PROJECT_SECRET = "dashboard-secret";
+        try {
+            const {env} = dumpArgsFromUrl("postgres://u:p@h/d", "/x/f.dump");
+            expect(env.PROJECT_SECRET).toBeUndefined();
+            expect(env.PATH).toBe(process.env.PATH);
+        } finally {
+            delete process.env.PROJECT_SECRET;
+        }
+    });
     it("never puts the password in argv; passes it via PGPASSWORD", () => {
         const {args, env} = dumpArgsFromUrl("postgres://us%40er:p%40ss%3Aw0rd@db.local:5433/portabase?sslmode=require", "/x/f.dump");
         expect(args.join(" ")).not.toMatch(/p@ss|p%40ss|w0rd/);

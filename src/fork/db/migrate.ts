@@ -66,7 +66,7 @@ export async function runForkMigrations(o: LaneOptions = {}): Promise<LaneStatus
     const forkDir = o.forkDir ?? env.FORK_MIGRATIONS_DIR ?? FORK_MIGRATIONS;
     const upstreamDir = o.upstreamDir ?? path.dirname(path.dirname(UPSTREAM_JOURNAL));
 
-    const pool = new Pool({connectionString: databaseUrl, options: "-c TimeZone=UTC0", max: 1});
+    const pool = new Pool({connectionString: databaseUrl, options: "-c TimeZone=UTC0", max: 1, connectionTimeoutMillis: 15_000});
     const client = await pool.connect().catch(() => null);
     if (!client) {
         await pool.end().catch(noop);
@@ -80,6 +80,7 @@ export async function runForkMigrations(o: LaneOptions = {}): Promise<LaneStatus
             return {state: "skipped-upstream-incomplete", detail: `${gate.missing}/${gate.total} upstream migrations not applied`};
         }
 
+        await client.query("set lock_timeout = '180s'"); // another booting instance may hold the lane lock; never hang boot forever
         await client.query("select pg_advisory_lock(hashtext($1))", [LOCK_NAME]);
         locked = true;
 
