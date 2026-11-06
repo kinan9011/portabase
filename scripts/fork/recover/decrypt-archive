@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""decrypt-archive v0 (W02b, D42) - decrypt a Portabase agent archive (`*.tar.gz.enc`) without the dashboard or the agent.
+
+Format (agent 1.25.2, agent:src/utils/file.rs:61-170), documented, no AAD, key = the raw 32-byte master key:
+    line 1   JSON header  {"version":1,"cipher":"AES-256-GCM","chunk_size":16777216,"base_nonce":[8 bytes]}\\n
+    then     repeated  [u32 big-endian length N][N bytes = AES-GCM ciphertext || 16-byte tag]
+    nonce    = base_nonce(8) || u32 big-endian chunk index (0, 1, ...)
+There is NO final-chunk marker: a file cut exactly at a chunk boundary still decrypts. Pass --expect-sha256 / --expect-size
+(plaintext hash and size from the signed manifest, D24) to catch that; this tool cannot.
+
+Usage:  decrypt-archive (--key-file FILE | --key-stdin) [--expect-sha256 HEX] [--expect-size N] IN.tar.gz.enc OUT.tar.gz
+The key (base64 of the 32-byte master key) is NEVER accepted on the command line. OUT must not exist. Output is written to a
+private temp file and renamed only after every chunk authenticated and every expectation matched; on any failure nothing is
+left behind. Exit: 0 ok, 1 integrity/format failure (fail closed), 2 usage. Prints `sha256=<hex> size=<n>` on success.
+
+v0 scope: round-trip of the lab fixtures. W14b hardens (gzip -t, manifest wiring, image) and ships it in `portabase-recover`.
+Requires: python3, python3-cryptography (bare-host prerequisite, REVISED-PLAN section 4.3).
+"""
+import argparse
+import base64
+import binascii
+import hashlib
+import json
+import os
+import struct
+import sys
+
+try:
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+except ImportError:  # pragma: no cover
+    sys.stderr.write("decrypt-archive: python3 'cryptography' module missing (apt install python3-cryptography)\n")
+    sys.exit(2)
+
+TAG = 16
+MAX_HEADER = 4096
+MAX_CHUNK_SIZE = 64 * 1024 * 1024  # agent writes 16 MiB; bound anything larger so a hostile header cannot demand memory
+KEYS = {"version", "cipher", "chunk_size", "base_nonce"}
+
+
+class Fail(Exception):
+    """Integrity/format failure. Messages are static: never key material or plaintext."""
+
+
+def read_key(path, from_stdin):
+    raw = sys.stdin.buffer.read(256) if from_stdin else open(path, "rb").read(256)
+    try:
+        key = base64.b64decode(raw.strip(), validate=True)
+    except (binascii.Error, ValueError):
+        raise Fail("key is not valid base64")
+    if len(key) != 32:
+        raise Fail("key must decode to 32 bytes")
+    return key
+
+
+def read_header(f):
+    line = f.readline(MAX_HEADER + 1)
+    if not line.endswith(b"\n") or len(line) > MAX_HEADER:
+        raise Fail("missing or oversized header line")
+    try:
+        h = json.loads(line)
+    except ValueError:
+        raise Fail("header is not JSON")
+    if not isinstance(h, dict) or set(h) != KEYS:
+        raise Fail("unexpected header fields")
+    if type(h["version"]) is not int or h["version"] != 1:  # type() check: JSON true == 1 in Python
+        raise Fail("unsupported archive version")
+    if h["cipher"] != "AES-256-GCM":
+        raise Fail("unsupported cipher")
+    cs = h["chunk_size"]
+    if type(cs) is not int or not 1 <= cs <= MAX_CHUNK_SIZE:
+        raise Fail("invalid chunk_size")
+    n = h["base_nonce"]
+    if not isinstance(n, list) or len(n) != 8 or any(type(b) is not int or not 0 <= b <= 255 for b in n):
+        raise Fail("invalid base_nonce")
+    return bytes(n), cs
+
+
+def write_all(fd, data):
+    view = memoryview(data)
+    while view:
+        view = view[os.write(fd, view):]
+
+
+def decrypt(src, dst_fd, key, expect_sha, expect_size):
+    aes = AESGCM(key)
+    digest, size, idx = hashlib.sha256(), 0, 0
+    with open(src, "rb") as f:
+        base, chunk_size = read_header(f)
+        while True:
+            lb = f.read(4)
+            if not lb:
+                break
+            if len(lb) != 4:
+                raise Fail("truncated length prefix")
+            (n,) = struct.unpack(">I", lb)
+            if n <= TAG or n > chunk_size + TAG:
+                raise Fail("invalid chunk length")
+            ct = f.read(n)
+            if len(ct) != n:
+                raise Fail("truncated chunk")
+            if idx > 0xFFFFFFFF:
+                raise Fail("too many chunks")
+            try:
+                pt = aes.decrypt(base + struct.pack(">I", idx), ct, None)
+            except InvalidTag:
+                raise Fail("authentication failed (wrong key or corrupted data)")
+            write_all(dst_fd, pt)
+            digest.update(pt)
+            size += len(pt)
+            idx += 1
+    if idx == 0:
+        raise Fail("no data chunks")
+    hexd = digest.hexdigest()
+    if expect_sha and hexd != expect_sha.lower():
+        raise Fail("plaintext sha256 does not match the expected value")
+    if expect_size is not None and size != expect_size:
+        raise Fail("plaintext size does not match the expected value")
+    return hexd, size
+
+
+def main(argv):
+    p = argparse.ArgumentParser(prog="decrypt-archive", allow_abbrev=False, description="Decrypt a Portabase agent .tar.gz.enc archive")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--key-file", metavar="FILE", help="file holding the base64 master key")
+    g.add_argument("--key-stdin", action="store_true", help="read the base64 master key from stdin")
+    p.add_argument("--expect-sha256", metavar="HEX", help="expected plaintext SHA-256 (from the signed manifest)")
+    p.add_argument("--expect-size", metavar="N", type=int, help="expected plaintext size in bytes")
+    p.add_argument("src", metavar="IN")
+    p.add_argument("dst", metavar="OUT")
+    a = p.parse_args(argv)
+    if a.expect_sha256 is not None and len(a.expect_sha256) != 64:
+        p.error("--expect-sha256 must be 64 hex characters")
+
+    tmp = f"{a.dst}.partial-{os.getpid()}"
+    fd = None
+    try:
+        key = read_key(a.key_file, a.key_stdin)
+        if os.path.lexists(a.dst):
+            raise Fail("output already exists; refusing to overwrite")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        hexd, size = decrypt(a.src, fd, key, a.expect_sha256, a.expect_size)
+        os.fsync(fd)
+        os.close(fd)
+        fd = None
+        os.link(tmp, a.dst)  # fails if OUT appeared meanwhile (never overwrites)
+    except (Fail, OSError) as e:
+        sys.stderr.write(f"decrypt-archive: FAILED: {e if isinstance(e, Fail) else type(e).__name__ + ': ' + (e.strerror or 'I/O error')}\n")
+        return 1
+    finally:  # also on Ctrl-C / kill by exception: never leave a partial plaintext file behind
+        if fd is not None:
+            os.close(fd)
+        if os.path.lexists(tmp):
+            os.unlink(tmp)
+    print(f"sha256={hexd} size={size}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
