@@ -4,7 +4,9 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import {afterAll, describe, expect, it} from "vitest";
-import {createTestDb, type TestDb} from "@/fork/__tests__/db-helpers";
+import {applyUpstreamMigrations, createTestDb, type TestDb} from "@/fork/__tests__/db-helpers";
+import {runForkMigrations} from "@/fork/db/migrate";
+import {MIGRATION_LEDGER} from "@/fork/db/migration-ledger";
 
 /**
  * e2e tier (ARCH-18): boots the REAL production build (`pnpm build` first) with the real upstream
@@ -19,8 +21,25 @@ const freePort = () => new Promise<number>((res) => {
 
 type App = { base: string; logs: () => string; stop: () => Promise<void>; db: TestDb };
 
-async function boot(flags: Record<string, string>): Promise<App> {
-    const db = await createTestDb();
+type Seed = "default-org" | "active-policy";
+
+/**
+ * `seed` (W04): the D21 self-check reads the DB at boot (initFork runs BEFORE upstream creates the default user/org), so
+ * scenarios that need a healthy single-tenant instance pre-create what upstream would create (`organization` slug
+ * `default`, the exact row `createDefaultOrganization()` looks for, so no second org appears).
+ */
+async function boot(flags: Record<string, string>, seed: Seed[] = [], reuse?: TestDb, keepDb = false): Promise<App> {
+    const db = reuse ?? (await createTestDb());
+    if (seed.length && !reuse) {
+        await applyUpstreamMigrations(db.pool);
+        await db.pool.query(`insert into organization (name, slug) values ('Default Organization', 'default')`);
+        if (seed.includes("active-policy")) {
+            await runForkMigrations({databaseUrl: db.url, env: {NODE_ENV: "development"}});
+            const org = (await db.pool.query("select id from organization where slug='default'")).rows[0].id;
+            const st = (await db.pool.query("insert into fork_stack (organization_id, environment_name, compose_project, display_name) values ($1,'e','demo','demo') returning id", [org])).rows[0].id;
+            await db.pool.query("insert into fork_stack_policy (stack_id, activated_at) values ($1, now())", [st]);
+        }
+    }
     const port = await freePort();
     const base = `http://127.0.0.1:${port}`;
     let out = "";
@@ -48,7 +67,7 @@ async function boot(flags: Record<string, string>): Promise<App> {
         child.kill("SIGTERM");
         await new Promise((r) => setTimeout(r, 500));
         if (child.exitCode === null) child.kill("SIGKILL");
-        await db.drop();
+        if (!keepDb) await db.drop();
     };
     const deadline = Date.now() + 180_000;
     for (;;) {
@@ -94,7 +113,7 @@ describe("flags OFF (default): the app renders exactly like upstream", () => {
         expect(logs()).toMatch(/"started":\[\]/);
         expect(logs()).not.toMatch(/Fork configuration locked/);
         expect(await tableExists(db, "public.fork_meta")).toBe(true);
-        expect(Number((await db.pool.query("select count(*) c from drizzle.__fork_migrations")).rows[0].c)).toBe(1);
+        expect(Number((await db.pool.query("select count(*) c from drizzle.__fork_migrations")).rows[0].c)).toBe(MIGRATION_LEDGER.length);
 
         const cookie = await signIn(base);
         const home = await get(base, "/dashboard/home", cookie);
@@ -135,7 +154,17 @@ describe("flags OFF (default): the app renders exactly like upstream", () => {
 
 describe("flag ON: Integrations wiring (nav + route + ACL)", () => {
     it("system admin sees the sidebar group, the placeholder page and the diagnostic route; anonymous does not", async () => {
-        app = await boot({FORK_ARCANE_ENABLED: "true"});
+        // Boot 1 (flags off, upstream sign-up default): create the non-admin account — with AUTH_SIGNUP_ENABLED=false NO user can be
+        // created at all, not even by an admin (observed: 403 "Sign up is disabled" from the better-auth user-create hook).
+        const plain = {email: "plain@w01.test", password: "W01-plain-Password!1", name: "Plain"};
+        const first = await boot({}, [], undefined, true);
+        const up = await fetch(`${first.base}/api/auth/sign-up/email`, {method: "POST", headers: {"content-type": "application/json", origin: first.base}, body: JSON.stringify(plain)});
+        expect(up.status, await up.clone().text()).toBeLessThan(300);
+        await first.db.pool.query(`update "user" set role = 'user' where email = $1`, [plain.email]);
+        const shared = first.db;
+        await first.stop();
+        // Boot 2: same database, healthy single-tenant instance (D21: one org, sign-up closed), flag ON.
+        app = await boot({FORK_ARCANE_ENABLED: "true", AUTH_SIGNUP_ENABLED: "false"}, [], shared);
         const {base, logs, db} = app;
         expect(logs()).toMatch(/"mode":"on"/);
         expect(logs()).toMatch(/"lane":"applied"/);
@@ -153,7 +182,7 @@ describe("flag ON: Integrations wiring (nav + route + ACL)", () => {
 
         const status = await get(base, "/api/fork/status", cookie);
         expect(status.status).toBe(200);
-        expect(await status.json()).toEqual({mode: "on", lockReason: null, lane: "applied", flags: {stacks: false, arcane: true, mirrors: false}});
+        expect(await status.json()).toEqual({mode: "on", lockReason: null, banner: null, warnings: [], lane: "applied", flags: {stacks: false, arcane: true, mirrors: false}});
 
         expect((await get(base, "/api/fork/status")).status).toBe(404); // anonymous
         const anonPage = await get(base, "/dashboard/integrations");
@@ -161,10 +190,6 @@ describe("flag ON: Integrations wiring (nav + route + ACL)", () => {
         expect(anonPage.headers.get("location")).toContain("/login");
 
         // Non-admin (role "user"): real 404 for the page (proxy gate) and the API route (handler ACL), no sidebar group.
-        const plain = {email: "plain@w01.test", password: "W01-plain-Password!1", name: "Plain"};
-        const up = await fetch(`${base}/api/auth/sign-up/email`, {method: "POST", headers: {"content-type": "application/json", origin: base}, body: JSON.stringify(plain)});
-        expect(up.status, await up.clone().text()).toBeLessThan(300);
-        await db.pool.query(`update "user" set role = 'user' where email = $1`, [plain.email]);
         const si = await fetch(`${base}/api/auth/sign-in/email`, {method: "POST", headers: {"content-type": "application/json", origin: base}, body: JSON.stringify({email: plain.email, password: plain.password})});
         expect(si.status, await si.clone().text()).toBe(200);
         const plainCookie = si.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
@@ -173,6 +198,42 @@ describe("flag ON: Integrations wiring (nav + route + ACL)", () => {
         const plainHome = await get(base, "/dashboard/home", plainCookie);
         expect(plainHome.status).toBe(200);
         expect(await plainHome.text()).not.toMatch(/Stack Recovery|Arcane|\/dashboard\/integrations/);
+        await app.stop();
+        app = undefined;
+    });
+});
+
+describe("W04 D21 self-check at boot (real production build, real DB)", () => {
+    it("flag ON but AUTH_SIGNUP_ENABLED left at its upstream default (true) and nothing activated ⇒ mode off: the fork stays invisible, the breach is audited", async () => {
+        app = await boot({FORK_ARCANE_ENABLED: "true"}, ["default-org"]);
+        const {base, logs, db} = app;
+        expect(logs()).toMatch(/"mode":"off"/);
+        const cookie = await signIn(base);
+        const html = await (await get(base, "/dashboard/home", cookie)).text();
+        expect(html).not.toMatch(/Stack Recovery|Arcane|\/dashboard\/integrations/);
+        expect((await get(base, "/api/fork/status", cookie)).status).toBe(404);
+        const ev = (await db.pool.query("select action, redacted_details d from fork_audit_event order by seq")).rows;
+        expect(ev).toEqual([{action: "fork.selfcheck.failed", d: {codes: ["signup-open"]}}]);
+        await app.stop();
+        app = undefined;
+    });
+
+    it("activated policy + failed self-check ⇒ LOCKED: admin gets the banner data, the runtime plane STILL starts, audit + notification recorded", async () => {
+        app = await boot({FORK_ARCANE_ENABLED: "true"}, ["default-org", "active-policy"]);
+        const {base, logs, db} = app;
+        expect(logs()).toMatch(/"mode":"locked"/);
+        expect(logs()).toMatch(/"lockReason":"self-check-failed"/);
+        expect(logs()).toMatch(/"started":\["fork-audit-retention"\]/); // runtime plane keeps running in degraded mode
+        const cookie = await signIn(base);
+        const status = await get(base, "/api/fork/status", cookie);
+        expect(status.status).toBe(200);
+        expect(await status.json()).toEqual({
+            mode: "locked", lockReason: "self-check-failed", lane: "applied", flags: {stacks: false, arcane: true, mirrors: false}, warnings: [],
+            banner: "Fork configuration locked: public sign-up is enabled (AUTH_SIGNUP_ENABLED must be false)",
+        });
+        expect((await db.pool.query("select action from fork_audit_event")).rows).toEqual([{action: "fork.selfcheck.failed"}]);
+        expect((await db.pool.query("select kind, state, payload from fork_notification_outbox")).rows).toEqual([{kind: "fork.selfcheck.failed", state: "pending", payload: {codes: ["signup-open"]}}]);
+        expect(logs()).not.toMatch(/Default Organization/); // no org name in the lock log lines
         await app.stop();
         app = undefined;
     });
