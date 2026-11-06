@@ -19,6 +19,7 @@ let w: W04Db;
 let org: string;
 let fake: FakeArcane;
 const q = (s: string, p: unknown[] = []) => w.pool.query(s, p);
+const connId = (r: unknown) => (r as {data: {connection: {id: string}}}).data.connection.id;
 const setUser = (role: string | null, orgRole: string | null, banned = false) => {
     h.user = role ? {id: "00000000-0000-4000-8000-0000000000bb", role, banned} : null;
     return orgRole;
@@ -58,7 +59,7 @@ describe("real server actions", () => {
         await asUser("admin", "owner");
         const saved = await saveArcaneConnectionAction({name: "arcane", baseUrl: fake.url, apiKey: fake.state.validKey});
         expect(saved?.data).toMatchObject({ok: true, connection: {name: "arcane", healthStatus: "healthy"}});
-        const id = (saved?.data as {connection: {id: string}}).connection.id;
+        const id = connId(saved);
         expect(JSON.stringify(saved)).not.toContain(fake.state.validKey);
         expect((await testArcaneConnectionAction({connectionId: id}))?.data).toMatchObject({ok: true});
         fake.state.validKey = "arc_FAKEPFX1_ROTATEDROTATEDROTATED";
@@ -75,7 +76,7 @@ describe("real server actions", () => {
     it("non-system-admin (org owner) is refused server-side by every action", async () => {
         const a = await import("@/fork/actions/arcane-connection.action");
         await asUser("admin", "owner");
-        const id = ((await a.saveArcaneConnectionAction({name: "arcane", baseUrl: fake.url, apiKey: fake.state.validKey}))?.data as {connection: {id: string}}).connection.id;
+        const id = connId(await a.saveArcaneConnectionAction({name: "arcane", baseUrl: fake.url, apiKey: fake.state.validKey}));
         await asUser("user", "owner");
         expect((await a.saveArcaneConnectionAction({name: "two", baseUrl: fake.url, apiKey: fake.state.validKey}))?.data).toMatchObject({ok: false, code: "forbidden"});
         expect((await a.testArcaneConnectionAction({connectionId: id}))?.data).toMatchObject({ok: false, code: "forbidden"});

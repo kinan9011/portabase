@@ -9,7 +9,7 @@ import {registerActivePolicyProbe, registerSelfCheck, setLaneStatus} from "@/for
 import {parseAllowlist} from "@/fork/net/guard";
 import {resetRateLimits} from "@/fork/net/rate-limit";
 import {MIN_PERMS, startFakeArcane, type FakeArcane} from "@/fork/__tests__/fake-arcane";
-import {freshForkDb, seedAgent, seedOrg, seedProject, seedStack, seedRp, type W04Db} from "@/fork/__tests__/w04-helpers";
+import {freshForkDb, seedOrg, seedStack, seedRp, type W04Db} from "@/fork/__tests__/w04-helpers";
 
 const USER = "00000000-0000-4000-8000-0000000000aa";
 const P = (systemRole: string | null, ...m: [string, string][]): ForkPrincipal => ({userId: USER, systemRole, memberships: m.map(([organizationId, role]) => ({organizationId, role}))});
