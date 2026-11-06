@@ -41,6 +41,12 @@ const schema = z.object({
     FORK_AUDIT_RETENTION_DAYS: auditDays,
     /** Test seam only: fork-lane migration folder override. */
     FORK_MIGRATIONS_DIR: z.string().optional(),
+    /**
+     * W05/SEC-10: comma-separated IPs / CIDRs / host names an Arcane `base_url` may resolve to although the address is
+     * loopback/private/link-local (default: empty = deny). Operator-only (env), never settable from the UI. Cloud metadata
+     * addresses are never allowed whatever this says. See `net/guard.ts`.
+     */
+    FORK_ARCANE_NET_ALLOWLIST: z.string().optional().transform((v) => v?.trim() ?? ""),
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -54,6 +60,7 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_PG_DUMP_BIN: source.FORK_PG_DUMP_BIN,
         FORK_AUDIT_RETENTION_DAYS: source.FORK_AUDIT_RETENTION_DAYS,
         FORK_MIGRATIONS_DIR: source.FORK_MIGRATIONS_DIR,
+        FORK_ARCANE_NET_ALLOWLIST: source.FORK_ARCANE_NET_ALLOWLIST,
     });
 }
 
