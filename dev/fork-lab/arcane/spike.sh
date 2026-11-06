@@ -54,8 +54,8 @@ api_get() { # key path [extra curl args]
   STATUS=$(curl -sS --max-time 20 -o "$TMP/body" -w '%{http_code}' -H "X-API-Key: $key" "$API$p" 2>/dev/null || echo 000)
 }
 login() { # Arcane rate-limits /auth/login (observed: 429 + Retry-After 60 after ~5 attempts/min, successes count): wait once
-  local r try
-  for try in 1 2; do
+  local r
+  for _ in 1 2; do
     r=$(curl -sS --max-time 20 -D "$TMP/hdr" -H 'Content-Type: application/json' --data "$(jq -n --arg u "$ADM_USER" --arg p "$ADM_PASS" '{username:$u,password:$p}')" "$API/auth/login")
     ADMIN_TOKEN=$(jq -r '.data.token // empty' <<<"$r" 2>/dev/null || true)
     [ -n "$ADMIN_TOKEN" ] && return 0

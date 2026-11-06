@@ -68,7 +68,7 @@
       ],
       "redeployDisabled": false,
       "state": "running",
-      "status": "Up 18 minutes (healthy)",
+      "status": "Up 22 minutes (healthy)",
       "updateInfo": {
         "checkTime": "2026-11-06T22:00:09.945960893Z",
         "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
@@ -113,6 +113,13 @@
       },
       "mounts": [
         {
+          "destination": "/var/lib/postgresql/data",
+          "driver": "local",
+          "name": "bc912505cd5f",
+          "rw": true,
+          "type": "volume"
+        },
+        {
           "destination": "/app/handle.sh",
           "mode": "ro",
           "propagation": "rprivate",
@@ -144,13 +151,6 @@
           "rw": false,
           "source": "/srv/fork-lab/demo-stack/uploads",
           "type": "bind"
-        },
-        {
-          "destination": "/var/lib/postgresql/data",
-          "driver": "local",
-          "name": "bc912505cd5f",
-          "rw": true,
-          "type": "volume"
         }
       ],
       "names": [
@@ -194,7 +194,7 @@
       ],
       "redeployDisabled": false,
       "state": "running",
-      "status": "Up 18 minutes",
+      "status": "Up 22 minutes",
       "updateInfo": {
         "checkTime": "2026-11-06T22:00:09.945960893Z",
         "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
