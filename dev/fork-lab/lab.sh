@@ -13,7 +13,7 @@ ENVF="$LAB/.env.lab"
 PORTABASE=(docker compose --env-file "$ENVF" -f compose.portabase.yml)
 ARCANE=(docker compose --env-file "$ENVF" -f compose.arcane.yml)
 AGENT=(docker compose --env-file "$ENVF" -f portabase-agent/compose.yml)
-DEMO=(docker compose -f demo-stack/compose.yml -f demo-stack/compose.override.yml)
+DEMO=(docker compose --profile sqlite --profile failing-webhook -f demo-stack/compose.yml -f demo-stack/compose.override.yml)
 
 rand() { openssl rand -hex "${1:-16}"; }
 
