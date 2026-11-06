@@ -183,3 +183,82 @@ describe("decrypt-archive v0 — synthetic archives (independent encoder)", () =
         expect(readFileSync(out, "utf8")).toBe("precious");
     });
 });
+
+/**
+ * Fixtures produced by the STOCK agent 1.25.2 with encryption on (dev/fork-lab/drills/archive-roundtrip.sh --write-fixtures).
+ * W14b reuses them as CLI CI fixtures (D26, CH-22): they must keep decrypting byte-exactly. The master key in fixtures.json
+ * is a throw-away TEST-ONLY lab key.
+ */
+describe("decrypt-archive v0 — stock-agent fixtures (W02b)", () => {
+    const meta = JSON.parse(readFileSync(path.join(FIXDIR, "fixtures.json"), "utf8")) as {
+        test_only: boolean;
+        master_key_b64: string;
+        produced_by: {agent_version: string};
+        fixtures: Array<{name: string; file: string; ciphertext_sha256: string; ciphertext_size: number; plaintext_sha256: string; plaintext_size: number}>;
+    };
+    const keyFile = () => {
+        const f = path.join(tmp, "fixture-key.txt");
+        writeFileSync(f, meta.master_key_b64);
+        return f;
+    };
+
+    it("is flagged test-only and lists the DB dump + the volume archive", () => {
+        expect(meta.test_only).toBe(true);
+        expect(meta.produced_by.agent_version).toBe("1.25.2");
+        expect(Buffer.from(meta.master_key_b64, "base64")).toHaveLength(32);
+        expect(meta.fixtures.map((f) => f.name).sort()).toEqual(["lab-postgres", "lab-volume"]);
+    });
+
+    for (const name of ["lab-postgres", "lab-volume"]) {
+        describe(name, () => {
+            const fx = () => meta.fixtures.find((f) => f.name === name)!;
+            const file = () => path.join(FIXDIR, fx().file);
+
+            it("ciphertext is the committed object (size + sha256) and starts with the documented header", () => {
+                const b = readFileSync(file());
+                expect(b.length).toBe(fx().ciphertext_size);
+                expect(sha(b)).toBe(fx().ciphertext_sha256);
+                expect(b.subarray(0, b.indexOf(10)).toString()).toMatch(/^\{"version":1,"cipher":"AES-256-GCM","chunk_size":16777216,"base_nonce":\[(\d+,){7}\d+\]\}$/);
+            });
+
+            it("decrypts to the expected plaintext sha256 + size (also via --expect-*), gzip -t and tar listing pass", () => {
+                const out = path.join(tmp, `${name}.tar.gz`);
+                const r = spawnSync("python3", ["-I", HELPER, "--key-file", keyFile(), "--expect-sha256", fx().plaintext_sha256, "--expect-size", String(fx().plaintext_size), file(), out], {encoding: "utf8"});
+                expect(r.status, r.stderr).toBe(0);
+                const pt = readFileSync(out);
+                expect(sha(pt)).toBe(fx().plaintext_sha256);
+                expect(pt.length).toBe(fx().plaintext_size);
+                expect(spawnSync("gzip", ["-t", out]).status).toBe(0);
+                const list = spawnSync("tar", ["-tzf", out], {encoding: "utf8"});
+                expect(list.status).toBe(0);
+                if (name === "lab-volume") expect(list.stdout).toContain("vol/file-1.txt");
+                else {
+                    const dump = list.stdout.trim().split("\n");
+                    expect(dump).toHaveLength(1);
+                    expect(dump[0]).toMatch(/\.dump$/);
+                    // pg_dump -Fc custom format magic: this is what the agent emits for DBs <= 1 GB (agent:domain/postgres/connection.rs:350-385)
+                    expect(spawnSync("tar", ["-xzOf", out], {encoding: "buffer", maxBuffer: 1 << 26}).stdout.subarray(0, 5).toString()).toBe("PGDMP");
+                }
+            });
+
+            it("a truncated copy of the real artifact is rejected (non-zero, no output)", () => {
+                const b = readFileSync(file());
+                for (const cut of [7, 17, b.length - b.indexOf(10) - 1]) {
+                    const r = run(b.subarray(0, b.length - cut), Buffer.from(meta.master_key_b64, "base64"));
+                    expect(r.status, `cut=${cut}`).not.toBe(0);
+                    expect(r.outExists).toBe(false);
+                }
+            });
+
+            it("a wrong key is rejected", () => {
+                expect(run(file(), randomBytes(32)).status).not.toBe(0);
+            });
+        });
+    }
+
+    it("the fixtures directory holds synthetic data only: no endpoints, agent ids, storage or DB credentials", () => {
+        const text = readdirSync(FIXDIR).filter((n) => /\.(json|md)$/.test(n)).map((n) => readFileSync(path.join(FIXDIR, n), "utf8")).join("\n");
+        for (const bad of [/serverUrl/i, /agentId/i, /accessKey|secretKey/i, /postgres(ql)?:\/\//i, /LAB_[A-Z_]+=/, /forklab-/, /\.localhost/]) expect(text).not.toMatch(bad);
+        expect(Object.keys(meta).sort()).toEqual(["fixtures", "master_key_b64", "produced_by", "test_only", "warning"]);
+    });
+});
