@@ -96,7 +96,7 @@ describe("D23 fork KEK envelope {kid, iv, ct, tag} + AAD table|row_id|column", (
             const env = await encryptForkSecret(CANARY, aad, dir);
             await decryptForkSecret(env, {...aad, rowId: "other"}, dir).catch((e) => seen.push(String(e)));
             await decryptForkSecret({...env, ct: "AAAA"}, aad, dir).catch((e) => seen.push(String(e)));
-        } finally { spies.forEach((s) => s.mockRestore()); }
+        } finally { for (const s of spies) s.mockRestore(); }
         expect(seen.join("\n")).not.toContain(CANARY);
     });
 });
