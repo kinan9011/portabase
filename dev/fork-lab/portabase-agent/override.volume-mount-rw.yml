@@ -1,0 +1,8 @@
+# Variant D-rw: the single sqlite volume mounted READ-WRITE (needed by sqlite3 .backup on a WAL database: it must open -shm).
+services:
+  agent:
+    volumes:
+      - forklab-demo_sqlitedata:/lab/sqlite
+volumes:
+  forklab-demo_sqlitedata:
+    external: true

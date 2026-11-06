@@ -42,7 +42,7 @@ services:
 
   failing-webhook:
     # optional: calls a blackhole address (RFC 5737 doc range) forever and fails; never reaches a real host
-    image: busybox:latest
+    image: busybox:latest@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
     profiles: [failing-webhook]
     command: ["sh", "-c", "while true; do wget -q -T 2 -O /dev/null http://192.0.2.1/hook || echo webhook-failed; sleep 5; done"]
     networks: [internal]

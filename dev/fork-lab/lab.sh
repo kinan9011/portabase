@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fork lab control (W02). DISPOSABLE, LOCALHOST ONLY, SYNTHETIC DATA ONLY. Never point this at production.
-#   lab.sh up       generate .env.lab (first run), start portabase (dashboard+db+minio), arcane, demo stack, seed
+#   lab.sh up       generate .env.lab (first run), start portabase (dashboard+db+minio), arcane, demo stack, seed,
+#                   S3 identities, dashboard bootstrap (agent + sources) and the agent. Target: < 5 min on a warm image cache
 #   lab.sh agent    start the Portabase agent (needs LAB_EDGE_KEY in .env.lab; enroll the agent in the dashboard first)
 #   lab.sh status   show lab containers + published ports
 #   lab.sh down     stop everything (volumes kept)
@@ -59,6 +60,9 @@ case "${1:-}" in
     bash demo-stack/seed.sh --verify >/dev/null
     wait_http http://forklab-dashboard.localhost:18887/api/health 180
     wait_http http://127.0.0.1:13552/api/health 120
+    bash drills/minio-init.sh >/dev/null
+    bash drills/bootstrap-dashboard.sh
+    "$0" agent    # decided default variants (ADR-001): attach-demo-net host-bind
     echo "dashboard http://forklab-dashboard.localhost:18887  arcane http://127.0.0.1:13552  minio-console http://127.0.0.1:19001  demo http://127.0.0.1:18080"
     ;;
   agent)
@@ -66,7 +70,8 @@ case "${1:-}" in
     grep -Eq "^LAB_EDGE_KEY=.+" "$ENVF" || { echo "LAB_EDGE_KEY empty: enroll the agent in the dashboard, put its edge key in .env.lab" >&2; exit 1; }
     # optional variants: lab.sh agent attach-demo-net host-bind  -> portabase-agent/override.<variant>.yml (see ADR-001)
     FILES=(-f portabase-agent/compose.yml)
-    for v in "${@:2}"; do FILES+=(-f "portabase-agent/override.$v.yml"); done
+    VARIANTS=("${@:2}"); [ ${#VARIANTS[@]} -gt 0 ] || VARIANTS=(attach-demo-net host-bind)
+    for v in "${VARIANTS[@]}"; do FILES+=(-f "portabase-agent/override.$v.yml"); done
     docker compose --env-file "$ENVF" "${FILES[@]}" up -d --force-recreate ;;
   edge-key)
     # store the agent edge key shown by the dashboard (lab-only secret) in the git-ignored env file
@@ -86,6 +91,9 @@ case "${1:-}" in
     "${ARCANE[@]}" down -v 2>/dev/null || true
     "${PORTABASE[@]}" down -v 2>/dev/null || true
     "${DEMO[@]}" down -v 2>/dev/null || true
+    docker volume rm -f forklab-f4_pullcopy >/dev/null 2>&1 || true
+    # data/ is written by containers as root: empty it through a container, not rm
+    [ -d data ] && docker run --rm -v "$LAB/data:/d" busybox:latest@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4 find /d -mindepth 1 -delete 2>/dev/null || true
     docker network rm forklab_net lab_proxy >/dev/null 2>&1 || true
     ;;
   *) sed -n '2,8p' "$0"; exit 2 ;;

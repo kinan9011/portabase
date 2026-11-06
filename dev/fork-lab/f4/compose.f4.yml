@@ -1,0 +1,28 @@
+# F4 lab reference (plan v2.2 §4.5, option a1): HOME-SIDE rclone PULL COPY.
+# The pull job uses its OWN read-only S3 identity (LAB_S3_PULL_*): it can list/read the primary bucket and cannot delete or
+# overwrite anything there. It uses `rclone copy` (never `sync`), so deletions on the primary (e.g. by a compromised VPS
+# agent, whose credentials permit delete today - §13 A6) are NOT propagated to the copy. In a real deployment this job runs
+# on a machine the VPS has no credentials for; in the lab it is a container. Lab only.
+name: forklab-f4
+services:
+  pull:
+    image: rclone/rclone:latest@sha256:7cbeec24a44f206067597c0368be4de90ae19a64d5113c7d1938bd737a81e466
+    profiles: [run]
+    entrypoint: ["rclone"]
+    command: ["copy", "primary:lab-primary", "/pull", "--s3-no-check-bucket", "--stats-one-line", "-v"]
+    environment:
+      RCLONE_CONFIG_PRIMARY_TYPE: s3
+      RCLONE_CONFIG_PRIMARY_PROVIDER: Minio
+      RCLONE_CONFIG_PRIMARY_ENDPOINT: http://forklab-minio:9000
+      RCLONE_CONFIG_PRIMARY_ACCESS_KEY_ID: ${LAB_S3_PULL_KEY:?}
+      RCLONE_CONFIG_PRIMARY_SECRET_ACCESS_KEY: ${LAB_S3_PULL_SECRET:?}
+    volumes: [pullcopy:/pull]
+    networks: [forklab_net]
+
+volumes:
+  pullcopy:
+
+networks:
+  forklab_net:
+    name: forklab_net
+    external: true

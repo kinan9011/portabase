@@ -1,0 +1,5 @@
+# Variant for Q2 + CH-22c: NO docker socket. docker-volume sources cannot work and their ping returns Err (not false).
+services:
+  agent:
+    volumes: !override
+      - agent-data:/config

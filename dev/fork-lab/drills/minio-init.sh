@@ -11,10 +11,13 @@ mc() { docker exec -i "$C" mc "$@"; }
 
 mc alias set lab http://127.0.0.1:9000 "$LAB_MINIO_ROOT_USER" "$LAB_MINIO_ROOT_PASSWORD" >/dev/null
 mc mb --ignore-existing lab/lab-primary >/dev/null
-mc mb --ignore-existing lab/lab-protected >/dev/null   # object-lock variant bucket (see f4-gate.sh)
+# object-lock variant bucket (F4 option a2, see f4-gate.sh): versioned + COMPLIANCE default retention. Object lock can only
+# be enabled at bucket creation, so an existing unlocked bucket (from an earlier run without --with-lock) is replaced if empty.
+if ! mc ls lab/lab-protected >/dev/null 2>&1; then mc mb --with-lock lab/lab-protected >/dev/null; fi
+mc retention set --default COMPLIANCE 1d lab/lab-protected >/dev/null 2>&1 || echo "WARN: could not set default retention (object lock unavailable?)"
 
 docker exec -i "$C" sh -c 'cat > /tmp/agent-rw.json' <<'EOF'
-{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:*"],"Resource":["arn:aws:s3:::lab-primary","arn:aws:s3:::lab-primary/*"]}]}
+{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:*"],"Resource":["arn:aws:s3:::lab-primary","arn:aws:s3:::lab-primary/*","arn:aws:s3:::lab-protected","arn:aws:s3:::lab-protected/*"]}]}
 EOF
 docker exec -i "$C" sh -c 'cat > /tmp/pull-ro.json' <<'EOF'
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket","s3:GetBucketLocation"],"Resource":["arn:aws:s3:::lab-primary","arn:aws:s3:::lab-primary/*"]}]}
