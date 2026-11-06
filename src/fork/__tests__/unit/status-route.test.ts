@@ -27,7 +27,7 @@ describe("GET /api/fork/status", () => {
         const r = await GET();
         expect(r.status).toBe(200);
         const body = await r.json();
-        expect(body).toEqual({mode: "on", lockReason: null, lane: "applied", flags: {stacks: true, arcane: false, mirrors: false}});
+        expect(body).toEqual({mode: "on", lockReason: null, banner: null, warnings: [], lane: "applied", flags: {stacks: true, arcane: false, mirrors: false}});
         expect(JSON.stringify(body)).not.toContain("secret");
     });
     it("locked mode is reported to system admins (flags off + active policy)", async () => {

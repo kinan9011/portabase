@@ -23,12 +23,27 @@ describe("upstream contract — symbols the fork imports", () => {
         ["src/features/layout/components/menu-sidebar.tsx", "SidebarMenuCustomBase"],
         ["src/features/layout/components/menu-sidebar.tsx", "SidebarGroupItem"],
         ["src/components/ui/sidebar.tsx", "SidebarProvider"],
+        // W04: upstream tables the fork schema references (D32 FK targets) and reads (self-check)
+        ["src/db/schema/03_organization.ts", "organization"],
+        ["src/db/schema/04_member.ts", "member"],
+        ["src/db/schema/06_project.ts", "project"],
+        ["src/db/schema/07_database.ts", "backup"],
+        ["src/db/schema/08_agent.ts", "agent"],
+        ["src/db/schema/08_agent.ts", "organizationAgent"],
+        ["src/db/schema/12_storage-channel.ts", "storageChannel"],
+        ["src/db/schema/12_storage-channel.ts", "organizationStorageChannel"],
+        ["src/db/schema/14_storage-backup.ts", "backupStorage"],
+        ["src/db/index.ts", "db"],
     ])("%s still exports %s", (file, symbol) => {
         expect(exportsOf(read(file))).toContain(symbol);
     });
 
     it("every non-fork import in src/fork (non-test) is covered by the table above", () => {
-        const covered = new Set(["@/lib/auth/current-user", "@/lib/logger", "@/features/layout/components/menu-sidebar", "@/components/ui/sidebar"]);
+        const covered = new Set([
+            "@/lib/auth/current-user", "@/lib/logger", "@/features/layout/components/menu-sidebar", "@/components/ui/sidebar",
+            "@/db/schema/03_organization", "@/db/schema/04_member", "@/db/schema/06_project", "@/db/schema/07_database",
+            "@/db/schema/08_agent", "@/db/schema/14_storage-backup",
+        ]);
         const walk = (dir: string): string[] =>
             readdirSync(dir, {withFileTypes: true}).flatMap((e) =>
                 e.name === "__tests__" ? [] : e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.join(dir, e.name)] : []);
