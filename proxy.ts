@@ -5,6 +5,8 @@ import { auth } from "@/lib/auth/auth";
 import { headers } from "next/headers";
 import { env } from "@/env.mjs";
 import { User } from "@/db/schema/02_user";
+// FORK(stack-recovery): P04 flag-gated /api/fork/ allowlist (import)
+import { forkRoutePatterns } from "@/fork/routes";
 
 export async function proxy(request: NextRequest) {
   const url = request.nextUrl.clone();
@@ -140,6 +142,7 @@ function checkRouteExists(pathname: string) {
     /^\/api\/v1\/organizations\/[^/]+\/(storage|notification)-channels\/?$/,
     /^\/api\/v1\/organizations\/[^/]+\/(storage|notification)-channels\/[^/]+\/?$/,
     /^\/api\/v1\/organizations\/[^/]+\/(storage|notification)-channels\/[^/]+\/test\/?$/,
+    ...forkRoutePatterns(), // FORK(stack-recovery): P04 flag-gated /api/fork/ allowlist
   ];
   return routePatterns.some((pattern) => pattern.test(pathname));
 }
