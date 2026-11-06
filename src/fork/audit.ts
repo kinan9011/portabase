@@ -4,7 +4,7 @@ import {canonicalJson} from "@/fork/canonical";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkAuditEvent} from "@/fork/db/schema/audit";
 import {forkEnv} from "@/fork/env";
-import {AUDIT_ACTOR_KINDS, AUDIT_RESULTS} from "@/fork/db/enums";
+import type {AUDIT_ACTOR_KINDS, AUDIT_RESULTS} from "@/fork/db/enums";
 import {withForkLock} from "@/fork/locks";
 
 /**

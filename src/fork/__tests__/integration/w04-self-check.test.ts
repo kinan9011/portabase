@@ -4,7 +4,7 @@ import {clearForkRuntimeTasks, registerForkRuntimeTask, startForkRuntime} from "
 import {countActivePolicies, evaluateSelfCheck, forkBannerText, registerRealChecks} from "@/fork/self-check";
 import {verifyAuditChain} from "@/fork/audit";
 import {createTestDb, applyUpstreamMigrations} from "@/fork/__tests__/db-helpers";
-import {freshForkDb, seedAgent, seedArtifact, seedBackup, seedChannel, seedConnection, seedEnvironment, seedOrg, seedRp, seedStack, type W04Db} from "@/fork/__tests__/w04-helpers";
+import {freshForkDb, seedAgent, seedArtifact, seedChannel, seedConnection, seedEnvironment, seedOrg, seedRp, seedStack, type W04Db} from "@/fork/__tests__/w04-helpers";
 import {drizzle} from "drizzle-orm/node-postgres";
 import type {ForkDb} from "@/fork/db/handle";
 

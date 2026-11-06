@@ -17,8 +17,6 @@ import type {SelfCheckResult} from "@/fork/mode";
  * A DB error is fail-closed for configuration: `check-error` (the cause is never put in the result; callers log it).
  * Results carry stable codes only — never an org/agent/channel name, id or path (ADR-011 test 6).
  */
-export const SELF_CHECK_CODES = ["org-count", "signup-open", "agent-foreign-org", "storage-foreign-org", "check-error"] as const;
-
 const HUMAN: Record<string, string> = {
     "org-count": "this instance does not have exactly one organization",
     "signup-open": "public sign-up is enabled (AUTH_SIGNUP_ENABLED must be false)",

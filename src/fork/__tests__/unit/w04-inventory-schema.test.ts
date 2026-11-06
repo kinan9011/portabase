@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {contentHash, INVENTORY_MAX_BYTES, InventoryRejectedError, parseInventoryStrict, sanitizeIngest, type StackInventoryV1} from "@/fork/inventory/schema";
+import {contentHash, INVENTORY_MAX_BYTES, type InventoryRejectedError, parseInventoryStrict, sanitizeIngest, type StackInventoryV1} from "@/fork/inventory/schema";
 
 const good = (): StackInventoryV1 => ({
     schema_version: 1,

@@ -1,6 +1,5 @@
 import {sql} from "drizzle-orm";
 import type {ForkDb} from "@/fork/db/handle";
-import {forkLock} from "@/fork/db/schema/ops";
 
 /**
  * ARCH-10 DB-level locks.
@@ -41,4 +40,3 @@ export async function releaseLease(db: ForkDb, name: string, owner: string): Pro
     return rows.rows.length === 1;
 }
 
-export {forkLock};

@@ -44,6 +44,6 @@ describe("audit redaction (SEC-07 denylist: key, token, secret, password, author
         expect(redactDetails("plain")).toEqual({value: "plain"});
         expect(redactDetails(null)).toEqual({});
         expect(redactDetails(undefined)).toEqual({});
-        expect(() => redactDetails({f: () => 1, s: Symbol("x"), b: 10n})).not.toThrow();
+        expect(() => redactDetails({f: () => 1, s: Symbol("x"), b: BigInt(10)})).not.toThrow();
     });
 });

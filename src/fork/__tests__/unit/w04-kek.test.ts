@@ -1,7 +1,7 @@
 import {mkdtemp, readFile, readdir, stat, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {beforeEach, describe, expect, it} from "vitest";
+import {beforeEach, describe, expect, it, vi} from "vitest";
 import {decryptForkSecret, encryptForkSecret, ForkCryptoError, ForkEnvelopeSchema, getOrCreateKeyring, kidOf, loadKeyring, rotateForkKek, type ForkSecretAad} from "@/fork/kek";
 
 const CANARY = "arc_canary_SECRET_0123456789";
@@ -84,5 +84,19 @@ describe("D23 fork KEK envelope {kid, iv, ct, tag} + AAD table|row_id|column", (
         expect(imports.filter((i) => !i.startsWith("node:") && i !== "zod")).toEqual([]);
         const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
         expect(code).not.toMatch(/edge_key|master_key|credential-crypto|getOrCreateMasterKey|MASTER/i);
+    });
+    it("canary: the plaintext never reaches stdout/stderr/console, including on failures", async () => {
+        const seen: string[] = [];
+        const spies = [
+            vi.spyOn(process.stdout, "write").mockImplementation((c) => { seen.push(String(c)); return true; }),
+            vi.spyOn(process.stderr, "write").mockImplementation((c) => { seen.push(String(c)); return true; }),
+            ...(["log", "info", "warn", "error", "debug"] as const).map((m) => vi.spyOn(console, m).mockImplementation((...a: unknown[]) => { seen.push(a.map(String).join(" ")); })),
+        ];
+        try {
+            const env = await encryptForkSecret(CANARY, aad, dir);
+            await decryptForkSecret(env, {...aad, rowId: "other"}, dir).catch((e) => seen.push(String(e)));
+            await decryptForkSecret({...env, ct: "AAAA"}, aad, dir).catch((e) => seen.push(String(e)));
+        } finally { spies.forEach((s) => s.mockRestore()); }
+        expect(seen.join("\n")).not.toContain(CANARY);
     });
 });

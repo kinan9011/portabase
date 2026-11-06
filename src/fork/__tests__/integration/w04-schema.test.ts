@@ -2,11 +2,10 @@ import {cp, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {afterAll, beforeAll, describe, expect, it} from "vitest";
-import {sql} from "drizzle-orm";
 import {runForkMigrations} from "@/fork/db/migrate";
 import {insertConnectionWithSecret, listConnectionDtos, readConnectionApiKey} from "@/fork/db/dto";
 import {applyUpstreamMigrations, createTestDb} from "@/fork/__tests__/db-helpers";
-import {freshForkDb, seedArtifact, seedBackup, seedChannel, seedConnection, seedEnvironment, seedOrg, seedRp, seedStack, type W04Db} from "@/fork/__tests__/w04-helpers";
+import {freshForkDb, seedConnection, seedEnvironment, seedOrg, seedRp, seedStack, type W04Db} from "@/fork/__tests__/w04-helpers";
 
 const CANARY = "arc_canary_SECRET_w04_0123456789";
 
