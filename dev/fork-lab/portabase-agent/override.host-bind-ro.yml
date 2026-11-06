@@ -1,0 +1,7 @@
+# Variant B-ro: same paths, everything read-only. Backup works, restore in place must fail.
+services:
+  agent:
+    volumes:
+      - ${LAB_DIR:?}/demo-stack:/lab/demo-stack:ro
+      - ${LAB_DIR:?}/demo-stack/uploads:/lab/uploads:ro
+      - ${LAB_DIR:?}/data/work:/lab/work:ro

@@ -1,7 +1,9 @@
 # Variant B (Q1): give a containerised agent the host paths of a `files` source (same absolute path inside the agent).
-# Read-only is enough for backup; restore in place needs rw (see ADR-001).
+# demo-stack + uploads are read-only (enough for backup). `work/` is a writable copy used to prove restore IN PLACE:
+# restore overwrites the source path, so a read-only bind makes restore fail (see override.host-bind-ro.yml).
 services:
   agent:
     volumes:
       - ${LAB_DIR:?}/demo-stack:/lab/demo-stack:ro
       - ${LAB_DIR:?}/demo-stack/uploads:/lab/uploads:ro
+      - ${LAB_DIR:?}/data/work:/lab/work
