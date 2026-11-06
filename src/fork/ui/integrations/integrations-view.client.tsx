@@ -66,7 +66,7 @@ function Inner({view, lockedReason, forceTransient, initialVerification}: Integr
     return (
         <div className="flex flex-col gap-6">
             {lockedReason && (
-                <Alert data-testid="locked-banner"><ToneIcon tone="warning"/><AlertTitle>{lockedReason}</AlertTitle><AlertDescription>Existing schedules and notifications keep running. Fix the cause shown above, then reload this page.</AlertDescription></Alert>
+                <Alert data-testid="locked-banner"><ToneIcon tone="warning"/><AlertTitle>{lockedReason}</AlertTitle><AlertDescription>Existing schedules and notifications keep running. Fix the cause named in the title, then reload this page.</AlertDescription></Alert>
             )}
             {view.additionalConnections > 0 && <p role="note" className="text-sm text-muted-foreground">{view.additionalConnections} more Arcane connection{view.additionalConnections === 1 ? " exists" : "s exist"} in the database; only the first is shown.</p>}
             {warnings.map((w) => <Alert key={w} role="note"><ToneIcon tone="warning"/><AlertDescription>{w}</AlertDescription></Alert>)}
