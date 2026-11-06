@@ -25,6 +25,7 @@ services:
     entrypoint: ["/bin/sh", "/app/serve.sh"]
     volumes:
       - ./web/serve.sh:/app/serve.sh:ro
+      - ./web/handle.sh:/app/handle.sh:ro
       - ./uploads:/uploads:ro
       - appdata:/appdata
     ports: ["127.0.0.1:18080:8080"]
