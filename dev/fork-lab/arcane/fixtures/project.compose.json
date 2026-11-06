@@ -27,66 +27,6 @@
         "cpu_rt_runtime": 0,
         "cpu_shares": 0,
         "cpus": 0,
-        "entrypoint": [],
-        "healthcheck": {
-          "disable": false,
-          "interval": "3s",
-          "retries": 20,
-          "test": [
-            "CMD-SHELL",
-            "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
-          ],
-          "timeout": "3s"
-        },
-        "image": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
-        "labels": {
-          "forklab.role": "database"
-        },
-        "mem_limit": "0",
-        "mem_reservation": "0",
-        "mem_swappiness": "0",
-        "memswap_limit": "0",
-        "networks": {
-          "internal": {
-            "aliases": [
-              "demo-db"
-            ],
-            "gw_priority": 0,
-            "priority": 0
-          }
-        },
-        "oom_kill_disable": false,
-        "oom_score_adj": 0,
-        "pids_limit": 0,
-        "privileged": false,
-        "read_only": false,
-        "restart": "unless-stopped",
-        "shm_size": "0",
-        "stdin_open": false,
-        "tty": false,
-        "use_api_socket": false,
-        "volumes": [
-          {
-            "read_only": false,
-            "source": "pgdata",
-            "target": "/var/lib/postgresql/data",
-            "type": "volume",
-            "volume": {
-              "nocopy": false
-            }
-          }
-        ]
-      },
-      {
-        "command": [],
-        "cpu_count": 0,
-        "cpu_percent": 0,
-        "cpu_period": 0,
-        "cpu_quota": 0,
-        "cpu_rt_period": 0,
-        "cpu_rt_runtime": 0,
-        "cpu_shares": 0,
-        "cpus": 0,
         "depends_on": {
           "db": {
             "condition": "service_healthy",
@@ -152,6 +92,66 @@
             "read_only": false,
             "source": "appdata",
             "target": "/appdata",
+            "type": "volume",
+            "volume": {
+              "nocopy": false
+            }
+          }
+        ]
+      },
+      {
+        "command": [],
+        "cpu_count": 0,
+        "cpu_percent": 0,
+        "cpu_period": 0,
+        "cpu_quota": 0,
+        "cpu_rt_period": 0,
+        "cpu_rt_runtime": 0,
+        "cpu_shares": 0,
+        "cpus": 0,
+        "entrypoint": [],
+        "healthcheck": {
+          "disable": false,
+          "interval": "3s",
+          "retries": 20,
+          "test": [
+            "CMD-SHELL",
+            "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+          ],
+          "timeout": "3s"
+        },
+        "image": "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+        "labels": {
+          "forklab.role": "database"
+        },
+        "mem_limit": "0",
+        "mem_reservation": "0",
+        "mem_swappiness": "0",
+        "memswap_limit": "0",
+        "networks": {
+          "internal": {
+            "aliases": [
+              "demo-db"
+            ],
+            "gw_priority": 0,
+            "priority": 0
+          }
+        },
+        "oom_kill_disable": false,
+        "oom_score_adj": 0,
+        "pids_limit": 0,
+        "privileged": false,
+        "read_only": false,
+        "restart": "unless-stopped",
+        "shm_size": "0",
+        "stdin_open": false,
+        "tty": false,
+        "use_api_socket": false,
+        "volumes": [
+          {
+            "read_only": false,
+            "source": "pgdata",
+            "target": "/var/lib/postgresql/data",
             "type": "volume",
             "volume": {
               "nocopy": false

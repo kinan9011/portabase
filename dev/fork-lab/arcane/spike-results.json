@@ -1,7 +1,7 @@
 {
   "arcane_version": "2.17.3",
   "openapi_sha256": "sha256:68912259415d5cc1d0661fd68db05661dbb0991484653ef85d8c22d91666d9e1",
-  "run_at": "2026-11-06T22:07:49Z",
+  "run_at": "2026-11-06T22:12:27Z",
   "capabilities": [
     {
       "capability": "environments.list",
@@ -109,7 +109,7 @@
       "path": "/environments/0/containers?limit=2[&start=2]",
       "status": 200,
       "ok": true,
-      "note": "limit=2: {\"totalPages\":5,\"totalItems\":10,\"currentPage\":1,\"itemsPerPage\":2,\"grandTotalItems\":10} | limit=2,start=2: {\"totalPages\":5,\"totalItems\":10,\"currentPage\":2,\"itemsPerPage\":2,\"grandTotalItems\":10} | start=999999: {\"n\":0,\"p\":{\"totalPages\":1,\"totalItems\":10,\"currentPage\":50000,\"itemsPerPage\":20,\"grandTotalItems\":10}}"
+      "note": "limit=2: {\"totalPages\":6,\"totalItems\":11,\"currentPage\":1,\"itemsPerPage\":2,\"grandTotalItems\":11} | limit=2,start=2: {\"totalPages\":6,\"totalItems\":11,\"currentPage\":2,\"itemsPerPage\":2,\"grandTotalItems\":11} | start=999999: {\"n\":0,\"p\":{\"totalPages\":1,\"totalItems\":11,\"currentPage\":50000,\"itemsPerPage\":20,\"grandTotalItems\":11}}"
     }
   ],
   "exposure": {
@@ -159,5 +159,15 @@
       "status_429": 1,
       "retry_after_seconds": "60"
     }
+  },
+  "remote_environment": {
+    "verified": true,
+    "remote_env_status_in_list": "online",
+    "remote_scoped_key_list_calls": "containers=200(11) volumes=200(28) networks=200(7) images=200(40) projects=200(0)",
+    "remote_scoped_key_on_local_env": {
+      "status": 403,
+      "detail": "permission denied: containers:list"
+    },
+    "local_scoped_key_on_remote_env_status": 403
   }
 }

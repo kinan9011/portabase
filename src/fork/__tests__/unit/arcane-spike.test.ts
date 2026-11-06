@@ -144,6 +144,14 @@ describe("capability map ↔ pinned spec", () => {
         expect(x.tier1_auth_me_reports_owner_is_global_admin).toBe(true);
     });
 
+    it("remote environment: verified, scoped both ways, listing works with a tier-1 key scoped to the remote id", () => {
+        const r = results.remote_environment;
+        expect(r.verified).toBe(true);
+        expect(r.remote_scoped_key_list_calls).toMatch(/^containers=200\(\d+\) volumes=200\(\d+\) networks=200\(\d+\) images=200\(\d+\) projects=200\(\d+\)$/);
+        expect(r.remote_scoped_key_on_local_env.status).toBe(403);
+        expect(r.local_scoped_key_on_remote_env_status).toBe(403);
+    });
+
     it("401 / 403 behaviour was observed; the read-only key cannot POST", () => {
         const p = results.probes;
         expect([p.no_key, p.invalid_key]).toEqual([401, 401]);
@@ -200,6 +208,14 @@ describe("spike.sh static guards", () => {
         const r = spawnSync("bash", [path.join(DIR, "spike.sh"), tmpdir()], {env: {...process.env, ARCANE_URL: "http://example.com:3552"}, encoding: "utf8"});
         expect(r.status).toBe(2);
         expect(r.stderr).toMatch(/loopback/);
+    });
+
+    it("remote-env.sh (lab setup) is loopback-only and never writes the agent token to disk", () => {
+        const re = readFileSync(path.join(DIR, "remote-env.sh"), "utf8");
+        const r = spawnSync("bash", [path.join(DIR, "remote-env.sh")], {env: {...process.env, ARCANE_URL: "http://example.com:3552"}, encoding: "utf8"});
+        expect(r.status).toBe(2);
+        expect(re).not.toMatch(/>\s*\S*token|tee |echo[^\n]*AGENT_KEY/i);
+        expect(re).toMatch(/LAB_ARCANE_AGENT_TOKEN="\$AGENT_KEY" docker compose/);
     });
 
     it("sends only GET with a scoped key; the admin bearer is confined to admin_call", () => {

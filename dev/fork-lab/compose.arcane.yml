@@ -32,6 +32,7 @@ services:
     environment:
       ARCANE_AGENT: "true"
       ARCANE_AGENT_TOKEN: ${LAB_ARCANE_AGENT_TOKEN:-}
+      AGENT_TOKEN: ${LAB_ARCANE_AGENT_TOKEN:-} # Arcane 2.17.3 direct mode reads AGENT_TOKEN (W03); ARCANE_AGENT_TOKEN kept for older images
       ARCANE_MANAGER_API_URL: http://forklab-arcane:3552
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

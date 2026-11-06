@@ -68,7 +68,7 @@
       ],
       "redeployDisabled": false,
       "state": "running",
-      "status": "Up 22 minutes (healthy)",
+      "status": "Up 26 minutes (healthy)",
       "updateInfo": {
         "checkTime": "2026-11-06T22:00:09.945960893Z",
         "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
@@ -113,6 +113,14 @@
       },
       "mounts": [
         {
+          "destination": "/uploads",
+          "mode": "ro",
+          "propagation": "rprivate",
+          "rw": false,
+          "source": "/srv/fork-lab/demo-stack/uploads",
+          "type": "bind"
+        },
+        {
           "destination": "/var/lib/postgresql/data",
           "driver": "local",
           "name": "bc912505cd5f",
@@ -143,14 +151,6 @@
           "rw": true,
           "source": "/var/lib/docker/volumes/forklab-demo_appdata/_data",
           "type": "volume"
-        },
-        {
-          "destination": "/uploads",
-          "mode": "ro",
-          "propagation": "rprivate",
-          "rw": false,
-          "source": "/srv/fork-lab/demo-stack/uploads",
-          "type": "bind"
         }
       ],
       "names": [
@@ -181,20 +181,20 @@
       },
       "ports": [
         {
-          "privatePort": 5432,
-          "publicPort": 0,
-          "type": "tcp"
-        },
-        {
           "ip": "192.0.2.1",
           "privatePort": 8080,
           "publicPort": 18080,
+          "type": "tcp"
+        },
+        {
+          "privatePort": 5432,
+          "publicPort": 0,
           "type": "tcp"
         }
       ],
       "redeployDisabled": false,
       "state": "running",
-      "status": "Up 22 minutes",
+      "status": "Up 26 minutes",
       "updateInfo": {
         "checkTime": "2026-11-06T22:00:09.945960893Z",
         "currentDigest": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
@@ -213,7 +213,7 @@
   "pagination": {
     "currentPage": 1,
     "itemsPerPage": 100,
-    "totalItems": 10,
+    "totalItems": 11,
     "totalPages": 1
   },
   "resourceSortSupported": true,

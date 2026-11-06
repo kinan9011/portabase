@@ -145,6 +145,25 @@ api_get "$KEY1" "/environments/$ENV_ID/containers?limit=2&start=2"; P2=$(jq -c '
 api_get "$KEY1" "/environments/$ENV_ID/containers?start=999999"; P3=$(jq -c '{n:(.data|length),p:.pagination}' "$TMP/body")
 rec pagination tier1 GET "/environments/$ENV_ID/containers?limit=2[&start=2]" 200 true "limit=2: $P1 | limit=2,start=2: $P2 | start=999999: $P3"
 
+# ---- 4b. remote environment (needs remote-env.sh to have paired the lab Arcane agent; else recorded as unverified) ----
+api_get "$KEY1" "/environments?limit=100"
+REMOTE_ID=$(jq -r '[.data[]? | select(.name=="forklab-remote" and .status=="online")][0].id // empty' "$TMP/body")
+if [ -n "$REMOTE_ID" ]; then
+  RGR=$(jq -sc '.' <(G environments:list) <(jq -n --arg e "$REMOTE_ID" '{permission:"projects:list",environmentId:$e}') <(jq -n --arg e "$REMOTE_ID" '{permission:"containers:list",environmentId:$e}') \
+    <(jq -n --arg e "$REMOTE_ID" '{permission:"volumes:list",environmentId:$e}') <(jq -n --arg e "$REMOTE_ID" '{permission:"networks:list",environmentId:$e}') <(jq -n --arg e "$REMOTE_ID" '{permission:"images:list",environmentId:$e}'))
+  mint_key forklab-w03-remote "$RGR"; KEYR=$MINTED
+  RLIST=""
+  for res in containers volumes networks images projects; do
+    api_get "$KEYR" "/environments/$REMOTE_ID/$res?limit=100"; RLIST="$RLIST $res=$STATUS($(jq -r '(.pagination.totalItems // "-")' "$TMP/body" 2>/dev/null))"
+  done
+  api_get "$KEYR" "/environments/$ENV_ID/containers?limit=1"; R_ON_LOCAL=$STATUS; R_ON_LOCAL_DETAIL=$(jq -r '.detail // ""' "$TMP/body" 2>/dev/null || true)
+  api_get "$KEY1" "/environments/$REMOTE_ID/containers?limit=1"; LOCAL_ON_R=$STATUS
+  jq -n --arg l "${RLIST# }" --argjson a "$R_ON_LOCAL" --arg ad "$R_ON_LOCAL_DETAIL" --argjson b "$LOCAL_ON_R" \
+    '{verified:true, remote_env_status_in_list:"online", remote_scoped_key_list_calls:$l, remote_scoped_key_on_local_env:{status:$a,detail:$ad}, local_scoped_key_on_remote_env_status:$b}' >"$TMP/remote.json"
+else
+  jq -n '{verified:false, reason:"no online remote environment named forklab-remote (run dev/fork-lab/arcane/remote-env.sh first)"}' >"$TMP/remote.json"
+fi
+
 # ---- 5. single-permission matrix ----------------------------------------------------------------------------------
 CID=$(jq -r '[.data[]? | select(.names|any(test("^/?forklab-demo")))][0].id // empty' "$TMP/containers.list.json")
 NID=$(jq -r '[.data[]? | select(.name|startswith("forklab-demo"))][0].id // empty' "$TMP/networks.list.json")
@@ -253,6 +272,6 @@ fi
 
 # ---- 9. assemble ---------------------------------------------------------------------------------------------------
 jq -s --arg v "$VERSION" --arg h "sha256:$(cut -d' ' -f1 "$SPEC.sha256")" --arg at "$(date -u +%FT%TZ)" \
-  --slurpfile ex "$TMP/exposure.json" --slurpfile pr "$TMP/probes.json" \
-  '{arcane_version:$v, openapi_sha256:$h, run_at:$at, capabilities:., exposure:$ex[0], probes:$pr[0]}' "$RESULTS" >"$OUT/spike-results.json"
+  --slurpfile ex "$TMP/exposure.json" --slurpfile pr "$TMP/probes.json" --slurpfile re "$TMP/remote.json" \
+  '{arcane_version:$v, openapi_sha256:$h, run_at:$at, capabilities:., exposure:$ex[0], probes:$pr[0], remote_environment:$re[0]}' "$RESULTS" >"$OUT/spike-results.json"
 echo "done: $(jq '.capabilities|length' "$OUT/spike-results.json") capability rows, matrix $(jq length "$OUT/permission-matrix.json") permissions"

@@ -15,7 +15,8 @@ Findings, capability table and decisions: ADR-002 in the project vault (`ADR/ADR
 ## Run
 ```
 cd dev/fork-lab && ./lab.sh up          # Arcane + demo stack (demo-stack is mounted under /app/data/projects)
-bash arcane/spike.sh                    # ~30 s; rewrites everything in this directory
+bash arcane/remote-env.sh               # optional: pair a remote Arcane environment (lab admin writes, token never on disk)
+bash arcane/spike.sh                    # ~40 s; rewrites this directory (remote_environment = unverified without the line above)
 ```
 Needs bash, curl, jq. Arcane rate-limits `/auth/login` (429 + `Retry-After: 60` after ~5 attempts per minute, successes
 count): the script waits once; do not run it twice within a minute.
