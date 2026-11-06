@@ -55,3 +55,46 @@ export function forkCan(actor: ForkActor | null | undefined, capability: string)
     if (!Object.hasOwn(RULES, capability)) return false;
     return RULES[capability as ForkCapability](actor) === true;
 }
+
+// ---- W04: principals, org-scoped capability assertion, resource-scoped (IDOR-safe) access --------------------------------
+
+/** Who is calling: the user's system role plus EVERY organization membership (single tenant in v1, but never assumed). */
+export type ForkPrincipal = {
+    userId: string;
+    systemRole?: string | null;
+    memberships: {organizationId: string; role: string}[];
+};
+
+/** Same error for "does not exist" and "exists in another organization": no existence oracle (SEC-12). */
+export class ForkNotFoundError extends Error {
+    constructor() {
+        super("not found");
+        this.name = "ForkNotFoundError";
+    }
+}
+
+export class ForkForbiddenError extends Error {
+    constructor(public readonly capability: string) {
+        super("forbidden");
+        this.name = "ForkForbiddenError";
+    }
+}
+
+/** The actor as seen inside ONE organization (orgRole is the membership role in that org, null if none). */
+export function actorIn(principal: ForkPrincipal | null | undefined, organizationId: string): ForkActor | null {
+    if (!principal) return null;
+    const m = principal.memberships.find((x) => x.organizationId === organizationId);
+    return {systemRole: principal.systemRole ?? null, orgRole: m?.role ?? null};
+}
+
+/** Throws ForkForbiddenError unless `principal` holds `capability` for `organizationId` (deny by default). */
+export function assertForkCapability(principal: ForkPrincipal | null | undefined, organizationId: string, capability: string): void {
+    if (!forkCan(actorIn(principal, organizationId), capability)) throw new ForkForbiddenError(capability);
+}
+
+/**
+ * Resource kinds that carry an ID from the client. The owning organization is ALWAYS loaded from the row (never
+ * trusted from the request) and the capability is checked against THAT organization.
+ */
+export const FORK_RESOURCE_KINDS = ["connection", "environment", "stack", "stack_inventory", "recovery_point", "recovery_point_artifact"] as const;
+export type ForkResourceKind = (typeof FORK_RESOURCE_KINDS)[number];
