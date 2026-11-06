@@ -14,7 +14,13 @@ const ROOT = process.cwd();
 const DIR = path.join(ROOT, "dev/fork-lab/arcane");
 const DIFF = path.join(ROOT, "scripts/fork/arcane-openapi-diff.sh");
 const json = (f: string) => JSON.parse(readFileSync(path.join(DIR, f), "utf8"));
-const specFile = readdirSync(DIR).find((f) => /^openapi\.v[\d.]+\.json$/.test(f))!;
+// biome-ignore lint/suspicious/noExplicitAny: parsed JSON documents of the pinned spec / spike output
+type Json = any;
+const must = <T,>(v: T | null | undefined, what: string): T => {
+    if (v === null || v === undefined) throw new Error(`missing: ${what}`);
+    return v;
+};
+const specFile = must(readdirSync(DIR).find((f) => /^openapi\.v[\d.]+\.json$/.test(f)), "pinned spec");
 const spec = json(specFile);
 const caps = json("capability-map.json");
 const results = json("spike-results.json");
@@ -46,8 +52,8 @@ describe("pinned Arcane OpenAPI", () => {
 });
 
 describe("capability map ↔ pinned spec", () => {
-    const ops = new Map<string, any>();
-    for (const [p, item] of Object.entries<any>(spec.paths))
+    const ops = new Map<string, Json>();
+    for (const [p, item] of Object.entries<Json>(spec.paths))
         for (const m of ["get", "post", "put", "patch", "delete"]) if (item[m]) ops.set(`${m.toUpperCase()} ${p}`, item[m]);
 
     it("every capability exists in the spec with the recorded response schema", () => {
@@ -60,7 +66,7 @@ describe("capability map ↔ pinned spec", () => {
     });
 
     it("capability ids are unique", () => {
-        const ids = caps.capabilities.map((c: any) => c.id);
+        const ids = caps.capabilities.map((c: Json) => c.id);
         expect(new Set(ids).size).toBe(ids.length);
     });
 
@@ -72,7 +78,7 @@ describe("capability map ↔ pinned spec", () => {
     });
 
     it("minimum key = list permissions only, no *:read/write, and every grant is in the spec's permission catalogue", () => {
-        const catalogue = new Set<string>(json("permission-catalogue.json").flatMap((r: any) => r.permissions));
+        const catalogue = new Set<string>(json("permission-catalogue.json").flatMap((r: Json) => r.permissions));
         for (const g of caps.minimum_key.grants) {
             expect(catalogue.has(g.permission), g.permission).toBe(true);
             expect(g.permission).toMatch(/:list$/);
@@ -82,8 +88,8 @@ describe("capability map ↔ pinned spec", () => {
     });
 
     it("tier-1 capabilities require exactly a permission of the minimum key (or none)", () => {
-        const granted = new Set(caps.minimum_key.grants.map((g: any) => g.permission));
-        for (const c of caps.capabilities.filter((x: any) => x.tier === 1)) {
+        const granted = new Set(caps.minimum_key.grants.map((g: Json) => g.permission));
+        for (const c of caps.capabilities.filter((x: Json) => x.tier === 1)) {
             const perm = String(c.permission).split(" ")[0];
             if (perm === "none") continue;
             expect(granted.has(perm), `${c.id} needs ${perm}`).toBe(true);
@@ -91,9 +97,9 @@ describe("capability map ↔ pinned spec", () => {
     });
 
     it("every tier-1/2 capability proven in the lab has an ok spike result or a matrix entry", () => {
-        const okIds = new Set(results.capabilities.filter((r: any) => r.ok).map((r: any) => r.capability));
+        const okIds = new Set(results.capabilities.filter((r: Json) => r.ok).map((r: Json) => r.capability));
         const matrix = json("permission-matrix.json");
-        const allowed = new Set(matrix.flatMap((m: any) => m.allows));
+        const allowed = new Set(matrix.flatMap((m: Json) => m.allows));
         for (const c of caps.capabilities) {
             if (c.proof === "unverified" || c.proof.startsWith("spike pin") || c.proof.startsWith("lab.sh")) continue;
             expect(okIds.has(c.proof) || allowed.has(c.proof), `${c.id} proof ${c.proof}`).toBe(true);
@@ -102,15 +108,15 @@ describe("capability map ↔ pinned spec", () => {
 
     it("the permission matrix matches the map: *:read permissions that expose secrets are marked never", () => {
         const matrix = json("permission-matrix.json");
-        const allows = (perm: string) => matrix.find((m: any) => m.permission === perm).allows as string[];
+        const allows = (perm: string) => matrix.find((m: Json) => m.permission === perm).allows as string[];
         expect(allows("volumes:read")).toContain("vol.workspace.file");
         expect(allows("containers:read")).toContain("cont.edit-config");
         expect(allows("projects:read")).toContain("proj.workspace.file");
         for (const never of ["containers.get", "volumes.get", "volumes.workspace.file", "projects.workspace.file"])
-            expect(caps.capabilities.find((c: any) => c.id === never).tier).toBe("never");
+            expect(caps.capabilities.find((c: Json) => c.id === never).tier).toBe("never");
         // tier-1 permissions alone must never reach secret-returning endpoints
-        for (const perm of caps.minimum_key.grants.map((g: any) => g.permission)) {
-            const row = matrix.find((m: any) => m.permission === perm);
+        for (const perm of caps.minimum_key.grants.map((g: Json) => g.permission)) {
+            const row = matrix.find((m: Json) => m.permission === perm);
             for (const bad of ["cont.get", "cont.edit-config", "vol.get", "vol.workspace.file", "proj.compose", "proj.workspace.file"])
                 expect(row?.allows ?? [], `${perm} → ${bad}`).not.toContain(bad);
         }
@@ -132,7 +138,7 @@ describe("capability map ↔ pinned spec", () => {
         const x = results.exposure;
         expect(x.tier1_key_own_permissions_via_auth_me_api_keys).toEqual(
             caps.minimum_key.grants
-                .map((g: any) => (g.scope === "environment" ? `${g.permission}@0` : g.permission))
+                .map((g: Json) => (g.scope === "environment" ? `${g.permission}@0` : g.permission))
                 .sort(),
         );
         expect(x.tier1_auth_me_reports_owner_is_global_admin).toBe(true);
@@ -173,16 +179,16 @@ describe("scrubbed fixtures", () => {
     });
 
     it("keeps only forklab-* resources (the host's other containers, volumes and networks never enter git)", () => {
-        const c = JSON.parse(text.find(([f]) => f === "containers.list.json")![1]);
+        const c = JSON.parse(must(text.find(([f]) => f === "containers.list.json"), "containers fixture")[1]);
         for (const x of c.data) expect(x.names.join(","), "container").toMatch(/forklab-demo/);
         for (const f of ["volumes.list.json", "networks.list.json"]) {
-            const d = JSON.parse(text.find(([n]) => n === f)![1]);
+            const d = JSON.parse(must(text.find(([n]) => n === f), f)[1]);
             for (const x of d.data) expect(x.name, f).toMatch(/^forklab/);
         }
     });
 
     it("compose fixture has no service environment (names or values)", () => {
-        const t = text.find(([f]) => f === "project.compose.json")![1];
+        const t = must(text.find(([f]) => f === "project.compose.json"), "compose fixture")[1];
         for (const s of JSON.parse(t).data.services) expect(s.environment).toBeUndefined();
     });
 });
@@ -197,8 +203,8 @@ describe("spike.sh static guards", () => {
     });
 
     it("sends only GET with a scoped key; the admin bearer is confined to admin_call", () => {
-        const admin = script.match(/admin_call\(\) \{[\s\S]*?\n\}/)![0];
-        const apiGet = script.match(/api_get\(\) \{[\s\S]*?\n\}/)![0];
+        const admin = must(script.match(/admin_call\(\) \{[\s\S]*?\n\}/), "admin_call")[0];
+        const apiGet = must(script.match(/api_get\(\) \{[\s\S]*?\n\}/), "api_get")[0];
         expect(apiGet).not.toMatch(/-X |Authorization|--data/);
         const rest = script.replace(admin, "");
         expect(rest.match(/Authorization: Bearer/g)).toBeNull();
@@ -214,7 +220,7 @@ describe("spike.sh static guards", () => {
     });
 
     it("the minimum key grants list permissions only", () => {
-        const tier1 = script.match(/TIER1=\$\(jq -sc[^\n]*/)![0];
+        const tier1 = must(script.match(/TIER1=\$\(jq -sc[^\n]*/), "TIER1")[0];
         const perms = [...tier1.matchAll(/[GE] ([a-z-]+:[a-z]+)/g)].map((m) => m[1]);
         expect(perms.length).toBe(6);
         for (const p of perms) expect(p).toMatch(/:list$/);
@@ -224,7 +230,7 @@ describe("spike.sh static guards", () => {
 describe("arcane-openapi-diff.sh", () => {
     const run = (...args: string[]) => spawnSync("bash", [DIFF, ...args], {encoding: "utf8"});
     const specPath = path.join(DIR, specFile);
-    const mutate = (fn: (s: any) => void) => {
+    const mutate = (fn: (s: Json) => void) => {
         const s = JSON.parse(JSON.stringify(spec));
         fn(s);
         const f = path.join(mkdtempSync(path.join(tmpdir(), "arcane-diff-")), "mut.json");
