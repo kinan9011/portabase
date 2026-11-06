@@ -8,7 +8,6 @@ import {defineConfig} from "vitest/config";
 //   pnpm test:fork:e2e           needs a production build (`pnpm build`) + FORK_TEST_DATABASE_URL
 const alias = {
     "@": path.resolve(__dirname, "src"),
-    "@app": path.resolve(__dirname, "app"),
     "server-only": path.resolve(__dirname, "src/fork/__tests__/stubs/server-only.ts"),
 };
 
@@ -17,6 +16,7 @@ export default defineConfig({
     esbuild: {jsx: "automatic"},
     test: {
         passWithNoTests: false,
+        fileParallelism: false, // integration/e2e share one Postgres + ports; unit is tiny, so serial everywhere
         projects: [
             {
                 extends: true,
@@ -35,7 +35,6 @@ export default defineConfig({
                     environment: "node",
                     testTimeout: 60_000,
                     hookTimeout: 60_000,
-                    fileParallelism: false,
                     setupFiles: ["src/fork/__tests__/setup-db.ts"],
                 },
             },
@@ -47,7 +46,6 @@ export default defineConfig({
                     environment: "node",
                     testTimeout: 240_000,
                     hookTimeout: 240_000,
-                    fileParallelism: false,
                     setupFiles: ["src/fork/__tests__/setup-db.ts"],
                 },
             },

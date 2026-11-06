@@ -1,0 +1,11 @@
+# Machine-readable mirror of the Obsidian "02-Patch-Registry" (Actual patches). One row per upstream hook.
+# Format:  id | file | anchor symbol (must appear in the file; NOT a line number, ARCH-22) | markers
+#   markers = number of `FORK(stack-recovery): <id> ...` markers expected in that file, or `-` for files that
+#   cannot carry comments (package.json: the anchor proves the hook instead).
+# Add a row in the SAME commit that adds a hook; scripts/fork/check-patches.sh fails on any mismatch.
+P01|src/db/index.ts|schemas|2
+P02|src/utils/init/index.ts|makeMigration|2
+P04|proxy.ts|checkRouteExists|3
+P05|src/features/layout/components/app-sidebar.tsx|SidebarMenuCustomMain|2
+P14|package.json|test:fork|-
+P15|docker/dockerfile/Dockerfile|COPY --chown=1001:1001 src/db ./src/db|1

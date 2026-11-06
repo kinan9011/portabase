@@ -3,7 +3,7 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 const user = vi.hoisted(() => ({current: null as null | { role: string }}));
 vi.mock("@/lib/auth/current-user", () => ({currentUser: async () => user.current}));
 
-import {GET} from "@app/api/fork/status/route";
+import {GET} from "../../../../app/api/fork/status/route";
 import {registerActivePolicyProbe, setLaneStatus} from "@/fork/mode";
 
 describe("GET /api/fork/status", () => {

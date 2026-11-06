@@ -59,13 +59,14 @@ type ForkGlobal = {
 const KEY = Symbol.for("portabase.fork.state.v1");
 function store(): ForkGlobal {
     const g = globalThis as unknown as Record<symbol, ForkGlobal | undefined>;
-    return (g[KEY] ??= {
+    g[KEY] ??= {
         lane: {state: "not-run"},
         // Seams (no stack tables exist in W01): W04 registers the real probe over the persisted
         // activation state and the D21 single-tenant self-check.
         probe: async () => 0,
         selfCheck: async () => ({ok: true}),
-    });
+    };
+    return g[KEY] as ForkGlobal;
 }
 
 export const setLaneStatus = (s: LaneStatus) => {

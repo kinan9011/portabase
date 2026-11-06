@@ -16,7 +16,8 @@ export type ForkRuntimeTask = {
 const KEY = Symbol.for("portabase.fork.tasks.v1");
 function tasks(): ForkRuntimeTask[] {
     const g = globalThis as unknown as Record<symbol, ForkRuntimeTask[] | undefined>;
-    return (g[KEY] ??= []);
+    g[KEY] ??= [];
+    return g[KEY] as ForkRuntimeTask[];
 }
 
 export function registerForkRuntimeTask(task: ForkRuntimeTask) {

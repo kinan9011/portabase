@@ -7,7 +7,7 @@ const user = vi.hoisted(() => ({current: null as null | { role: string }}));
 vi.mock("@/lib/auth/current-user", () => ({currentUser: async () => user.current}));
 vi.mock("next/navigation", () => ({notFound: () => { throw new Error("NEXT_NOT_FOUND"); }}));
 
-import IntegrationsPage from "@app/(customer)/dashboard/(admin)/integrations/page";
+import IntegrationsPage from "../../../../app/(customer)/dashboard/(admin)/integrations/page";
 
 describe("Integrations placeholder page", () => {
     beforeEach(() => { user.current = {role: "admin"}; });
