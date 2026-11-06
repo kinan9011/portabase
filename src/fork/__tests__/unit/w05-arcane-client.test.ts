@@ -236,6 +236,8 @@ describe("connection checks", () => {
         expect(a.calls[0].headers).toEqual({});
         const b = await client(() => json(200, {data: {currentVersion: "2.17.3"}}));
         expect(await b.c.getVersion()).toBe("2.17.3");
+        // the real lab answers `v2.17.3` (observed live, W05): the leading v must not break the pin check
+        expect(await (await client(() => json(200, {currentVersion: "v2.17.3", updateAvailable: false}))).c.getVersion()).toBe("2.17.3");
     });
     it("listOwnerKeys parses permission grants", async () => {
         const {c} = await client(() => json(200, {success: true, data: [{id: "k1", name: "n", keyPrefix: "arc_abc", kind: "scoped", permissions: [{permission: "environments:list"}, {permission: "containers:list", environmentId: "0"}]}]}));

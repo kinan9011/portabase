@@ -87,7 +87,7 @@ export const ApiKeyRow = z.object({
 });
 export type ApiKeyRowT = z.infer<typeof ApiKeyRow>;
 
-/** `GET /version` (unauthenticated): accepts the bare object or a `data` wrapper. */
+/** `GET /version` (unauthenticated): accepts the bare object or a `data` wrapper. The lab reports `v2.17.3`: the leading `v` is dropped (observed W05). */
 export const VersionResponse = z
     .union([z.object({currentVersion: str}), z.object({data: z.object({currentVersion: str})})])
-    .transform((v) => ("data" in v ? v.data.currentVersion : v.currentVersion));
+    .transform((v) => ("data" in v ? v.data.currentVersion : v.currentVersion).trim().replace(/^v/i, ""));
