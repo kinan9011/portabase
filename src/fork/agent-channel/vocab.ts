@@ -6,13 +6,23 @@ export const CHANNEL_VERSION = 1;
 /** Domain-separation prefix of the signed bytes: `SIGN_DOMAIN ‖ envelope_text`. */
 export const SIGN_DOMAIN = "portabase-fork-task:v1\n";
 
-/** W15 executes `noop` only; restore / compose / quiesce types are added by W17 / W17b (their `requires` entries land with them). */
-export const TASK_TYPES = ["noop"] as const;
+/**
+ * W15 executes `noop`; W15b adds the three channel-maintenance types (ADR-007 A11). Restore / compose / quiesce types come with W17 / W17b.
+ * Maintenance types are NEVER enqueueable through the generic `enqueueTask` (`PUBLIC_TASK_TYPES`): only dedicated admin services build their payload.
+ */
+export const MAINT_CAPABILITY = "channel-maint.v1";
+export const TASK_TYPES = ["noop", "pin_add", "pin_revoke", "rotate_credential"] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
-export const TASK_REQUIRES: Readonly<Record<TaskType, readonly string[]>> = {noop: ["noop.v1"]};
+export const PUBLIC_TASK_TYPES = ["noop"] as const;
+export const MAINT_TASK_TYPES = ["pin_add", "pin_revoke", "rotate_credential"] as const;
+export const TASK_REQUIRES: Readonly<Record<TaskType, readonly string[]>> = {noop: ["noop.v1"], pin_add: [MAINT_CAPABILITY], pin_revoke: [MAINT_CAPABILITY], rotate_credential: [MAINT_CAPABILITY]};
+/** Pinned dashboard keys per agent (agent enforces the same bound), PEM size bound, kid grammar (first 12 hex of SHA-256(SPKI DER)). */
+export const MAX_PINS = 8;
+export const PIN_PEM_MAX = 4096;
+export const KID_RE = /^[0-9a-f]{12}$/;
 
 /** Capabilities a fork agent may report (ADR-007 D6). Unknown strings that match the grammar are stored but never satisfy a `requires`. */
-export const KNOWN_CAPABILITIES = ["channel.v1", "noop.v1", "plaintext-hash.v1", "compose.render.v1", "restore.target.v1", "quiesce.v1", "sweep.v1"] as const;
+export const KNOWN_CAPABILITIES = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "compose.render.v1", "restore.target.v1", "quiesce.v1", "sweep.v1"] as const;
 export const CAPABILITY_RE = /^[a-z][a-z0-9-]{0,31}(\.[a-z][a-z0-9-]{0,31})*\.v[0-9]{1,2}$/;
 export const MAX_CAPABILITIES = 32;
 

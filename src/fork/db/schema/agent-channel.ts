@@ -25,6 +25,13 @@ export const forkAgentEnrollment = pgTable("fork_agent_enrollment", {
     /** Rotation overlap (D2): the previous hash stays valid until `prev_valid_until` or the first request with the new credential. */
     prevCredentialHash: text("prev_credential_hash"),
     prevValidUntil: ts("prev_valid_until"),
+    /**
+     * Signed `rotate_credential` overlap slot (W15b, ADR-007 A12): the NEW hash is valid next to the current one until the agent proves it (first
+     * use ⇒ promoted), the task fails/is never delivered (⇒ cleared) or `pending_valid_until` passes. All three are set or null together.
+     */
+    pendingCredentialHash: text("pending_credential_hash"),
+    pendingTaskId: uuid("pending_task_id"),
+    pendingValidUntil: ts("pending_valid_until"),
     taskKeyEnc: jsonb("task_key_enc").notNull(),
     pinnedKids: text("pinned_kids").array().notNull().default(sql`'{}'::text[]`),
     pinFingerprint: text("pin_fingerprint").notNull(),
@@ -41,6 +48,8 @@ export const forkAgentEnrollment = pgTable("fork_agent_enrollment", {
 }, (t) => [
     check("fork_agent_enrollment_hash_ck", sql`${t.credentialHash} ~ '^[0-9a-f]{64}$'`),
     check("fork_agent_enrollment_prev_ck", sql`(${t.prevCredentialHash} IS NULL) = (${t.prevValidUntil} IS NULL)`),
+    check("fork_agent_enrollment_pending_ck", sql`(${t.pendingCredentialHash} IS NULL) = (${t.pendingTaskId} IS NULL) AND (${t.pendingTaskId} IS NULL) = (${t.pendingValidUntil} IS NULL)`),
+    check("fork_agent_enrollment_pending_hash_ck", sql`${t.pendingCredentialHash} IS NULL OR ${t.pendingCredentialHash} ~ '^[0-9a-f]{64}$'`),
     check("fork_agent_enrollment_seq_ck", sql`${t.nextSeq} >= 1`),
 ]);
 

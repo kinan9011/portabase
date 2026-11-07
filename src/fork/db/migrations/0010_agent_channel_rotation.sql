@@ -1,0 +1,5 @@
+ALTER TABLE "fork_agent_enrollment" ADD COLUMN "pending_credential_hash" text;--> statement-breakpoint
+ALTER TABLE "fork_agent_enrollment" ADD COLUMN "pending_task_id" uuid;--> statement-breakpoint
+ALTER TABLE "fork_agent_enrollment" ADD COLUMN "pending_valid_until" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "fork_agent_enrollment" ADD CONSTRAINT "fork_agent_enrollment_pending_ck" CHECK (("fork_agent_enrollment"."pending_credential_hash" IS NULL) = ("fork_agent_enrollment"."pending_task_id" IS NULL) AND ("fork_agent_enrollment"."pending_task_id" IS NULL) = ("fork_agent_enrollment"."pending_valid_until" IS NULL));--> statement-breakpoint
+ALTER TABLE "fork_agent_enrollment" ADD CONSTRAINT "fork_agent_enrollment_pending_hash_ck" CHECK ("fork_agent_enrollment"."pending_credential_hash" IS NULL OR "fork_agent_enrollment"."pending_credential_hash" ~ '^[0-9a-f]{64}$');

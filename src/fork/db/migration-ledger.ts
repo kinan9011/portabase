@@ -22,6 +22,7 @@ export const MIGRATION_LEDGER: readonly LedgerEntry[] = [
     {tag: "0007_notification_delivery", wave: "W13", note: "fork_notification_outbox: attempts, next_attempt_at, claimed_until, last_error_code, state `suppressed`; fork_alert_state (per-stack alert episodes: drift to Partial, no good backup)"},
     {tag: "0008_manifest_kit", wave: "W14", note: "fork_trust_anchor (signing public keys, never deleted), fork_kit (kit ISSUE record + verification code, no key material), fork_kit_token (single-use kit grants, hash only), fork_dashboard_db_source (D40)"},
     {tag: "0009_agent_task_channel", wave: "W15", note: "fork_agent_enrollment (per-agent credential hash, pinned kids, task key envelope, capabilities, next_seq), fork_agent_task (D34 queue: signed envelope text, payload_enc, lease), fork_agent_hash_report (D45)"},
+    {tag: "0010_agent_channel_rotation", wave: "W15b", note: "fork_agent_enrollment: pending_credential_hash, pending_task_id, pending_valid_until (signed rotate_credential overlap slot, ADR-007 A12)"},
     // R2: append here; one entry per generated migration, in order.
 ];
 

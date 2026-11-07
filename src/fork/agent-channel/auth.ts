@@ -3,6 +3,7 @@ import {agent} from "@/db/schema/08_agent";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkAgentEnrollment} from "@/fork/db/schema/agent-channel";
 import {checkRate} from "@/fork/net/rate-limit";
+import {recordAudit} from "@/fork/audit";
 import {matchCredential, parseBearer} from "./credential";
 import {RATE} from "./vocab";
 
@@ -38,7 +39,8 @@ export async function authenticateAgent(db: ForkDb, a: {agentId: string; authori
     // always run the comparison, with the real hashes or with dummies
     const secret = bearer && bearer.agentId === pathId ? bearer.secret : "x".repeat(43);
     const prevOk = row?.e.prevCredentialHash && row.e.prevValidUntil && row.e.prevValidUntil > now ? row.e.prevCredentialHash : null;
-    const m = matchCredential(secret, row?.e.credentialHash ?? null, prevOk);
+    const pendingOk = row?.e.pendingCredentialHash && row.e.pendingValidUntil && row.e.pendingValidUntil > now ? row.e.pendingCredentialHash : null;
+    const m = matchCredential(secret, row?.e.credentialHash ?? null, prevOk, pendingOk);
     if (!row || !bearer || bearer.agentId !== pathId || !m || row.e.revokedAt) return fail();
     const per = rate(`agent-channel-agent:${row.e.id}`, RATE.agent.limit, RATE.agent.windowMs, now.getTime());
     if (!per.ok) return {ok: false, status: 429, code: "rate_limited", retryAfterSeconds: per.retryAfterSeconds};
@@ -46,6 +48,9 @@ export async function authenticateAgent(db: ForkDb, a: {agentId: string; authori
     const patch: Partial<typeof forkAgentEnrollment.$inferInsert> = {lastSeenAt: now};
     // the agent presented the NEW secret: the old one stops working now (D2: "until the agent acks with the new one or 24 h")
     if (m === "current" && row.e.prevCredentialHash) { patch.prevCredentialHash = null; patch.prevValidUntil = null; }
+    // the agent proved the NEW secret of a signed rotate_credential (W15b, A12): it becomes the credential, the old one dies now
+    if (m === "pending") Object.assign(patch, {credentialHash: row.e.pendingCredentialHash, prevCredentialHash: null, prevValidUntil: null, pendingCredentialHash: null, pendingTaskId: null, pendingValidUntil: null});
     await db.update(forkAgentEnrollment).set(patch).where(eq(forkAgentEnrollment.id, row.e.id));
+    if (m === "pending") await recordAudit(db, {organizationId: row.org ?? null, actorKind: "system", action: "fork.agent_channel.rotate_confirmed", resourceType: "agent", resourceId: row.e.agentId, result: "success", details: {taskId: row.e.pendingTaskId}, now});
     return {ok: true, enrollment: row.e, organizationId: row.org ?? null, agentName: row.name ?? "agent"};
 }
