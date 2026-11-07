@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {SyncSummarySchema} from "@/fork/discovery/sync-summary";
 import {HOST_ROLES, SYNC_STATUSES} from "@/fork/db/enums";
 import {forkArcaneEnvironment} from "@/fork/db/schema/arcane";
 
@@ -19,6 +20,7 @@ export const ENVIRONMENT_PUBLIC_COLUMNS = {
     lastSyncAt: forkArcaneEnvironment.lastSyncAt,
     lastSyncStatus: forkArcaneEnvironment.lastSyncStatus,
     lastSyncErrorClass: forkArcaneEnvironment.lastSyncErrorClass,
+    lastSyncSummary: forkArcaneEnvironment.lastSyncSummary,
 } as const;
 
 export const EnvironmentDtoSchema = z.strictObject({
@@ -33,6 +35,7 @@ export const EnvironmentDtoSchema = z.strictObject({
     lastSyncAt: z.date().nullable(),
     lastSyncStatus: z.enum(SYNC_STATUSES).nullable(),
     lastSyncErrorClass: z.string().nullable(),
+    lastSyncSummary: SyncSummarySchema.nullable(),
 });
 export type EnvironmentDto = z.infer<typeof EnvironmentDtoSchema>;
 

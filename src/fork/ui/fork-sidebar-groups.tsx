@@ -1,7 +1,7 @@
-import {currentUser} from "@/lib/auth/current-user";
 import {currentForkMode} from "@/fork/mode";
 import {buildForkNav} from "@/fork/nav";
 import {ForkSidebarNav} from "@/fork/ui/fork-sidebar-groups.client";
+import {currentUser} from "@/lib/auth/current-user";
 
 /**
  * Server component rendered as a SIBLING of upstream's `<SidebarMenuCustomMain/>` (hook P05).

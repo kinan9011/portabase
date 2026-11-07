@@ -1,26 +1,28 @@
 "use client";
 
+import {useRouter} from "next/navigation";
 import * as React from "react";
 import {Alert, AlertDescription, AlertTitle} from "@/components/ui/alert";
 import type {Outcome, Verification} from "@/fork/arcane/connection-service";
 import type {EnvironmentOutcome} from "@/fork/arcane/environment-service";
 import type {IntegrationsView} from "@/fork/arcane/integrations-view";
-import {StatusAnnouncer, useAnnounce} from "@/fork/ui/status-announcer";
+import type {SyncNowOutcome} from "@/fork/discovery/sync";
 import {ConnectionCard} from "@/fork/ui/integrations/connection-card";
 import {ConnectionForm} from "@/fork/ui/integrations/connection-form";
 import {deriveConnectionState, type TransientState} from "@/fork/ui/integrations/connection-state";
 import {SetupPath} from "@/fork/ui/integrations/empty-states";
 import {EnvironmentTable} from "@/fork/ui/integrations/environment-table";
 import type {SecretKeyHandle} from "@/fork/ui/integrations/secret-key-input";
-import {useIntegrationsActions, type UiResult} from "@/fork/ui/integrations/use-integrations-actions";
-import {CONNECTION_STATE_LABELS, REFUSAL_COPY} from "@/fork/ui/labels";
+import {type UiResult, useIntegrationsActions } from "@/fork/ui/integrations/use-integrations-actions";
+import {CONNECTION_STATE_LABELS, REFUSAL_COPY, SYNC_COPY, SYNC_ERROR_LABELS} from "@/fork/ui/labels";
+import {StatusAnnouncer, useAnnounce} from "@/fork/ui/status-announcer";
 import {ToneIcon} from "@/fork/ui/tone-badge";
 
 export type IntegrationsViewProps = {
     view: IntegrationsView;
     /** "Fork configuration locked: <failed check>" while the D21 self-check fails (§4.1), else null. */
     lockedReason: string | null;
-    /** Fixture/test seam only: force a transient state (`syncing` is supplied by W07's sync, never invented here). */
+    /** Fixture/test seam only: force a transient state. */
     forceTransient?: TransientState;
     /** Fixture/test seam only: pretend the last check produced this verification. */
     initialVerification?: Verification | null;
@@ -36,8 +38,16 @@ function Inner({view, lockedReason, forceTransient, initialVerification}: Integr
     const [verification, setVerification] = React.useState<Verification | null>(initialVerification ?? null);
     const [warnings, setWarnings] = React.useState<string[]>([]);
 
-    const actions = useIntegrationsActions(keyRef, (r: UiResult<Outcome | EnvironmentOutcome>, what) => {
+    const router = useRouter();
+    const actions = useIntegrationsActions(keyRef, (r: UiResult<Outcome | EnvironmentOutcome | SyncNowOutcome>, what) => {
         setRotateError(null); setFormError(null);
+        if (r.kind === "ok" && what === "sync") {
+            // the sync RAN: say what it found, from the returned run (code-only), never from a guess
+            const run = (r.outcome as Extract<SyncNowOutcome, {ok: true}>).run;
+            announce(run.status === "failed" ? SYNC_COPY.announce.failed(SYNC_ERROR_LABELS[run.connectionError ?? ""] ?? "see the environment table")
+                : run.status === "partial" ? SYNC_COPY.announce.partial(run.totals.found) : SYNC_COPY.announce.ok(run.totals.found, run.totals.created + run.totals.changed));
+            return;
+        }
         if (r.kind === "ok") {
             const o = r.outcome as Outcome & {changed?: string[]};
             if ("verification" in o) { setVerification(o.verification); setWarnings(o.warnings); }
@@ -57,8 +67,16 @@ function Inner({view, lockedReason, forceTransient, initialVerification}: Integr
         announce(`Not done: ${msg}`);
     });
 
-    const transient: TransientState = forceTransient ?? (actions.save.isPending || actions.test.isPending || actions.rotate.isPending ? "testing" : null);
     const c = view.connection;
+    const syncing = actions.sync.isPending || !!c?.syncing;
+    const transient: TransientState = forceTransient ?? (actions.save.isPending || actions.test.isPending || actions.rotate.isPending ? "testing" : syncing ? "syncing" : null);
+    // a sync started elsewhere (cron / another tab / replica) holds the server lease: poll the server state until it ends
+    const serverSyncing = !!c?.syncing && !actions.sync.isPending;
+    React.useEffect(() => {
+        if (!serverSyncing) return;
+        const t = setInterval(() => router.refresh(), 3000);
+        return () => clearInterval(t);
+    }, [serverSyncing, router]);
     const state = deriveConnectionState(c, transient);
     const pending = actions.save.isPending || actions.test.isPending;
     const busyEnv = actions.environment.isPending ? (actions.environment.variables?.environmentId ?? null) : null;
@@ -77,6 +95,8 @@ function Inner({view, lockedReason, forceTransient, initialVerification}: Integr
                     onEdit={() => setEditing(true)}
                     onRotate={() => { announce("Verifying the new key…"); actions.rotate.mutate({connectionId: c.id}); }}
                     onDisconnect={() => { announce("Disconnecting…"); actions.disconnect.mutate({connectionId: c.id}); }}
+                    onSync={() => { announce(SYNC_COPY.announce.started); actions.sync.mutate({connectionId: c.id}); }}
+                    syncing={syncing} hasEnabledEnvironment={view.environments.some((e) => e.enabled)}
                     rotateError={rotateError} rotateOpen={rotateOpen} setRotateOpen={setRotateOpen} rotatePending={actions.rotate.isPending}
                 />
             ) : (

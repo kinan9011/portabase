@@ -1,5 +1,5 @@
 import type {ArcaneErrorClass} from "@/fork/arcane/errors";
-import {CONNECTION_ERROR_COPY, CONNECTION_STATE_LABELS, type AlertCopy, type ConnectionState} from "@/fork/ui/labels";
+import {type AlertCopy, CONNECTION_ERROR_COPY, CONNECTION_STATE_LABELS, type ConnectionState} from "@/fork/ui/labels";
 import type {Tone} from "@/fork/ui/tone";
 
 /** The persisted facts the UI state is derived from (the non-secret part of `ConnectionDto`). */

@@ -8,13 +8,14 @@ import {axeViolations} from "@/fork/__tests__/axe";
 
 const h = vi.hoisted(() => ({
     refresh: vi.fn(),
-    save: vi.fn(), test: vi.fn(), rotate: vi.fn(), disconnect: vi.fn(), env: vi.fn(),
+    save: vi.fn(), test: vi.fn(), rotate: vi.fn(), disconnect: vi.fn(), env: vi.fn(), sync: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh: h.refresh}), notFound: () => { throw new Error("NEXT_NOT_FOUND"); }}));
 vi.mock("@/fork/actions/arcane-connection.action", () => ({
     saveArcaneConnectionAction: h.save, testArcaneConnectionAction: h.test, rotateArcaneKeyAction: h.rotate, disconnectArcaneAction: h.disconnect,
 }));
 vi.mock("@/fork/actions/arcane-environment.action", () => ({updateArcaneEnvironmentAction: h.env}));
+vi.mock("@/fork/actions/sync.action", () => ({syncArcaneNowAction: h.sync}));
 
 import {IntegrationsViewClient, type IntegrationsViewProps} from "@/fork/ui/integrations/integrations-view.client";
 import {CONNECTION_STATE_LABELS, CONNECTION_STATES, LOCKED_PREFIX, SYNC_NOW, type ConnectionState} from "@/fork/ui/labels";
@@ -27,11 +28,12 @@ const ENV2 = "44444444-4444-4444-8444-444444444444";
 
 const conn = (o: Partial<NonNullable<IntegrationsView["connection"]>> = {}) => ({
     id: ID, name: "Arcane", baseUrl: "https://arcane.example.internal", healthStatus: "healthy" as const, lastErrorClass: null, tlsInsecure: false, allowProjectsRead: false,
-    pinnedApiVersion: "2.17.3", keyStored: true as const, lastCheckedAt: "2026-11-07T10:00:00.000Z", updatedAt: "2026-11-07T10:00:00.000Z", ...o,
+    pinnedApiVersion: "2.17.3", keyStored: true as const, lastCheckedAt: "2026-11-07T10:00:00.000Z", updatedAt: "2026-11-07T10:00:00.000Z",
+    syncing: false, lastSyncAttemptAt: null, syncFailureStreak: 0, circuitOpenUntil: null, ...o,
 });
 const env = (id: string, o: Record<string, unknown> = {}) => ({
     id, connectionId: ID, externalId: id === ENV1 ? "0" : "1", name: id === ENV1 ? "local" : "vps", enabled: false, hostRole: "production" as const, agentId: null, agentName: null,
-    lastSyncAt: null, lastSyncStatus: null, lastSyncErrorClass: null, agentStatus: null, ...o,
+    lastSyncAt: null, lastSyncStatus: null, lastSyncErrorClass: null, lastSyncSummary: null, agentStatus: null, stacks: {found: 0, stale: 0, protectedCount: 0}, ...o,
 });
 const view = (o: Partial<IntegrationsView> = {}): IntegrationsView => ({
     connection: conn(), additionalConnections: 0, environments: [env(ENV1), env(ENV2, {agentId: AGENT, agentName: "vps-agent", agentStatus: "online"})] as IntegrationsView["environments"],
@@ -88,12 +90,12 @@ describe("all 9 connection states render with label, inline description, alert c
         const {container} = renderView({forceTransient: "syncing"});
         expect(container.querySelector('section[aria-busy="true"]')).toBeTruthy();
     });
-    it("connected card shows facts, never a key; stacks column is an honest dash", () => {
+    it("connected card shows facts, never a key; stacks column shows the DB counts (0 found · 0 protected before any sync)", () => {
         const {container} = renderView();
         expect(container.textContent).toContain("Stored, encrypted. Never shown again.");
         expect(container.textContent).toContain("2.17.3");
         expect(container.textContent).toContain("Nov 7, 2026, 10:00 AM UTC"); // fixed zone: server and browser render the same text (no hydration mismatch)
-        expect(screen.getAllByText(/^not available yet$/).length).toBe(2);
+        expect(screen.getAllByTestId("stack-counts").map((n) => n.textContent)).toEqual(["0 found · 0 protected", "0 found · 0 protected"]);
         expect(container.querySelectorAll('input[type="password"]').length).toBe(0);
     });
 });
@@ -183,20 +185,20 @@ describe("key field contract (UX-07) and the secret never leaving the input", ()
 });
 
 describe("disabled with a visible reason (§8.2 rule 10)", () => {
-    it("Sync now is aria-disabled, focusable, reason visible and linked; click does nothing", () => {
+    it("Sync now with no enabled environment is aria-disabled, focusable, reason visible and linked; click sends nothing", () => {
         renderView();
         const b = screen.getByRole("button", {name: SYNC_NOW.label});
         expect(b.getAttribute("aria-disabled")).toBe("true");
         expect(b.hasAttribute("disabled")).toBe(false);
-        expect(document.getElementById(b.getAttribute("aria-describedby")!)?.textContent).toBe(SYNC_NOW.disabledReason);
+        expect(document.getElementById(b.getAttribute("aria-describedby")!)?.textContent).toBe(SYNC_NOW.noEnvironment);
         fireEvent.click(b);
-        expect(h.test).not.toHaveBeenCalled();
+        expect(h.sync).not.toHaveBeenCalled();
     });
     it("locked configuration: every action and every environment control is aria-disabled with the visible reason; nothing is sent", async () => {
         const reason = `${LOCKED_PREFIX}: more than one organization exists`;
         const {container} = renderView({lockedReason: reason});
         expect(screen.getByTestId("locked-banner").textContent).toContain(reason);
-        for (const name of ["Test connection", "Edit", "Rotate key", "Disconnect"]) {
+        for (const name of ["Sync now", "Test connection", "Edit", "Rotate key", "Disconnect"]) {
             const b = screen.getByRole("button", {name});
             expect(b.getAttribute("aria-disabled"), name).toBe("true");
             expect(document.getElementById(b.getAttribute("aria-describedby")!)?.textContent).toBe(reason);
@@ -349,5 +351,87 @@ describe("test connection + environment table", () => {
             const {container} = renderView({view: view({connection: conn({healthStatus: "unreachable", lastErrorClass: "tls"})})});
             expect(await axeViolations(container)).toEqual([]);
         } finally { document.documentElement.classList.remove("dark"); }
+    });
+});
+
+
+describe("Sync now (W07): real action, honest states, no fake success", () => {
+    const enabledView = (c: Partial<NonNullable<IntegrationsView["connection"]>> = {}, e: Record<string, unknown> = {}) => view({connection: conn(c), environments: [env(ENV1, {enabled: true, ...e}), env(ENV2)] as IntegrationsView["environments"]});
+    const run = (o: Record<string, unknown> = {}) => ({status: "ok", trigger: "manual", startedAt: "2026-11-07T10:00:00.000Z", durationMs: 1200, connectionError: null, environments: [], totals: {found: 3, created: 1, changed: 1, unchanged: 1, absent: 0, rejected: 0, services: 4, mounts: 6, warnings: 2}, reconcile: {gone: 0, added: 0}, circuit: {open: false, opened: false, closed: false, until: null, streak: 0}, ...o});
+
+    it("enabled environment ⇒ the button works: calls the server action with the connection id, shows Syncing… while pending, announces the REAL result", async () => {
+        let done: (v: unknown) => void = () => {};
+        h.sync.mockReturnValue(new Promise((r) => { done = r; }));
+        const {container} = renderView({view: enabledView()});
+        const b = screen.getByRole("button", {name: "Sync now"});
+        expect(b.getAttribute("aria-disabled")).toBeNull();
+        fireEvent.click(b);
+        await waitFor(() => expect(h.sync).toHaveBeenCalledWith({connectionId: ID}));
+        expect(container.querySelector('section[aria-busy="true"]')).toBeTruthy();
+        expect(screen.getByRole("button", {name: "Syncing…"}).getAttribute("aria-disabled")).toBe("true");
+        expect(screen.getByRole("heading", {level: 2, name: "Arcane"}).parentElement?.textContent).toContain("Syncing…");
+        done({data: {ok: true, run: run()}});
+        await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Sync finished: 3 stacks found, 2 new or changed."));
+        expect(h.refresh).toHaveBeenCalled(); // state is re-read from the server, not invented
+        expect(screen.getByRole("button", {name: "Sync now"})).toBeTruthy();
+    });
+    it("failed / partial runs are announced as such; a refusal says exactly why and changes nothing", async () => {
+        h.sync.mockResolvedValueOnce({data: {ok: true, run: run({status: "failed", connectionError: "unreachable"})}});
+        renderView({view: enabledView()});
+        fireEvent.click(screen.getByRole("button", {name: "Sync now"}));
+        await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Sync failed: Arcane could not be reached. Cached data was kept and marked stale."));
+        h.sync.mockResolvedValueOnce({data: {ok: true, run: run({status: "partial"})}});
+        fireEvent.click(screen.getByRole("button", {name: "Sync now"}));
+        await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Sync finished with problems: 3 stacks found."));
+        h.sync.mockResolvedValueOnce({data: {ok: false, code: "already_running", message: "A sync is already running. It reads the same data; reload to see its result."}});
+        fireEvent.click(screen.getByRole("button", {name: "Sync now"}));
+        await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Not done: A sync is already running."));
+        h.sync.mockRejectedValueOnce(new Error("network"));
+        fireEvent.click(screen.getByRole("button", {name: "Sync now"}));
+        await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Not done:"));
+    });
+    it("a sync holding the server lease (cron / other tab) shows Syncing…, disables the button with the reason, and polls the server state", async () => {
+        vi.useFakeTimers();
+        try {
+            renderView({view: enabledView({syncing: true})});
+            const b = screen.getByRole("button", {name: "Syncing…"});
+            expect(b.getAttribute("aria-disabled")).toBe("true");
+            expect(document.getElementById(b.getAttribute("aria-describedby")!)?.textContent).toBe("A sync is already running.");
+            expect(h.refresh).not.toHaveBeenCalled();
+            vi.advanceTimersByTime(3100);
+            expect(h.refresh).toHaveBeenCalledTimes(1);
+        } finally { vi.useRealTimers(); }
+    });
+    it("circuit open: a visible note with the time and the way out; expired back-off shows nothing", () => {
+        const future = new Date(Date.now() + 600_000).toISOString();
+        const {unmount} = renderView({view: enabledView({circuitOpenUntil: future, syncFailureStreak: 6})});
+        const note = screen.getByTestId("circuit-note");
+        expect(note.textContent).toContain("Automatic discovery is paused");
+        expect(note.textContent).toContain("The last 6 syncs failed");
+        expect(note.textContent).toContain("Sync now tries again at once");
+        unmount();
+        renderView({view: enabledView({circuitOpenUntil: new Date(Date.now() - 1000).toISOString(), syncFailureStreak: 6})});
+        expect(screen.queryByTestId("circuit-note")).toBeNull();
+    });
+    it("environment table: last-sync summary, found/protected counts, stale note, gone environment, error vocabulary", () => {
+        const summary = {trigger: "cron", started_at: "2026-11-07T10:00:00.000Z", duration_ms: 2400, stacks_found: 2, stacks_new: 1, stacks_changed: 0, stacks_unchanged: 1, stacks_absent: 0, stacks_rejected: 0, services: 3, mounts: 4, unmanaged_containers: 5, warnings: 1, errors: [], partial: false};
+        renderView({view: view({connection: conn(), environments: [
+            env(ENV1, {enabled: true, lastSyncAt: "2026-11-07T10:00:00.000Z", lastSyncStatus: "ok", lastSyncSummary: summary, stacks: {found: 2, stale: 0, protectedCount: 0}}),
+            env(ENV2, {enabled: true, lastSyncAt: "2026-11-07T10:05:00.000Z", lastSyncStatus: "error", lastSyncErrorClass: "unreachable", lastSyncSummary: {...summary, errors: [{code: "unreachable", count: 1}], stacks_found: 0}, stacks: {found: 1, stale: 1, protectedCount: 0}}),
+        ] as IntegrationsView["environments"]})});
+        const cells = screen.getAllByTestId("sync-cell").map((c) => c.textContent);
+        expect(cells[0]).toContain("2 stacks, 1 new or changed · 2 s");
+        expect(cells[1]).toContain("error");
+        expect(cells[1]).toContain("Arcane could not be reached");
+        expect(screen.getAllByTestId("stack-counts").map((n) => n.textContent)).toEqual(["2 found · 0 protected", "1 found · 0 protected"]);
+        expect(screen.getByText("Stale: the last sync failed, this is older data.")).toBeTruthy();
+    });
+    it("gone environment says so", () => {
+        renderView({view: view({connection: conn(), environments: [env(ENV1, {enabled: true, lastSyncAt: "2026-11-07T10:00:00.000Z", lastSyncStatus: "error", lastSyncErrorClass: "not_found"})] as IntegrationsView["environments"]})});
+        expect(screen.getByTestId("sync-cell").textContent).toContain("No longer covered by the Arcane key");
+    });
+    it("axe clean with the new surfaces (circuit note, stale, running)", async () => {
+        const {container} = renderView({view: enabledView({circuitOpenUntil: new Date(Date.now() + 600_000).toISOString(), syncFailureStreak: 5, syncing: true}, {lastSyncStatus: "error", lastSyncErrorClass: "unreachable", stacks: {found: 1, stale: 1, protectedCount: 0}})});
+        expect(await axeViolations(container)).toEqual([]);
     });
 });

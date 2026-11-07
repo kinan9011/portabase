@@ -22,6 +22,17 @@ const hint = z.string().max(1024);
 const envKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 const jsonPointer = z.string().max(512).regex(/^(\/[^/]*)*$/);
 
+/** D18 label hints (W07). Defaults only, never trusted (SEC-22): booleans / a three-value enum, never free text. `stop` is data in R1 (D29). */
+export const BACKUP_CONSISTENCY = ["dump", "stop", "crash"] as const;
+const BackupHints = z.strictObject({
+    stop: z.boolean().optional(),
+    exclude: z.boolean().optional(),
+    consistency: z.enum(BACKUP_CONSISTENCY).optional(),
+});
+/** Engines = upstream `dbms_status` values a heuristic can name (ADR-004 §5). A HINT from image/port/mount name, never a probe. */
+export const DB_ENGINES = ["postgresql", "mysql", "mariadb", "mongodb", "redis", "valkey", "firebird", "mssql", "sqlite"] as const;
+const DatabaseHint = z.strictObject({engine: z.enum(DB_ENGINES), basis: z.enum(["image", "port", "mount"])});
+
 const Image = z.strictObject({
     ref: z.string().max(512),
     digest: sha256Ref.optional(),
@@ -41,6 +52,10 @@ const Service = z.strictObject({
     depends_on: z.array(z.string().max(128)).max(100).optional(),
     privileged: z.boolean().optional(),
     network_mode: z.string().max(64).optional(),
+    // W07 additive amendment (ADR-004 §10; schema_version stays 1, no writer existed before W07):
+    profiles: z.array(z.string().max(64)).max(32).optional(), // only when the compose file was read (tier 2)
+    backup_hints: BackupHints.optional(),
+    database_hint: DatabaseHint.optional(),
 });
 
 const Ownership = z.enum(["stack_owned", "external_shared", "unknown"]);
@@ -64,6 +79,7 @@ const Volume = z.strictObject({
     in_use_by: z.array(z.string().max(128)).max(500),
     ownership: Ownership,
     size_bytes: z.number().int().min(0).optional(),
+    backup_hints: BackupHints.optional(), // W07
 });
 
 const Network = z.strictObject({
@@ -73,6 +89,8 @@ const Network = z.strictObject({
     external: z.boolean(),
     subnets: z.array(z.string().max(64)).max(32).optional(),
     members: z.array(z.string().max(128)).max(500),
+    /** W07: `stack_owned` = created by this compose project; `shared_external` = exists independently (labelled for another project, unlabelled, or used by other containers); `manual` = not owned and no network record visible. */
+    classification: z.enum(["stack_owned", "shared_external", "manual"]).optional(),
 });
 
 const EnvFile = z.strictObject({

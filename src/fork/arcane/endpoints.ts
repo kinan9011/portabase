@@ -6,6 +6,8 @@
  * `volumes/{name}`, `workspace/file`, anything POST) are absent and a test asserts they cannot be built.
  */
 export const ARCANE_PINNED_VERSION = "2.17.3";
+/** sha256 of the pinned OpenAPI document (`dev/fork-lab/arcane/openapi.v2.17.3.json.sha256`, test-checked); recorded in every inventory (`source.openapi_sha256`). */
+export const ARCANE_OPENAPI_SHA256 = "68912259415d5cc1d0661fd68db05661dbb0991484653ef85d8c22d91666d9e1";
 export const API_PREFIX = "/api";
 export const PAGE_LIMIT = 100;
 export const MAX_PAGES = 100;

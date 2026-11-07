@@ -22,6 +22,9 @@ export const CONNECTION_PUBLIC_COLUMNS = {
     allowProjectsRead: forkArcaneConnection.allowProjectsRead,
     keyId: forkArcaneConnection.keyId,
     lastCheckedAt: forkArcaneConnection.lastCheckedAt,
+    lastSyncAttemptAt: forkArcaneConnection.lastSyncAttemptAt,
+    syncFailureStreak: forkArcaneConnection.syncFailureStreak,
+    circuitOpenUntil: forkArcaneConnection.circuitOpenUntil,
     createdAt: forkArcaneConnection.createdAt,
     updatedAt: forkArcaneConnection.updatedAt,
 } as const;
@@ -39,6 +42,9 @@ export const ConnectionDtoSchema = z.strictObject({
     allowProjectsRead: z.boolean(),
     keyId: z.string().nullable(),
     lastCheckedAt: z.date().nullable(),
+    lastSyncAttemptAt: z.date().nullable(),
+    syncFailureStreak: z.number().int().min(0),
+    circuitOpenUntil: z.date().nullable(),
     createdAt: z.date(),
     updatedAt: z.date(),
 });

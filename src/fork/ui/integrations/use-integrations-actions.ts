@@ -5,8 +5,10 @@ import {useRouter} from "next/navigation";
 import type * as React from "react";
 import {disconnectArcaneAction, rotateArcaneKeyAction, saveArcaneConnectionAction, testArcaneConnectionAction} from "@/fork/actions/arcane-connection.action";
 import {updateArcaneEnvironmentAction} from "@/fork/actions/arcane-environment.action";
+import {syncArcaneNowAction} from "@/fork/actions/sync.action";
 import type {Outcome} from "@/fork/arcane/connection-service";
 import type {EnvironmentOutcome} from "@/fork/arcane/environment-service";
+import type {SyncNowOutcome} from "@/fork/discovery/sync";
 import type {SecretKeyHandle} from "@/fork/ui/integrations/secret-key-input";
 import {GENERIC_FAILURE, REFUSAL_COPY} from "@/fork/ui/labels";
 
@@ -30,10 +32,10 @@ export type EnvVars = {environmentId: string; enabled?: boolean; agentId?: strin
  * which clears the field in the same breath — so it is cleared after every submit, success or failure.
  * After a server answer the page re-reads server state with `router.refresh()`; nothing is rendered as success on its own.
  */
-export function useIntegrationsActions(keyField: React.RefObject<SecretKeyHandle | null>, onResult: (r: UiResult<Outcome | EnvironmentOutcome>, what: string) => void) {
+export function useIntegrationsActions(keyField: React.RefObject<SecretKeyHandle | null>, onResult: (r: UiResult<Outcome | EnvironmentOutcome | SyncNowOutcome>, what: string) => void) {
     const router = useRouter();
     const done = (what: string) => ({
-        onSuccess: (r: UiResult<Outcome | EnvironmentOutcome>) => { onResult(r, what); router.refresh(); },
+        onSuccess: (r: UiResult<Outcome | EnvironmentOutcome | SyncNowOutcome>) => { onResult(r, what); router.refresh(); },
         onError: () => onResult({kind: "error", message: GENERIC_FAILURE}, what), // transport failure: say so, change nothing on screen
     });
     const key = () => keyField.current?.take();
@@ -49,6 +51,7 @@ export function useIntegrationsActions(keyField: React.RefObject<SecretKeyHandle
             ...done("rotate"),
         }),
         disconnect: useMutation({mutationFn: async (v: {connectionId: string}) => normalise<Outcome>(await disconnectArcaneAction(v)), ...done("disconnect")}),
+        sync: useMutation({mutationFn: async (v: {connectionId: string}) => normalise<SyncNowOutcome>(await syncArcaneNowAction(v)), ...done("sync")}),
         environment: useMutation({mutationFn: async (v: EnvVars) => normalise<EnvironmentOutcome>(await updateArcaneEnvironmentAction(v)), ...done("environment")}),
     };
 }

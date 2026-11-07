@@ -58,6 +58,8 @@ export const REFUSAL_COPY: Record<string, string> = {
     key_reentry_required: "The host, port or scheme changed: enter the API key again. A stored key is never sent to a different endpoint.",
     refused: "Arcane refused the connection; nothing was saved.",
     single_tenant_required: "Stack Recovery needs exactly one organization.",
+    already_running: "A sync is already running. It reads the same data; reload to see its result.",
+    no_enabled_environment: "Turn on discovery for at least one environment first.",
 };
 export const GENERIC_FAILURE = "The action failed on the server and nothing was changed. Try again; if it keeps failing check the server log.";
 
@@ -69,14 +71,37 @@ export const HOST_ROLE_LABELS: Record<HostRole, {label: string; description: str
 export const AGENT_STATUS_LABELS = {online: "Online", degraded: "Degraded", offline: "Offline", none: "No agent mapped"} as const;
 export const ENVIRONMENT_COPY = {
     notSynced: "Not synced yet",
-    stacksUnknown: "—",
-    stacksUnknownReason: "Counts appear once discovery and backup policies exist.",
-    discoveryHelp: "Discovered means visible in Arcane. Backed up means a Portabase policy exists. Neither is shown until those features ship.",
-    enableHelp: "Enabled environments are included in discovery once sync is available.",
-    staleEnvironment: "Not covered by the current key",
+    discoveryHelp: "Found means visible in Arcane at the last sync. Protected means an active Portabase backup policy exists (none can exist yet in this release).",
+    enableHelp: "Enabled environments are included in discovery.",
+    staleEnvironment: "No longer visible to the key. Cached data is kept and marked stale.",
+    stale: "Stale: the last sync failed, this is older data.",
+    gone: "No longer covered by the Arcane key",
 } as const;
 
-export const SYNC_NOW = {label: "Sync now", disabledReason: "Discovery sync is not available yet in this release."} as const;
+export const SYNC_NOW = {
+    label: "Sync now",
+    pending: "Syncing…",
+    noEnvironment: "Turn on discovery for at least one environment first.",
+    running: "A sync is already running.",
+} as const;
+
+/** Fixed, code-only sync error vocabulary (the summary stores codes, never Arcane text). */
+export const SYNC_ERROR_LABELS: Record<string, string> = {
+    unreachable: "Arcane could not be reached", invalid_key: "Arcane rejected the key", permission: "A list permission is missing", incompatible: "Arcane version differs from the tested one",
+    rate_limited: "Arcane is rate limiting", bad_response: "Unexpected Arcane answer", tls: "Certificate could not be verified", blocked_url: "Address not allowed", not_found: "Environment not visible to the key",
+    deadline: "Took longer than 60 s", invalid_project: "A project name was refused", inventory_limit: "A stack exceeded the inventory limits", inventory_invalid: "A stack could not be recorded",
+    key_too_broad: "Key holds more than the minimum", key_unverifiable: "Key permissions could not be read", partial: "Some environments failed", internal: "Internal error (see audit log)",
+};
+export const SYNC_COPY = {
+    circuitTitle: "Automatic discovery is paused",
+    circuitBody: (failures: number, until: string) => `The last ${failures} syncs failed, so Portabase stopped retrying automatically until ${until}. Sync now tries again at once; a successful sync resumes the schedule.`,
+    announce: {
+        started: "Syncing…",
+        ok: (found: number, changed: number) => `Sync finished: ${found} stack${found === 1 ? "" : "s"} found${changed ? `, ${changed} new or changed` : ", nothing changed"}.`,
+        partial: (found: number) => `Sync finished with problems: ${found} stack${found === 1 ? "" : "s"} found. See the environment table.`,
+        failed: (why: string) => `Sync failed: ${why}. Cached data was kept and marked stale.`,
+    },
+} as const;
 export const LOCKED_PREFIX = "Fork configuration locked";
 export const NON_ADMIN_EXPLANATION = {
     title: "Integrations are managed by a system administrator",

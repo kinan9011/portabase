@@ -28,6 +28,14 @@ const auditDays = z
         return Number.isInteger(n) && n >= 1 && n <= 3650 ? n : 400; // ADR-004 §7 default; audit.ts enforces the 90-day floor
     });
 
+const discoveryMinutes = z
+    .string()
+    .optional()
+    .transform((v) => {
+        const n = Number(v?.trim());
+        return Number.isInteger(n) && n >= 5 && n <= 1440 ? n : 15; // ADR-004 §7: 15 min default, min 5
+    });
+
 const schema = z.object({
     FORK_STACKS_ENABLED: flag,
     FORK_ARCANE_ENABLED: flag,
@@ -47,6 +55,8 @@ const schema = z.object({
      * addresses are never allowed whatever this says. See `net/guard.ts`.
      */
     FORK_ARCANE_NET_ALLOWLIST: z.string().optional().transform((v) => v?.trim() ?? ""),
+    /** W07: how often the discovery cron syncs a connection (minutes, 5–1440, default 15; ±20 % jitter). Operator-only, like the allow-list. */
+    FORK_DISCOVERY_INTERVAL_MINUTES: discoveryMinutes,
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -61,6 +71,7 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_AUDIT_RETENTION_DAYS: source.FORK_AUDIT_RETENTION_DAYS,
         FORK_MIGRATIONS_DIR: source.FORK_MIGRATIONS_DIR,
         FORK_ARCANE_NET_ALLOWLIST: source.FORK_ARCANE_NET_ALLOWLIST,
+        FORK_DISCOVERY_INTERVAL_MINUTES: source.FORK_DISCOVERY_INTERVAL_MINUTES,
     });
 }
 

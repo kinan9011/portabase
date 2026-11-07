@@ -8,10 +8,10 @@ import type {Verification} from "@/fork/arcane/connection-service";
 import type {IntegrationsConnection} from "@/fork/arcane/integrations-view";
 import {DangerousActionConfirm, useReturnFocus} from "@/fork/ui/dangerous-action-confirm";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
-import {connectionAlert} from "@/fork/ui/integrations/connection-state";
-import {SecretKeyInput, type SecretKeyHandle} from "@/fork/ui/integrations/secret-key-input";
 import {PermissionList} from "@/fork/ui/integrations/connection-form";
-import {CONNECTION_STATE_LABELS, SYNC_NOW, type ConnectionState} from "@/fork/ui/labels";
+import {connectionAlert} from "@/fork/ui/integrations/connection-state";
+import {type SecretKeyHandle, SecretKeyInput } from "@/fork/ui/integrations/secret-key-input";
+import {CONNECTION_STATE_LABELS, type ConnectionState, SYNC_COPY, SYNC_NOW } from "@/fork/ui/labels";
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge, ToneIcon} from "@/fork/ui/tone-badge";
 
@@ -47,6 +47,17 @@ export function VerificationPanel({v}: {v: Verification}) {
     );
 }
 
+/** Circuit breaker note (W07): only while the back-off lies in the future; says what happens next, no jargon. */
+export function CircuitNote({connection}: {connection: IntegrationsConnection}) {
+    if (!connection.circuitOpenUntil || new Date(connection.circuitOpenUntil).getTime() <= Date.now()) return null;
+    return (
+        <div role="note" data-testid="circuit-note" className={`mx-6 mt-5 flex gap-3 rounded-lg border p-4 ${TONE_MAP.warning.panel}`}>
+            <ToneIcon tone="warning" className="mt-0.5 size-4"/>
+            <div className="text-sm"><p className={`font-semibold ${TONE_MAP.warning.title}`}>{SYNC_COPY.circuitTitle}</p><p className={`mt-0.5 ${TONE_MAP.warning.body}`}>{SYNC_COPY.circuitBody(connection.syncFailureStreak, fmt(connection.circuitOpenUntil))}</p></div>
+        </div>
+    );
+}
+
 function RotateDialog({open, onOpenChange, keyRef, pending, onRotate, error}: {open: boolean; onOpenChange: (o: boolean) => void; keyRef: React.RefObject<SecretKeyHandle | null>; pending: boolean; onRotate: () => void; error: string | null}) {
     const focus = useReturnFocus(open);
     return (
@@ -70,7 +81,7 @@ function RotateDialog({open, onOpenChange, keyRef, pending, onRotate, error}: {o
     );
 }
 
-export function ConnectionCard({connection, state, errorClass, lastVerification, lockedReason, pending, keyRef, onTest, onEdit, onRotate, onDisconnect, rotateError, rotateOpen, setRotateOpen, rotatePending}: {
+export function ConnectionCard({connection, state, errorClass, lastVerification, lockedReason, pending, keyRef, onTest, onEdit, onRotate, onDisconnect, onSync, syncing, hasEnabledEnvironment, rotateError, rotateOpen, setRotateOpen, rotatePending}: {
     connection: IntegrationsConnection;
     state: ConnectionState;
     errorClass: string | null;
@@ -82,6 +93,10 @@ export function ConnectionCard({connection, state, errorClass, lastVerification,
     onEdit: () => void;
     onRotate: () => void;
     onDisconnect: () => void;
+    onSync: () => void;
+    /** this tab's sync is in flight OR the server holds the sync lease (cron / other tab). */
+    syncing: boolean;
+    hasEnabledEnvironment: boolean;
     rotateError: string | null;
     rotateOpen: boolean;
     setRotateOpen: (o: boolean) => void;
@@ -101,7 +116,7 @@ export function ConnectionCard({connection, state, errorClass, lastVerification,
                     </div>
                 </div>
                 <div className="flex flex-wrap items-start gap-2">
-                    <ReasonButton reason={SYNC_NOW.disabledReason} variant="outline"><RefreshCw aria-hidden="true"/>{SYNC_NOW.label}</ReasonButton>
+                    <ReasonButton reason={lockedReason ?? (syncing ? SYNC_NOW.running : !hasEnabledEnvironment ? SYNC_NOW.noEnvironment : null)} variant="outline" onClick={onSync}><RefreshCw aria-hidden="true" className={syncing ? "animate-spin motion-reduce:animate-none" : undefined}/>{syncing ? SYNC_NOW.pending : SYNC_NOW.label}</ReasonButton>
                     <ReasonButton reason={lockedReason} variant="outline" onClick={onTest}>{pending ? "Testing…" : "Test connection"}</ReasonButton>
                     <ReasonButton reason={lockedReason} variant="outline" onClick={onEdit}>Edit</ReasonButton>
                     <ReasonButton reason={lockedReason} variant="outline" onClick={() => setRotateOpen(true)}>Rotate key</ReasonButton>
@@ -109,12 +124,14 @@ export function ConnectionCard({connection, state, errorClass, lastVerification,
                 </div>
             </div>
             <ProblemAlert state={state} errorClass={errorClass}/>
+            <CircuitNote connection={connection}/>
             {lastVerification && <VerificationPanel v={lastVerification}/>}
             <dl className="grid gap-5 p-6 sm:grid-cols-2 lg:grid-cols-4">
                 <div><dt className="text-muted-foreground text-xs">Manager URL</dt><dd className="mt-1 font-mono text-sm break-all">{connection.baseUrl}</dd></div>
                 <div><dt className="text-muted-foreground text-xs">Arcane version (tested)</dt><dd className="mt-1 text-sm">{connection.pinnedApiVersion ?? "Not verified yet"}</dd></div>
                 <div><dt className="text-muted-foreground text-xs">API key</dt><dd className="mt-1 text-sm">Stored, encrypted. Never shown again.</dd></div>
                 <div><dt className="text-muted-foreground text-xs">Last checked</dt><dd className="mt-1 text-sm">{fmt(connection.lastCheckedAt)}</dd></div>
+                <div><dt className="text-muted-foreground text-xs">Last sync attempt</dt><dd className="mt-1 text-sm">{fmt(connection.lastSyncAttemptAt)}</dd></div>
                 <div><dt className="text-muted-foreground text-xs">TLS verification</dt><dd className="mt-1 text-sm">{connection.tlsInsecure ? "OFF for this connection" : "On"}</dd></div>
                 <div><dt className="text-muted-foreground text-xs">Compose file reading ({"projects:read"})</dt><dd className="mt-1 text-sm">{connection.allowProjectsRead ? "Allowed" : "Off"}</dd></div>
             </dl>

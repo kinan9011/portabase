@@ -7,13 +7,26 @@ import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/c
 import type {IntegrationsEnvironment, IntegrationsView} from "@/fork/arcane/integrations-view";
 import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
 import type {EnvVars} from "@/fork/ui/integrations/use-integrations-actions";
-import {AGENT_STATUS_LABELS, ENVIRONMENT_COPY, HOST_ROLE_LABELS} from "@/fork/ui/labels";
+import {AGENT_STATUS_LABELS, ENVIRONMENT_COPY, HOST_ROLE_LABELS, SYNC_ERROR_LABELS} from "@/fork/ui/labels";
 import {TONE_MAP, type Tone} from "@/fork/ui/tone";
 import {ToneIcon} from "@/fork/ui/tone-badge";
 
 const NO_AGENT = "__none__";
 const AGENT_TONE: Record<"online" | "degraded" | "offline", Tone> = {online: "success", degraded: "warning", offline: "danger"};
 const fmt = (iso: string | null) => (iso ? `${new Date(iso).toLocaleString("en-US", {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"})} UTC` : ENVIRONMENT_COPY.notSynced);
+
+/** What the last sync of this environment found — only from persisted facts (summary + status), nothing guessed. */
+export function SyncCell({e}: {e: IntegrationsEnvironment}) {
+    const sum = e.lastSyncSummary;
+    const gone = e.lastSyncStatus === "error" && e.lastSyncErrorClass === "not_found";
+    return (
+        <div data-testid="sync-cell">
+            <div>{fmt(e.lastSyncAt)}{e.lastSyncStatus && e.lastSyncStatus !== "ok" ? ` · ${e.lastSyncStatus}` : ""}</div>
+            {e.lastSyncStatus === "ok" && sum && <div className="text-muted-foreground text-xs">{sum.stacks_found} stack{sum.stacks_found === 1 ? "" : "s"}{sum.stacks_new + sum.stacks_changed > 0 ? `, ${sum.stacks_new + sum.stacks_changed} new or changed` : ", unchanged"} · {Math.max(1, Math.round(sum.duration_ms / 1000))} s</div>}
+            {e.lastSyncStatus && e.lastSyncStatus !== "ok" && <div role="note" className={`mt-0.5 text-xs ${TONE_MAP[e.lastSyncStatus === "error" ? "danger" : "warning"].title}`}>{gone ? ENVIRONMENT_COPY.gone : SYNC_ERROR_LABELS[e.lastSyncErrorClass ?? ""] ?? "Sync problem"}{!gone && sum && sum.errors.length > 1 ? ` (+${sum.errors.length - 1} more)` : ""}</div>}
+        </div>
+    );
+}
 
 export function AgentStatus({status}: {status: IntegrationsEnvironment["agentStatus"]}) {
     if (!status) return <span data-testid="agent-status" className="text-muted-foreground">{AGENT_STATUS_LABELS.none}</span>;
@@ -70,8 +83,11 @@ export function EnvironmentTable({view, lockedReason, busyId, onChange}: {view: 
                                                 <AgentStatus status={e.agentStatus}/>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-sm whitespace-normal">{fmt(e.lastSyncAt)}{e.lastSyncStatus && e.lastSyncStatus !== "ok" ? ` · ${e.lastSyncStatus}` : ""}</TableCell>
-                                        <TableCell className="whitespace-normal"><span>{ENVIRONMENT_COPY.stacksUnknown}<span className="sr-only"> not available yet</span></span><span className="text-muted-foreground block text-xs">{ENVIRONMENT_COPY.stacksUnknownReason}</span></TableCell>
+                                        <TableCell className="text-sm whitespace-normal"><SyncCell e={e}/></TableCell>
+                                        <TableCell className="whitespace-normal">
+                                            <span data-testid="stack-counts">{e.stacks.found} found · {e.stacks.protectedCount} protected</span>
+                                            {e.stacks.stale > 0 && <span role="note" className={`block text-xs ${TONE_MAP.warning.title}`}>{ENVIRONMENT_COPY.stale}</span>}
+                                        </TableCell>
                                         <TableCell className="min-w-48 whitespace-normal">
                                             <Select value={e.hostRole} open={block ? false : undefined} onValueChange={(v) => { if (block || v === e.hostRole) return; if (v === "test") setPendingRole({env: e}); else onChange({environmentId: e.id, hostRole: v as "production" | "test"}); }}>
                                                 <SelectTrigger aria-label={`Host role for ${e.name}`} aria-disabled={block || undefined} aria-describedby={locked ? reasonId : undefined} className="w-40"><SelectValue/></SelectTrigger>
