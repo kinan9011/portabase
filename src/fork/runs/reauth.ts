@@ -15,7 +15,7 @@ import type {PauseReason} from "./vocab";
  */
 export type StackFacts = {
     stackId: string; organizationId: string; displayName: string; protectionState: string; environmentId: string | null; connectionId: string | null; agentId: string | null;
-    activatedAt: Date | null; deactivatedAt: Date | null; pausedAt: Date | null; activation: {userId?: string} | null; storageChannelIds: string[];
+    activatedAt: Date | null; deactivatedAt: Date | null; pausedAt: Date | null; activation: {userId?: string; at?: string} | null; storageChannelIds: string[];
     schedule: unknown; policy: unknown; staleSince: Date | null;
 };
 
@@ -33,7 +33,7 @@ export async function loadStackFacts(db: RunDeps["db"], stackId: string): Promis
         stackId: x.id as string, organizationId: x.organization_id as string, displayName: x.display_name as string, protectionState: x.protection_state as string,
         environmentId: (x.environment_id as string | null) ?? null, connectionId: (x.connection_id as string | null) ?? null, agentId: (x.agent_id as string | null) ?? null,
         activatedAt: x.activated_at ? new Date(x.activated_at as string) : null, deactivatedAt: x.deactivated_at ? new Date(x.deactivated_at as string) : null,
-        pausedAt: x.paused_at ? new Date(x.paused_at as string) : null, activation: (x.activation as {userId?: string} | null) ?? null,
+        pausedAt: x.paused_at ? new Date(x.paused_at as string) : null, activation: (x.activation as {userId?: string; at?: string} | null) ?? null,
         storageChannelIds: (x.storage_channel_ids as string[] | null) ?? [], schedule: x.schedule, policy: x.policy, staleSince: x.stale_since ? new Date(x.stale_since as string) : null,
     };
 }
@@ -71,6 +71,6 @@ export async function pausePolicy(d: RunDeps, facts: StackFacts, reason: PauseRe
         await t.execute(sql`update fork_stack set protection_state = 'paused', updated_at = ${now} where id = ${facts.stackId} and protection_state = 'active'`);
         if (upd.rows.length === 0) return; // already paused: no second audit / alert
         await recordAudit(t, {organizationId: facts.organizationId, actorKind: "system", action: "fork.stack_run.paused", resourceType: "stack", resourceId: facts.stackId, result: "denied", details: {reason}, now});
-        await enqueueForkNotification(t, {kind: "run.policy_paused", dedupeKey: `policy_paused:${facts.stackId}:${facts.activatedAt?.toISOString() ?? "none"}`, payload: {state: "paused", reason, stackId: facts.stackId, link: `/dashboard/stacks/${facts.stackId}`}});
+        await enqueueForkNotification(t, {kind: "run.policy_paused", dedupeKey: `policy_paused:${facts.stackId}:${facts.activation?.at ?? "none"}`, payload: {state: "paused", reason, stackId: facts.stackId, link: `/dashboard/stacks/${facts.stackId}`}});
     });
 }

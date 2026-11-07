@@ -52,6 +52,8 @@ export async function startRun(d: RunDeps, i: {stackId: string; trigger: RunTrig
         }
         return {kind: "refused", code: auth.kind};
     }
+    // same stack: a clear answer before the host-level capacity question (the unique index below is the race-proof guard)
+    if ((await d.db.execute(sql`select 1 from fork_stack_run where stack_id = ${i.stackId} and state in ('starting','running','finalizing') limit 1`)).rows.length > 0) return {kind: "refused", code: "already_running"};
     const cap = await capacityCheck(d, facts);
     if (!cap.ok) return {kind: "refused", code: "capacity", scope: cap.scope};
 

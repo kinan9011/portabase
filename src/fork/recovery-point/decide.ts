@@ -29,6 +29,8 @@ export type RunFacts = {
     errored?: boolean;
     /** any item ended as agent_did_not_start / agent_made_no_progress / run_timeout */
     timedOut: boolean;
+    /** the code of the first timed-out item (agent_did_not_start | agent_made_no_progress | run_timeout) */
+    timeoutReason?: RunReason;
     queuedMembers: number;
     validatorComplete: boolean;
     encryptionOn: boolean;
@@ -51,7 +53,7 @@ export const artifactEncrypted = (a: ArtifactInput, encryptionOn: boolean): bool
 export function decideRecoveryPoint(f: RunFacts): RpDecision {
     if (f.errored) return {status: "failed", reason: "run_error", runState: "failed", runReason: "internal_error"};
     if (f.cancelled) return {status: "failed", reason: "run_cancelled", runState: "cancelled", runReason: "cancelled"};
-    if (f.timedOut) return {status: "failed", reason: "member_timeout", runState: "failed", runReason: "agent_did_not_start"};
+    if (f.timedOut) return {status: "failed", reason: "member_timeout", runState: "failed", runReason: f.timeoutReason ?? "agent_did_not_start"};
     if (f.queuedMembers === 0) return {status: "failed", reason: "run_not_started", runState: "failed", runReason: "nothing_queued"};
     const present = f.artifacts.filter(artifactPresent).length;
     if (present === 0) return {status: "failed", reason: "member_failed", runState: "failed", runReason: "member_failed"};

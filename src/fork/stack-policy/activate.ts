@@ -86,6 +86,8 @@ export async function activateStackPolicy(d: MaterializeDeps, raw: unknown): Pro
             await tx.update(forkStackPolicy).set({
                 schedule: input.schedule, policy: input.retention, acceptedExclusions: [...new Set(input.acceptedExclusions)], activation,
                 activatedAt: alreadyActive ? cur!.activatedAt : now, activatedBy: p.userId, deactivatedAt: null, updatedAt: now,
+                // W12 (F7): an authorized (re-)activation is the ONLY thing that clears a pause caused by run-time re-authorization
+                pausedAt: null, pauseReason: null,
             }).where(eq(forkStackPolicy.stackId, input.stackId));
             await tx.update(forkStack).set({protectionState: "active", updatedAt: now}).where(eq(forkStack.id, input.stackId));
             // ids/hashes/counts only: no selection, no key, no secret (the audit redactor is a second line of defence)

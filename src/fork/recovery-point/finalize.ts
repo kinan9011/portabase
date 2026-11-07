@@ -52,6 +52,7 @@ export async function finalizeRun(d: RunDeps, runId: string, forced?: FinalizeFo
     const decision = decideRecoveryPoint({
         cancelled: forced === "cancelled", errored: forced === "internal_error",
         timedOut: items.some((i) => i.reason !== null && TIMEOUT_REASONS.includes(i.reason as RunReason)),
+        timeoutReason: items.map((i) => i.reason as RunReason | null).find((r): r is RunReason => r !== null && TIMEOUT_REASONS.includes(r)),
         queuedMembers: items.filter((i) => i.backupId !== null).length, validatorComplete: !run.validatorBlocked, encryptionOn, artifacts: built.inputs,
     });
     const consistency = consistencyOf(built.rows.filter((r) => r.presence === "present").map((r) => r.engine));
