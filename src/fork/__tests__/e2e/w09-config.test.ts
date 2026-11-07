@@ -1,6 +1,6 @@
 import {afterAll, describe, expect, it} from "vitest";
 import {cleanInventory} from "@/fork/__tests__/w09-fixtures";
-import {type App, boot, get, signIn} from "@/fork/__tests__/e2e/helpers";
+import {type App, boot, get} from "@/fork/__tests__/e2e/helpers";
 import {richInventory} from "@/fork/__tests__/w08-fixtures";
 import {contentHash, type StackInventoryV1} from "@/fork/inventory/schema";
 

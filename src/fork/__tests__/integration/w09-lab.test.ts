@@ -7,7 +7,7 @@ import {insertConnectionWithSecret} from "@/fork/db/dto";
 import {syncConnection} from "@/fork/discovery/sync";
 import {parseAllowlist} from "@/fork/net/guard";
 import {freshForkDb, seedOrg, type W04Db} from "@/fork/__tests__/w04-helpers";
-import {DEFAULT_PARAMS, parseStackListParams} from "@/fork/stacks/params";
+import {parseStackListParams} from "@/fork/stacks/params";
 import {loadStackDetail, loadStackList} from "@/fork/stacks/queries";
 
 /**
