@@ -4,6 +4,7 @@ import {actorIn, forkCan, ForkForbiddenError, ForkNotFoundError, type ForkPrinci
 import type {ForkDb} from "@/fork/db/handle";
 import {forkArcaneConnection, forkArcaneEnvironment} from "@/fork/db/schema/arcane";
 import {forkRecoveryPoint, forkRecoveryPointArtifact} from "@/fork/db/schema/recovery";
+import {forkRestorePlan} from "@/fork/db/schema/restore";
 import {forkStackRun} from "@/fork/db/schema/runs";
 import {forkStack, forkStackInventory} from "@/fork/db/schema/stack";
 
@@ -46,6 +47,10 @@ async function owningOrg(db: ForkDb, kind: ForkResourceKind, id: string): Promis
         case "stack_run": {
             const [r] = await db.select({o: forkStack.organizationId}).from(forkStackRun)
                 .innerJoin(forkStack, eq(forkStack.id, forkStackRun.stackId)).where(eq(forkStackRun.id, id));
+            return r?.o ?? null;
+        }
+        case "restore_plan": {
+            const [r] = await db.select({o: forkRestorePlan.organizationId}).from(forkRestorePlan).where(eq(forkRestorePlan.id, id));
             return r?.o ?? null;
         }
         case "recovery_point_artifact": {

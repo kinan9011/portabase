@@ -108,6 +108,8 @@ const schema = z.object({
     /** W15: how long a task may wait to be started (minutes, 1–60, default 10, ADR-007 D3) and how long one lease lasts without a heartbeat (seconds, 15–600, default 60). */
     FORK_AGENT_TASK_TTL_MINUTES: intRange(1, 60, 10),
     FORK_AGENT_LEASE_SECONDS: intRange(15, 600, 60),
+    /** W16: restore plan lifetime (hours); a plan older than this is `expired` and must be re-planned. */
+    FORK_RESTORE_PLAN_TTL_HOURS: intRange(1, 168, 24),
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -145,6 +147,7 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_ALLOW_INSECURE_LOOPBACK: source.FORK_ALLOW_INSECURE_LOOPBACK,
         FORK_AGENT_TASK_TTL_MINUTES: source.FORK_AGENT_TASK_TTL_MINUTES,
         FORK_AGENT_LEASE_SECONDS: source.FORK_AGENT_LEASE_SECONDS,
+        FORK_RESTORE_PLAN_TTL_HOURS: source.FORK_RESTORE_PLAN_TTL_HOURS,
     });
 }
 

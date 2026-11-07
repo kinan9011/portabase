@@ -8,3 +8,4 @@ export * from "./ops";
 export * from "./recovery";
 export * from "./kit";
 export * from "./agent-channel";
+export * from "./restore";
