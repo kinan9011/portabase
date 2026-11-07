@@ -184,10 +184,12 @@ describe("W08 details: header, actions with visible reasons, tabs", () => {
         expect(screen.getByTestId("primary-state-badge").textContent).toContain(PRIMARY_STATE_LABELS.unprotected.description); // W09: derived §4.6 state
         expect(await axeViolations(container)).toEqual([]);
     });
-    it("all four actions are aria-disabled, focusable, do nothing, and show a visible reason linked by aria-describedby", () => {
+    it("the three unbuilt actions are aria-disabled, focusable, do nothing, and show a visible reason linked by aria-describedby", () => {
         mountDetail(detail(), {canConfigure: true});
         const a = STACK_DETAILS.actions;
-        const expected: [string, string][] = [[a.configure.label, a.configure.admin], [a.backupNow.label, a.backupNow.reason], [a.restore.label, a.restore.reason], [a.mirror.label, a.mirror.reason]];
+        // W11: Configure is a real link for an administrator while configuration is open; the other three stay disabled with a visible reason
+        expect(screen.getByRole("link", {name: a.configure.label}).getAttribute("href")).toBe(`/dashboard/stacks/${ID}/configure`);
+        const expected: [string, string][] = [[a.backupNow.label, a.backupNow.reason], [a.restore.label, a.restore.reason], [a.mirror.label, a.mirror.reason]];
         for (const [label, reason] of expected) {
             const b = screen.getByRole("button", {name: label});
             expect(b.getAttribute("aria-disabled")).toBe("true");
