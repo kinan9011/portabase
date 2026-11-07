@@ -78,8 +78,9 @@ export function registerVerifyJob(): void {
                         log.error({error: error instanceof Error ? error.name : "unknown"}, "Verify tick failed");
                     } finally { running = false; }
                 };
-                setTimeout(tick, FIRST_TICK_MS).unref();
-                setInterval(tick, forkEnv().FORK_VERIFY_TICK_SECONDS * 1000).unref();
+                const period = forkEnv().FORK_VERIFY_TICK_SECONDS * 1000;
+                setTimeout(tick, Math.max(FIRST_TICK_MS, period)).unref(); // never earlier than one period
+                setInterval(tick, period).unref();
             },
         });
     } catch { /* already registered */ }

@@ -170,6 +170,29 @@ describe.skipIf(!hasRestic)("verify job: pending_verification → verified ONLY 
         } finally { repos.drop(); }
     });
 
+    it("a RESTIC artifact is verified by opening its snapshot (no plaintext hash by design, not_applicable_restic) — and a mixed RP (archive + restic) is promoted", async () => {
+        const repos = localRepos();
+        try {
+            const w = await world({dbms: ["postgresql", "files"]});
+            const rpId = await pendingRp(pool, w, fx.plaintextSize);
+            // turn the second member's artifact into a restic one (as the real agent produces for `files`)
+            const [fa] = await q("select id from fork_recovery_point_artifact where rp_id=$1 and engine='files'", [rpId]);
+            await pool.query("update fork_recovery_point_artifact set archive_kind='restic_snapshot', path_or_snapshot_id=$2, generated_id='gen-restic', plaintext_sha256=null where id=$1", [fa.id, "a".repeat(64)]);
+            await pool.query("update backup_storage set engine='restic', path=$2 where id=(select backup_storage_id from fork_recovery_point_artifact where id=$1)", [fa.id, "a".repeat(64)]);
+            const seen: unknown[] = [];
+            const d = mkDeps(w, {serve: () => ({bytes: fx.bytes}), repos, overrides: {checkResticSnapshot: async (a) => { seen.push(a); return true; }}});
+            expect(await verifyRecoveryPoint(d, rpId)).toMatchObject({outcome: "verified"});
+            expect(seen).toHaveLength(1);
+            const m = await readManifestSnapshot((await d.manifestRunner(w.channels[0], w.stackId, FIXTURE_MASTER)).run, (await rpRow(rpId)).manifest_refs[0].snapshot_id);
+            expect(JSON.parse(m.json).artifacts.some((a: {plaintext_hash_source: string}) => a.plaintext_hash_source === "not_applicable_restic")).toBe(true);
+            // an unreadable snapshot is infrastructure (retry), a missing one downgrades
+            const w2 = await world({dbms: ["files"]});
+            const r2 = await pendingRp(pool, w2, 1000);
+            await pool.query("update fork_recovery_point_artifact set archive_kind='restic_snapshot', path_or_snapshot_id=$2, generated_id='g2' where rp_id=$1", [r2, "b".repeat(64)]);
+            expect(await verifyRecoveryPoint(mkDeps(w2, {serve: () => ({}), repos, overrides: {checkResticSnapshot: async () => "missing"}}), r2)).toMatchObject({outcome: "downgraded", reason: "artifact_missing"});
+        } finally { repos.drop(); }
+    });
+
     it("concurrent verify of the same RP promotes it exactly once", async () => {
         const repos = localRepos();
         try {

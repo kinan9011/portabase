@@ -126,7 +126,7 @@ async function verifyLeased(d: VerifyDeps, rpId: string): Promise<VerifyOutcome>
     if (results.some((r) => r.infra)) return retryOrFail(d, rp, attempt, "infrastructure", results, now());
 
     // 3. sign (the manifest carries the plaintext hash + size only this job knows)
-    let signing;
+    let signing: Awaited<ReturnType<KeyProvider["signing"]>>;
     try { signing = await d.keys.signing(); } catch (e) { return retryOrFail(d, rp, attempt, e instanceof KeyUnavailableError ? "signing_unavailable" : "infrastructure", results, now()); }
     const verifiedAt = now();
     const anchor = await registerLiveAnchor(d.db, signing.publicKeyPem, verifiedAt);
@@ -175,10 +175,12 @@ async function verifyLeased(d: VerifyDeps, rpId: string): Promise<VerifyOutcome>
         const [cur] = await t.select().from(forkRecoveryPoint).where(eq(forkRecoveryPoint.id, rp.id));
         if (!cur || cur.status !== "pending_verification" || cur.purgedAt !== null || !canTransition("pending_verification", "verified")) return false;
         for (const r of results) {
-            await t.update(forkRecoveryPointArtifact).set({
+            // a restic artifact has nothing to record (content-addressed): an empty SET is an error in the query builder, so it is skipped
+            const facts = {
                 ...(r.plaintextSha256 ? {plaintextSha256: r.plaintextSha256, plaintextSize: r.plaintextSize ?? null} : {}),
                 ...(r.dumpFormat ? {dumpFormat: r.dumpFormat} : {}), ...(r.formatVersion ? {archiveFormatVersion: r.formatVersion} : {}),
-            }).where(eq(forkRecoveryPointArtifact.id, r.id));
+            };
+            if (Object.keys(facts).length > 0) await t.update(forkRecoveryPointArtifact).set(facts).where(eq(forkRecoveryPointArtifact.id, r.id));
         }
         await t.update(forkRecoveryPoint).set({
             status: "verified", downgradeReason: null, verifiedAt, manifestSha256: createHash("sha256").update(signed.json).digest("hex"), manifestSigKid: signed.kid,

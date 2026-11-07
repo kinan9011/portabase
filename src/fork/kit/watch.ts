@@ -88,8 +88,9 @@ export function registerKitWatchJob(): void {
                     } catch (error) { log.error({error: error instanceof Error ? error.name : "unknown"}, "Kit watch failed"); }
                     finally { running = false; }
                 };
-                setTimeout(tick, 45_000).unref();
-                setInterval(tick, env.FORK_KIT_WATCH_MINUTES * 60_000).unref();
+                const period = env.FORK_KIT_WATCH_MINUTES * 60_000;
+                setTimeout(tick, Math.max(45_000, period)).unref();
+                setInterval(tick, period).unref();
             },
         });
     } catch { /* already registered */ }

@@ -132,7 +132,7 @@ describe("W04 D21 self-check at boot (real production build, real DB)", () => {
         const {base, logs, db} = app;
         expect(logs()).toMatch(/"mode":"locked"/);
         expect(logs()).toMatch(/"lockReason":"self-check-failed"/);
-        expect(logs()).toMatch(/"started":\["fork-audit-retention","fork-materialize-drift","fork-stack-runs","fork-notifications"\]/); // runtime plane keeps running in degraded mode (W10 adds the drift/probe job)
+        expect(logs()).toMatch(/"started":\["fork-audit-retention","fork-materialize-drift","fork-stack-runs","fork-notifications","fork-verify","fork-kit-watch"\]/); // runtime plane keeps running in degraded mode (W10 adds the drift/probe job)
         const cookie = await signIn(base);
         const status = await get(base, "/api/fork/status", cookie);
         expect(status.status).toBe(200);

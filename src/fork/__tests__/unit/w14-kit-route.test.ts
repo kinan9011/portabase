@@ -25,7 +25,7 @@ describe("kit delivery route (W14): one response, no-store, session only", () =>
         expect(gen).not.toHaveBeenCalled();
     });
     it("refuses API-key / bearer clients: the kit is not part of the API or MCP surface", async () => {
-        for (const h of [{"x-api-key": "k"}, {authorization: "Bearer abc"}]) {
+        for (const h of [{"x-api-key": "k"}, {authorization: "Bearer abc"}] as Record<string, string>[]) {
             const r = await POST(mk(h), ctx("paper"));
             expect(r.status).toBe(403);
             expect(await r.json()).toMatchObject({code: "forbidden"});

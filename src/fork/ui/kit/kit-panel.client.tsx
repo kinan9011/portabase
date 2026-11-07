@@ -35,7 +35,7 @@ export function KitPanel({view, canManage, lockedReason}: {view: KitView; canMan
     const disabled = !canManage || lockedReason !== null;
     const err = (c: string) => setMsg({kind: "error", text: KIT.errors[c] ?? KIT.errors.invalid_input});
     const dropPaper = () => { paperHtml.current = null; setPrintOpen(false); };
-    React.useEffect(() => dropPaper, []);
+    React.useEffect(() => () => { paperHtml.current = null; }, []); // forget the kit if the page unmounts
 
     async function begin(e: React.FormEvent) {
         e.preventDefault();
