@@ -2,7 +2,7 @@ import {createHash, randomBytes, timingSafeEqual} from "node:crypto";
 
 /**
  * Per-agent random credential (ADR-007 D2). 256-bit CSPRNG secret, stored ONLY as SHA-256 (a high-entropy secret needs no slow KDF), compared in
- * constant time against BOTH slots (current + rotation overlap) without short-circuiting, so a request costs the same whichever slot — or none — matches.
+ * constant time against ALL slots (current + rotation overlap + pending signed rotation) without short-circuiting, so a request costs the same whichever slot — or none — matches.
  * Wire form: `Authorization: Bearer fork.<agentId>.<secret>`. The secret is never logged, audited or returned after issue.
  */
 const BEARER_RE = /^Bearer fork\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([A-Za-z0-9_-]{43})$/;
@@ -29,10 +29,11 @@ const eq = (a: string, b: string) => {
     return x.length === y.length && timingSafeEqual(x, y);
 };
 
-/** `current` | `previous` | null. Both slots are always compared. */
-export function matchCredential(secret: string, current: string | null | undefined, previous: string | null | undefined): "current" | "previous" | null {
+/** `current` | `previous` | `pending` | null. All three slots are always compared (W15b: `pending` = signed-rotation slot, ADR-007 A12). */
+export function matchCredential(secret: string, current: string | null | undefined, previous: string | null | undefined, pending?: string | null): "current" | "previous" | "pending" | null {
     const h = sha256Hex(secret);
     const c = eq(h, current ?? DUMMY_HASH);
     const p = eq(h, previous ?? DUMMY_HASH);
-    return c ? "current" : p ? "previous" : null;
+    const n = eq(h, pending ?? DUMMY_HASH);
+    return c ? "current" : p ? "previous" : n ? "pending" : null;
 }

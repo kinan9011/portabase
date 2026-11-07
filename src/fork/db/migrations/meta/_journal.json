@@ -71,6 +71,13 @@
       "when": 1794065953481,
       "tag": "0009_agent_task_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794073318215,
+      "tag": "0010_agent_channel_rotation",
+      "breakpoints": true
     }
   ]
 }

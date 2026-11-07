@@ -2,6 +2,7 @@
 
 import {enrolAgent, revokeEnrollment, rotateCredential, setChannelEnabled} from "@/fork/agent-channel/admin";
 import type {ChannelDeps} from "@/fork/agent-channel/deps";
+import {pinDashboardKey, requestCredentialRotation, unpinDashboardKey} from "@/fork/agent-channel/maint";
 import {enqueueTask} from "@/fork/agent-channel/tasks";
 import {appDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
@@ -22,3 +23,6 @@ export const rotateAgentCredentialAction = userAction.inputSchema(z.unknown()).a
 export const revokeAgentEnrollmentAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => revokeEnrollment(await deps(), parsedInput));
 export const setAgentChannelEnabledAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => setChannelEnabled(await deps(), parsedInput));
 export const enqueueAgentTaskAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => enqueueTask(await deps(), parsedInput));
+export const requestAgentCredentialRotationAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => requestCredentialRotation(await deps(), parsedInput));
+export const pinDashboardKeyAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => pinDashboardKey(await deps(), parsedInput));
+export const unpinDashboardKeyAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => unpinDashboardKey(await deps(), parsedInput));

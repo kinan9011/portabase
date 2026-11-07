@@ -2,7 +2,7 @@ import {forkCan, type ForkActor, type ForkCapability} from "@/fork/acl";
 import type {ForkMode} from "@/fork/mode";
 
 /** Serialisable nav model (server → client: icons travel as keys, never as component functions). */
-export type ForkNavItem = { title: string; url: string; iconKey: "plug" | "layers" | "life-buoy" };
+export type ForkNavItem = { title: string; url: string; iconKey: "plug" | "layers" | "life-buoy" | "radio" };
 export type ForkNavGroup = { label: string; items: ForkNavItem[] };
 
 type Def = ForkNavItem & {
@@ -14,6 +14,7 @@ type Def = ForkNavItem & {
 
 export const FORK_NAV_DEFS: readonly Def[] = [
     {title: "Integrations", url: "/integrations", iconKey: "plug", capability: "arcane.manage", wave: "W01", shipped: true},
+    {title: "Agent channel", url: "/integrations/agent-channel", iconKey: "radio", capability: "agents.channel.manage", wave: "W15b", shipped: true},
     {title: "Docker Stacks", url: "/stacks", iconKey: "layers", capability: "stacks.view", wave: "W08", shipped: true},
     // Recovery stays hidden until the restore UI exists (W18b, R2, D13).
     {title: "Recovery", url: "/recovery", iconKey: "life-buoy", capability: "recovery.view", wave: "W18b", shipped: false},

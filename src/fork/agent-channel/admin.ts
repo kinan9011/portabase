@@ -22,17 +22,18 @@ import {ROTATION_OVERLAP_HOURS} from "./vocab";
  * https-only check → one DB write → audit with CODES and ids only (NEVER the credential, task key, bundle or password).
  * The credential / task key appear exactly once, in the returned bundle; the DB holds `SHA-256(secret)` and a fork-KEK envelope.
  */
-type Refusal = {ok: false; code: "forbidden" | "locked" | "rate_limited" | "invalid_input" | "step_up_failed" | "no_password" | "not_found" | "insecure_transport" | "invalid_url" | "already_enrolled" | "signing_unavailable" | "not_enrolled"; message: string; retryAfterSeconds?: number};
-const refuse = (code: Refusal["code"], message: string, extra: Partial<Refusal> = {}): Refusal => ({ok: false, code, message, ...extra});
+export type Refusal = {ok: false; code: "forbidden" | "locked" | "rate_limited" | "invalid_input" | "step_up_failed" | "no_password" | "not_found" | "insecure_transport" | "invalid_url" | "already_enrolled" | "signing_unavailable" | "not_enrolled"
+    | "rotation_in_progress" | "already_pinned" | "pin_limit" | "pin_in_use" | "not_pinned" | "last_pin" | "capability_missing" | "agent_disabled" | "invalid_key"; message: string; retryAfterSeconds?: number};
+export const refuse = (code: Refusal["code"], message: string, extra: Partial<Refusal> = {}): Refusal => ({ok: false, code, message, ...extra});
 
 const AdminInput = z.strictObject({agentId: z.uuid(), password: z.string().min(1).max(1024)});
 const EnrolInput = AdminInput.extend({reenroll: z.boolean().optional()}).strict();
 const PlainInput = z.strictObject({agentId: z.uuid()});
 const EnableInput = z.strictObject({agentId: z.uuid(), enabled: z.boolean()});
 
-type Gate = {organizationId: string | null; userId: string; agent: {id: string; name: string}} | Refusal;
+export type Gate = {organizationId: string | null; userId: string; agent: {id: string; name: string}} | Refusal;
 
-async function gate(d: ChannelDeps, action: string, agentId: string): Promise<Gate> {
+export async function gate(d: ChannelDeps, action: string, agentId: string): Promise<Gate> {
     const p = d.principal;
     const [a] = await d.db.select({id: agent.id, name: agent.name, organizationId: agent.organizationId}).from(agent).where(eq(agent.id, agentId));
     const orgId = a?.organizationId ?? null;
@@ -52,7 +53,7 @@ async function gate(d: ChannelDeps, action: string, agentId: string): Promise<Ga
     return {organizationId: orgId, userId: p.userId, agent: {id: a.id, name: a.name}};
 }
 
-async function stepUp(d: ChannelDeps, g: Exclude<Gate, Refusal>, action: string, password: string): Promise<Refusal | null> {
+export async function stepUp(d: ChannelDeps, g: Exclude<Gate, Refusal>, action: string, password: string): Promise<Refusal | null> {
     const v = await (d.stepUp ?? verifyPasswordStepUp)(d.db, g.userId, password);
     if (v === "ok") return null;
     await recordAudit(d.db, {organizationId: g.organizationId, actorUserId: g.userId, action, resourceType: "agent", resourceId: g.agent.id, result: "denied", details: {reason: v === "no_password" ? "no_password" : "step_up_failed"}, now: chNow(d)});
@@ -100,7 +101,7 @@ export async function enrolAgent(d: ChannelDeps, raw: unknown): Promise<EnrolRes
             // a new generation: every open task of the old one is cancelled (it was signed for a different enrol_id and could never run again)
             await tx.update(forkAgentTask).set({status: "cancelled", finishedAt: now, leaseId: null, leaseUntil: null, payloadEnc: null})
                 .where(and(eq(forkAgentTask.agentId, agentId), inArray(forkAgentTask.status, ["queued", "leased", "running"])));
-            await tx.update(forkAgentEnrollment).set({enrollId, credentialHash: cred.hash, prevCredentialHash: null, prevValidUntil: null, taskKeyEnc: envelope, pinnedKids: [kid], pinFingerprint: fp,
+            await tx.update(forkAgentEnrollment).set({enrollId, credentialHash: cred.hash, prevCredentialHash: null, prevValidUntil: null, pendingCredentialHash: null, pendingTaskId: null, pendingValidUntil: null, taskKeyEnc: envelope, pinnedKids: [kid], pinFingerprint: fp,
                 enabled: true, revokedAt: null, capabilities: [], capabilitiesSeenAt: null, nextSeq: 1, enrolledBy: g.userId, enrolledAt: now}).where(eq(forkAgentEnrollment.id, id));
         } else {
             await tx.insert(forkAgentEnrollment).values({id, agentId, enrollId, credentialHash: cred.hash, taskKeyEnc: envelope, pinnedKids: [kid], pinFingerprint: fp, enrolledBy: g.userId, enrolledAt: now});
@@ -122,6 +123,8 @@ export async function rotateCredential(d: ChannelDeps, raw: unknown): Promise<Ro
     const su = await stepUp(d, g, "fork.agent_channel.rotate", parsed.data.password);
     if (su) return su;
     const now = chNow(d);
+    const [cur] = await d.db.select({pending: forkAgentEnrollment.pendingCredentialHash}).from(forkAgentEnrollment).where(eq(forkAgentEnrollment.agentId, g.agent.id));
+    if (cur?.pending) return refuse("rotation_in_progress", "A signed credential rotation is still in progress for this agent.");
     const cred = generateCredential(g.agent.id);
     const until = new Date(now.getTime() + ROTATION_OVERLAP_HOURS * 3_600_000);
     const [row] = await d.db.update(forkAgentEnrollment)
@@ -140,7 +143,7 @@ export async function revokeEnrollment(d: ChannelDeps, raw: unknown): Promise<{o
     if ("ok" in g) return g;
     const now = chNow(d);
     const done = await d.db.transaction(async (tx) => {
-        const [row] = await tx.update(forkAgentEnrollment).set({credentialHash: sha256Hex(randomBytes(32)), prevCredentialHash: null, prevValidUntil: null, enabled: false, revokedAt: now})
+        const [row] = await tx.update(forkAgentEnrollment).set({credentialHash: sha256Hex(randomBytes(32)), prevCredentialHash: null, prevValidUntil: null, pendingCredentialHash: null, pendingTaskId: null, pendingValidUntil: null, enabled: false, revokedAt: now})
             .where(eq(forkAgentEnrollment.agentId, g.agent.id)).returning({id: forkAgentEnrollment.id});
         if (!row) return false;
         await tx.update(forkAgentTask).set({status: "cancelled", finishedAt: now, leaseId: null, leaseUntil: null, payloadEnc: null})
