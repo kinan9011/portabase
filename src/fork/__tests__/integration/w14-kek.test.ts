@@ -70,6 +70,8 @@ describe("KEK rotation + re-encrypt (ADR-013 §4)", () => {
     it("the registry lists every fork-KEK envelope column (no `_enc` column can be forgotten)", async () => {
         const cols = await q("select table_name, column_name from information_schema.columns where table_schema='public' and table_name like 'fork\\_%' and column_name like '%\\_enc'");
         const registered = new Set(ENVELOPE_COLUMNS.map((c) => `${c.table}.${c.column}`));
-        for (const c of cols) expect(registered.has(`${c.table_name}.${c.column_name}`), `${c.table_name}.${c.column_name}`).toBe(true);
+        // W15: `fork_agent_task.payload_enc` is AES-GCM under the PER-AGENT task key (ADR-007 D4), not a fork-KEK envelope: that key itself is the registered `fork_agent_enrollment.task_key_enc`
+        const NOT_KEK = new Set(["fork_agent_task.payload_enc"]);
+        for (const c of cols.filter((x) => !NOT_KEK.has(`${x.table_name}.${x.column_name}`))) expect(registered.has(`${c.table_name}.${c.column_name}`), `${c.table_name}.${c.column_name}`).toBe(true);
     });
 });
