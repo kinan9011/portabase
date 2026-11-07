@@ -36,6 +36,14 @@ describe("W08 static guards", () => {
     it("state words that imply a guarantee never appear in component code (they come from labels.ts, which has none for this release)", () => {
         for (const f of ui) expect(code(f), f).not.toMatch(/["'`>][^"'`<]*\b(Protected|Backed up|Verified|Restore-tested|Healthy|All good)\b/);
     });
+    it("a server page never calls a function exported from a \"use client\" module (Next refuses it at render time; jsdom would not notice)", () => {
+        const clientModules = ui.filter((f) => read(f).trimStart().startsWith('"use client"'));
+        expect(clientModules.length).toBeGreaterThanOrEqual(3);
+        for (const f of clientModules) {
+            const nonComponent = [...read(f).matchAll(/export (?:const|function|async function) ([a-z][A-Za-z0-9_]*)/g)].map((m) => m[1]); // lower-case exports are helpers, components are Capitalised
+            expect(nonComponent, `${path.basename(f)} exports helpers from a client module`).toEqual([]);
+        }
+    });
     it("pages gate first: mode → principal → authorisation, in that order, before any loader", () => {
         const list = code(path.join(APP, "page.tsx"));
         const order = ["currentForkMode()", "getForkPrincipal()", "soleOrganization(", 'forkCan(actor, "stacks.view")', "loadStackList("].map((s) => list.indexOf(s));

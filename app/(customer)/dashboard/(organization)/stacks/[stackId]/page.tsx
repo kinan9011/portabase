@@ -11,7 +11,8 @@ import type {StackDetail} from "@/fork/stacks/dto";
 import {loadStackDetail} from "@/fork/stacks/queries";
 import {STACKS_EMPTY, STACKS_PAGE} from "@/fork/ui/labels";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
-import {parseTab, StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";
+import {StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";
+import {parseTab} from "@/fork/ui/stacks/tabs";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 
 // Stack Details (W08): header + Overview + Resources. Resource-scoped authorisation (SEC-12) BEFORE anything is read.

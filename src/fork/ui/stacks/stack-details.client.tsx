@@ -4,6 +4,7 @@ import Link from "next/link";
 import * as React from "react";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import type {InventoryView, StackDetail} from "@/fork/stacks/dto";
+import {TABS, type StackTab} from "@/fork/ui/stacks/tabs";
 import {ENVIRONMENT_COPY, STACK_DETAILS, STACKS_EMPTY, WARNING_COPY, WARNING_FALLBACK, WARNING_SEVERITY_LABELS} from "@/fork/ui/labels";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {fmtPort, fmtUtc, STACKS_HREF} from "@/fork/ui/stacks/format";
@@ -15,10 +16,6 @@ import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge} from "@/fork/ui/tone-badge";
 
 const D = STACK_DETAILS;
-export const TABS = ["overview", "resources"] as const;
-export type StackTab = (typeof TABS)[number];
-export const parseTab = (raw: string | string[] | undefined): StackTab => ((TABS as readonly string[]).includes(Array.isArray(raw) ? (raw[0] ?? "") : (raw ?? "")) ? ((Array.isArray(raw) ? raw[0] : raw) as StackTab) : "overview");
-
 function Actions({canConfigure}: {canConfigure: boolean}) {
     // Every action is visibly disabled with its reason (§8.2 rule 10). None of them does anything in this release.
     return (
