@@ -43,6 +43,9 @@ describe("W13 tabs, strip and notification delivery (real build)", () => {
 
         const w = await mkWorld({...shared, db: drizzle({client: shared.pool}) as unknown as ForkDb}, {existing: {orgId: org, userId: admin}, schedule: {preset: "monthly", timezone: "UTC", minute: 0, hour: 3, weekday: 0, monthday: 28}});
         await q("update fork_stack_policy set activated_at = now() where stack_id=$1", [w.stackId]); // no due/missed slot, no dead-man alert at boot
+        await q("update agents set last_contact = (now() at time zone 'utc') where id=$1", [w.agent]); // fixture contact is T0 (fixed past): keep the agent fresh vs the REAL clock
+        await q("update databases set last_contact = (now() at time zone 'utc') where agent_id=$1", [w.agent]); // same for the member sources (W10 readability probe TTL is minutes)
+        await q("update fork_stack_source set last_probe_at = now() where stack_id=$1", [w.stackId]); // seeded probes are stamped T0; PROBE_TTL_MS is 10 min vs the REAL clock
         await q("update fork_stack set display_name = 'shop /srv/secret' where id=$1", [w.stackId]);
         const run = (await q(`insert into fork_stack_run (stack_id, trigger, state, reason, started_at, finished_at, steps) values ($1,'manual','failed','agent_did_not_start', now() - interval '2 hours', now() - interval '110 minutes', $2) returning id`,
             [w.stackId, JSON.stringify([{name: "refresh_inventory", status: "done", attempts: 1, errors: 0}, {name: "track", status: "failed", attempts: 30, errors: 0, code: "agent_did_not_start"}])])).rows[0].id as string;
@@ -104,7 +107,7 @@ describe("W13 tabs, strip and notification delivery (real build)", () => {
         const mine = () => s.got.filter((m) => m.message.includes("shop srvsecret"));
         await until(() => mine().length >= rows.length);
         await new Promise((r) => setTimeout(r, 12_000)); // no duplicate may follow
-        expect(mine()).toHaveLength(rows.length);
+        expect(mine(), JSON.stringify(mine().map((m) => `${m.title} | ${m.message.split("\n")[1] ?? ""}`))).toHaveLength(rows.length);
         for (const m of mine()) {
             const text = `${m.title}\n${m.message}`;
             for (const bad of ["CANARY", "/srv", "AKIA", "hunter2", "evil.example", "validator_blocked", "member_timeout"]) expect(text, bad).not.toContain(bad);
