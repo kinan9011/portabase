@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {ARCANE_OPENAPI_SHA256} from "@/fork/arcane/endpoints";
 import type {DiscoveredContainer, DiscoveredImage, DiscoveredNetwork, DiscoveredProject, DiscoveredVolume} from "@/fork/discovery/provider";
 import type {ParsedCompose} from "@/fork/inventory/compose-yaml";
-import {COMPOSE_LABEL, ENV_KEY, parseBackupHints, parseDependsOnLabel, parsePathList, PROJECT_NAME, safeAbsPath, SERVICE_NAME, type BackupHints} from "@/fork/inventory/labels";
+import {COMPOSE_LABEL, ENV_KEY, hasControl, PROJECT_NAME, parseBackupHints, parseDependsOnLabel, parsePathList, SERVICE_NAME, safeAbsPath } from "@/fork/inventory/labels";
 import {contentHash, InventoryRejectedError, parseInventoryStrict, type StackInventoryV1} from "@/fork/inventory/schema";
 
 /**
@@ -54,7 +54,7 @@ const STATES: Record<string, Inv["services"][number]["state"]> = {
 };
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const uniqSorted = (a: Iterable<string>) => [...new Set(a)].sort();
-const cleanName = (s: string | undefined | null): string | null => (s && s.length <= 128 && !/[\u0000-\u001f\u007f]/.test(s) && s.trim() === s && s.length > 0 ? s : null);
+const cleanName = (s: string | undefined | null): string | null => (s && s.length <= 128 && !hasControl(s) && s.trim() === s ? s : null);
 
 // ---- heuristics (hints only) -------------------------------------------------------------------------------------------
 const IMAGE_ENGINES: [RegExp, NonNullable<Inv["services"][number]["database_hint"]>["engine"]][] = [

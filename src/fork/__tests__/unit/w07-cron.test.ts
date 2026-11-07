@@ -1,8 +1,8 @@
 import {beforeEach, describe, expect, it, vi} from "vitest";
 import {discoveryTick, registerDiscoveryCron, type TickDeps} from "@/fork/cron";
+import * as state from "@/fork/discovery/sync-state";
 import {forkEnv} from "@/fork/env";
 import {clearForkRuntimeTasks, tasksForMode} from "@/fork/runtime";
-import * as state from "@/fork/discovery/sync-state";
 
 const db = {} as never;
 const base = (over: Partial<TickDeps> = {}): TickDeps => ({mode: async () => ({mode: "on"}), db: async () => db, sync: vi.fn(async () => ({kind: "skipped", reason: "already_running"}) as const), intervalMs: () => 900_000, ...over});

@@ -1,8 +1,8 @@
 "use server";
 
 import type {ServiceDeps} from "@/fork/arcane/connection-service";
-import {SyncInputSchema, syncNow} from "@/fork/discovery/sync";
 import {appDb} from "@/fork/db/handle";
+import {SyncInputSchema, syncNow} from "@/fork/discovery/sync";
 import {getForkPrincipal} from "@/fork/principal";
 import {userAction} from "@/lib/safe-actions/actions";
 

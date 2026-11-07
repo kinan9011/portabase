@@ -1,21 +1,21 @@
 "use client";
 
+import {useRouter} from "next/navigation";
 import * as React from "react";
 import {Alert, AlertDescription, AlertTitle} from "@/components/ui/alert";
 import type {Outcome, Verification} from "@/fork/arcane/connection-service";
-import {useRouter} from "next/navigation";
 import type {EnvironmentOutcome} from "@/fork/arcane/environment-service";
-import type {SyncNowOutcome} from "@/fork/discovery/sync";
 import type {IntegrationsView} from "@/fork/arcane/integrations-view";
-import {StatusAnnouncer, useAnnounce} from "@/fork/ui/status-announcer";
+import type {SyncNowOutcome} from "@/fork/discovery/sync";
 import {ConnectionCard} from "@/fork/ui/integrations/connection-card";
 import {ConnectionForm} from "@/fork/ui/integrations/connection-form";
 import {deriveConnectionState, type TransientState} from "@/fork/ui/integrations/connection-state";
 import {SetupPath} from "@/fork/ui/integrations/empty-states";
 import {EnvironmentTable} from "@/fork/ui/integrations/environment-table";
 import type {SecretKeyHandle} from "@/fork/ui/integrations/secret-key-input";
-import {useIntegrationsActions, type UiResult} from "@/fork/ui/integrations/use-integrations-actions";
+import {type UiResult, useIntegrationsActions } from "@/fork/ui/integrations/use-integrations-actions";
 import {CONNECTION_STATE_LABELS, REFUSAL_COPY, SYNC_COPY, SYNC_ERROR_LABELS} from "@/fork/ui/labels";
+import {StatusAnnouncer, useAnnounce} from "@/fork/ui/status-announcer";
 import {ToneIcon} from "@/fork/ui/tone-badge";
 
 export type IntegrationsViewProps = {

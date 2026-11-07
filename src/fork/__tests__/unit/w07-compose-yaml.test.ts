@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
-import {COMPOSE_YAML_LIMITS, parseComposeYaml} from "@/fork/inventory/compose-yaml";
 import {RAW} from "@/fork/__tests__/discovered-fixtures";
+import {COMPOSE_YAML_LIMITS, parseComposeYaml} from "@/fork/inventory/compose-yaml";
 
 const reject = (text: string, reason: string, override?: string) => expect(parseComposeYaml(text, override)).toEqual({ok: false, reason});
 

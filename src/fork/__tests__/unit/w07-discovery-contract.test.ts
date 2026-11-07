@@ -1,10 +1,10 @@
 import {readFileSync} from "node:fs";
 import path from "node:path";
 import {describe, expect, it} from "vitest";
+import {discoveredFrom, LAB_PROXY} from "@/fork/__tests__/discovered-fixtures";
 import {ARCANE_OPENAPI_SHA256, ENDPOINTS} from "@/fork/arcane/endpoints";
 import {normalizeEnvironment} from "@/fork/inventory/normalize";
 import {parseInventoryStrict} from "@/fork/inventory/schema";
-import {discoveredFrom, LAB_PROXY} from "@/fork/__tests__/discovered-fixtures";
 
 /**
  * W07 contract tests vs the PINNED Arcane spec (v2.17.3, ADR-002 A1): what the discovery sync + normaliser rely on beyond W05's

@@ -1,7 +1,7 @@
 "use client";
 
-import {LifeBuoy, Layers, Plug} from "lucide-react";
-import {SidebarMenuCustomBase, type SidebarGroupItem} from "@/features/layout/components/menu-sidebar";
+import {Layers, LifeBuoy, Plug} from "lucide-react";
+import {type SidebarGroupItem, SidebarMenuCustomBase } from "@/features/layout/components/menu-sidebar";
 import type {ForkNavGroup} from "@/fork/nav";
 
 const ICONS = {plug: Plug, layers: Layers, "life-buoy": LifeBuoy} as const;

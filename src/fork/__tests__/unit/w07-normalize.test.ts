@@ -1,9 +1,9 @@
 import {describe, expect, it} from "vitest";
-import type {DiscoveredContainer} from "@/fork/discovery/provider";
-import {normalizeEnvironment, type NormalizeInput} from "@/fork/inventory/normalize";
-import {parseBackupHints, safeAbsPath} from "@/fork/inventory/labels";
-import {canonicalJson} from "@/fork/canonical";
 import {discoveredFrom, LAB_PROXY} from "@/fork/__tests__/discovered-fixtures";
+import {canonicalJson} from "@/fork/canonical";
+import type {DiscoveredContainer} from "@/fork/discovery/provider";
+import {parseBackupHints, safeAbsPath} from "@/fork/inventory/labels";
+import {type NormalizeInput, normalizeEnvironment } from "@/fork/inventory/normalize";
 
 const CONN = "00000000-0000-4000-8000-000000000001";
 const base = async (over: Partial<NormalizeInput> = {}): Promise<NormalizeInput> => {

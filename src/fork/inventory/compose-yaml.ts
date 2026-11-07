@@ -1,5 +1,5 @@
 import {parseDocument, visit} from "yaml";
-import {ENV_KEY, safePathHint, SERVICE_NAME} from "@/fork/inventory/labels";
+import {ENV_KEY, SERVICE_NAME, safePathHint } from "@/fork/inventory/labels";
 
 /**
  * Compose YAML → NAMES AND PATHS ONLY (W07, SEC-17). Used only on the tier-2 (opt-in `projects:read`) path, where Arcane

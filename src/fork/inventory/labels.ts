@@ -21,12 +21,16 @@ export const PROJECT_NAME = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 export const SERVICE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 export const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-const CONTROL = /[\u0000-\u001f\u007f]/;
+/** true for NUL / C0 control characters / DEL (written as a loop: a control-character regex trips the linter and hides intent). */
+export const hasControl = (s: string): boolean => {
+    for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c < 32 || c === 127) return true; }
+    return false;
+};
 export const MAX_PATH = 1024;
 
 /** Absolute POSIX path, normalised; `null` for anything else (relative, NUL/control chars, `..` segment, too long). Never throws. */
 export function safeAbsPath(raw: unknown): string | null {
-    if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_PATH || CONTROL.test(raw) || !raw.startsWith("/")) return null;
+    if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_PATH || hasControl(raw) || !raw.startsWith("/")) return null;
     if (raw.split("/").includes("..")) return null; // reject, never resolve: an escape attempt is not "fixed"
     const n = path.posix.normalize(raw);
     return n.length > 1 && n.endsWith("/") ? n.slice(0, -1) : n;
@@ -34,7 +38,7 @@ export function safeAbsPath(raw: unknown): string | null {
 
 /** Relative or absolute path HINT (env_file names): no NUL/control chars, no `..` segment, bounded. Never opened by the fork. */
 export function safePathHint(raw: unknown): string | null {
-    if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_PATH || CONTROL.test(raw)) return null;
+    if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_PATH || hasControl(raw)) return null;
     if (raw.split(/[\\/]/).includes("..")) return null;
     return raw;
 }

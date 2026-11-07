@@ -8,10 +8,10 @@ import type {Verification} from "@/fork/arcane/connection-service";
 import type {IntegrationsConnection} from "@/fork/arcane/integrations-view";
 import {DangerousActionConfirm, useReturnFocus} from "@/fork/ui/dangerous-action-confirm";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
-import {connectionAlert} from "@/fork/ui/integrations/connection-state";
-import {SecretKeyInput, type SecretKeyHandle} from "@/fork/ui/integrations/secret-key-input";
 import {PermissionList} from "@/fork/ui/integrations/connection-form";
-import {CONNECTION_STATE_LABELS, SYNC_COPY, SYNC_NOW, type ConnectionState} from "@/fork/ui/labels";
+import {connectionAlert} from "@/fork/ui/integrations/connection-state";
+import {type SecretKeyHandle, SecretKeyInput } from "@/fork/ui/integrations/secret-key-input";
+import {CONNECTION_STATE_LABELS, type ConnectionState, SYNC_COPY, SYNC_NOW } from "@/fork/ui/labels";
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge, ToneIcon} from "@/fork/ui/tone-badge";
 

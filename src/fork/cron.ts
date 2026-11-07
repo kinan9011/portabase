@@ -1,10 +1,10 @@
-import {logger} from "@/lib/logger";
 import {appDb, type ForkDb} from "@/fork/db/handle";
+import {type SyncDeps, type SyncResult, syncConnection } from "@/fork/discovery/sync";
 import {listDueConnections} from "@/fork/discovery/sync-state";
-import {syncConnection, type SyncDeps, type SyncResult} from "@/fork/discovery/sync";
 import {forkEnv} from "@/fork/env";
 import {currentForkMode, type ForkModeResult} from "@/fork/mode";
 import {registerForkRuntimeTask} from "@/fork/runtime";
+import {logger} from "@/lib/logger";
 
 const log = logger.child({module: "fork/cron"});
 export const CRON_TICK_MS = 60_000;

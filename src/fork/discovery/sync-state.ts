@@ -2,8 +2,8 @@ import {eq, sql} from "drizzle-orm";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkArcaneConnection, forkArcaneEnvironment} from "@/fork/db/schema/arcane";
 import {forkStack, forkStackInventory} from "@/fork/db/schema/stack";
-import type {NormalizeResult} from "@/fork/inventory/normalize";
 import {SYNC_ERROR_CODES, type SyncSummary} from "@/fork/discovery/sync-summary";
+import type {NormalizeResult} from "@/fork/inventory/normalize";
 
 /**
  * Persistent state helpers of the discovery sync (W07). ARCH-10 semantics, in one place (documented in ADR-004 §10, reused by W12):

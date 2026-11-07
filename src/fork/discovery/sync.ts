@@ -5,24 +5,24 @@ import {ForkForbiddenError, ForkNotFoundError} from "@/fork/acl";
 import {ArcaneClient} from "@/fork/arcane/client";
 import type {RefusalCode, ServiceDeps} from "@/fork/arcane/connection-service";
 import {ARCANE_PINNED_VERSION} from "@/fork/arcane/endpoints";
-import {ArcaneError, HEALTH_FOR_CLASS, type ArcaneErrorClass} from "@/fork/arcane/errors";
+import {ArcaneError, type ArcaneErrorClass, HEALTH_FOR_CLASS } from "@/fork/arcane/errors";
 import {evaluateKeyPermissions} from "@/fork/arcane/key-policy";
 import {recordAudit} from "@/fork/audit";
-import {CONNECTION_PUBLIC_COLUMNS, readConnectionApiKey, toConnectionDto, type ConnectionDto} from "@/fork/db/dto";
+import {CONNECTION_PUBLIC_COLUMNS, type ConnectionDto, readConnectionApiKey, toConnectionDto } from "@/fork/db/dto";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkArcaneConnection, forkArcaneEnvironment} from "@/fork/db/schema/arcane";
-import {BREAKER, circuitOpenMs, ENVIRONMENT_BUDGET_MS, leaseName, recordEnvironmentOutcome, reconcileEnvironments, setConnectionSyncState, SYNC_LEASE_TTL_MS, toErrorCode, writeEnvironmentSync} from "@/fork/discovery/sync-state";
+import {BREAKER, circuitOpenMs, ENVIRONMENT_BUDGET_MS, leaseName, reconcileEnvironments, recordEnvironmentOutcome, SYNC_LEASE_TTL_MS, setConnectionSyncState, toErrorCode, writeEnvironmentSync} from "@/fork/discovery/sync-state";
 import type {SyncSummary} from "@/fork/discovery/sync-summary";
 import {forkEnv} from "@/fork/env";
-import {parseComposeYaml, type ParsedCompose} from "@/fork/inventory/compose-yaml";
+import {type ParsedCompose, parseComposeYaml } from "@/fork/inventory/compose-yaml";
 import {PROJECT_NAME} from "@/fork/inventory/labels";
 import {normalizeEnvironment} from "@/fork/inventory/normalize";
+import {acquireLease, releaseLease} from "@/fork/locks";
 import {assertForkConfigAllowed, ForkLockedError} from "@/fork/mode";
 import {parseAllowlist, UrlGuardError} from "@/fork/net/guard";
 import {checkRate} from "@/fork/net/rate-limit";
 import {enqueueForkNotification} from "@/fork/notify";
 import {assertForkResource} from "@/fork/resource-scope";
-import {acquireLease, releaseLease} from "@/fork/locks";
 
 /**
  * Discovery sync orchestrator (W07): per connection → covered, ENABLED environments → five list calls each (read-only, GET) → normaliser →

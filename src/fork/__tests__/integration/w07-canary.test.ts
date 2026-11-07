@@ -2,12 +2,12 @@ import {mkdtemp} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi} from "vitest";
-import {insertConnectionWithSecret} from "@/fork/db/dto";
-import {syncConnection, type SyncDeps, type SyncResult, type SyncRun} from "@/fork/discovery/sync";
-import {parseAllowlist} from "@/fork/net/guard";
-import {MIN_PERMS, startFakeArcane, type FakeArcane} from "@/fork/__tests__/fake-arcane";
 import {RAW} from "@/fork/__tests__/discovered-fixtures";
+import {type FakeArcane, startFakeArcane } from "@/fork/__tests__/fake-arcane";
 import {freshForkDb, seedOrg, seedRp, type W04Db} from "@/fork/__tests__/w04-helpers";
+import {insertConnectionWithSecret} from "@/fork/db/dto";
+import {type SyncDeps, type SyncResult, type SyncRun, syncConnection } from "@/fork/discovery/sync";
+import {parseAllowlist} from "@/fork/net/guard";
 
 /** E2 canary + tier-2 + retention: secrets planted EVERYWHERE Arcane could carry them must not reach any fork table, audit row, log or error. */
 const CANARY = "CANARY-sec-5d81c0ffee";
