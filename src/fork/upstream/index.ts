@@ -4,6 +4,7 @@
  * assumption (run on every W-SYNC). Nothing here reads a session or calls a `userAction`.
  */
 export * from "./agents";
+export * from "./backups";
 export * from "./channels";
 export * from "./credentials";
 export * from "./master-key";

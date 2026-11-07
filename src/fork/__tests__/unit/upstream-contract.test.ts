@@ -42,6 +42,9 @@ describe("upstream contract — symbols the fork imports", () => {
         ["src/db/schema/12_storage-channel.ts", "storageChannel"],
         ["src/db/schema/12_storage-channel.ts", "organizationStorageChannel"],
         ["src/db/schema/14_storage-backup.ts", "backupStorage"],
+        // W12: stack runs read/queue/delete upstream backups through `src/fork/upstream/backups.ts` (own pins: w12-runs-upstream-contract.test.ts)
+        ["src/db/schema/07_database.ts", "restoration"],
+        ["src/lib/tasks/database/utils/backup-delete.service.ts", "deleteBackupService"],
         ["src/db/index.ts", "db"],
         // W06: Integrations UI reuses the upstream design-system primitives (Radix/shadcn) and the agent-status util
         ["src/components/ui/alert-dialog.tsx", "AlertDialog"],
