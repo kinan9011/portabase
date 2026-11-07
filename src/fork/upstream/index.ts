@@ -10,5 +10,6 @@ export * from "./credentials";
 export * from "./master-key";
 export * from "./projects";
 export * from "./storage-read";
+export * from "./restic";
 export * from "./sources";
 export * from "./users";

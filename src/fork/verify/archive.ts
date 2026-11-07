@@ -69,7 +69,7 @@ function octal(b: Buffer): number {
         for (let i = 1; i < b.length; i++) v = v * 256 + b[i];
         return v;
     }
-    const s = b.toString("latin1").replace(/\0.*$/s, "").trim();
+    const s = b.toString("latin1").replace(/\0[\s\S]*$/, "").trim();
     if (s === "") return 0;
     if (!/^[0-7]+$/.test(s)) throw new Fail("tar_invalid");
     return Number.parseInt(s, 8);
@@ -101,7 +101,7 @@ function feedTar(t: TarState, data: Buffer): void {
         if (sum !== octal(t.header.subarray(148, 156))) throw new Fail("tar_invalid");
         const type = String.fromCharCode(t.header[156] || 0x30);
         const size = octal(t.header.subarray(124, 136));
-        const name = t.header.subarray(0, 100).toString("utf8").replace(/\0.*$/s, "");
+        const name = t.header.subarray(0, 100).toString("utf8").replace(/\0[\s\S]*$/, "");
         const regular = type === "0" || type === "7";
         if (regular || type === "5" || type === "2" || type === "1" || type === "x" || type === "g" || type === "L" || type === "K") {
             if (type !== "x" && type !== "g" && type !== "L" && type !== "K") t.entries++;

@@ -22,8 +22,9 @@ const DEFAULT_STDOUT = 64 * 1024 * 1024;
 
 export function createResticRunner(cfg: RunnerConfig): ResticRunner {
     return (args, o = {}) => new Promise<ResticResult>((resolve, reject) => {
-        const env: NodeJS.ProcessEnv = {PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR, ...cfg.env, RESTIC_REPOSITORY: cfg.repository, RESTIC_PASSWORD: cfg.password};
-        const child = spawn(cfg.binary ?? "restic", [...args, "--retry-lock", "1m", ...(cfg.extraArgs ?? [])], {env, cwd: o.cwd, stdio: ["ignore", "pipe", "pipe"]});
+        const env: Record<string, string | undefined> = {PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR, ...cfg.env, RESTIC_REPOSITORY: cfg.repository, RESTIC_PASSWORD: cfg.password};
+        const penv = env as NodeJS.ProcessEnv;
+        const child = spawn(cfg.binary ?? "restic", [...args, "--retry-lock", "1m", ...(cfg.extraArgs ?? [])], {env: penv, cwd: o.cwd, stdio: ["ignore", "pipe", "pipe"]});
         const out: Buffer[] = [];
         let outBytes = 0;
         let err = "";
