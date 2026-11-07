@@ -21,7 +21,7 @@ v1 (W14b, D42) hardening, all fail closed (exit 1, nothing left behind):
   * --audit-tar [--expect-top NAME] audits the tar inside BEFORE anything can extract it (untrusted-archive rules in `audit_tar`):
     no absolute names, no `..`, no control characters, nothing written through a symlink, hard links only to earlier regular members, no devices /
     fifos / sparse files, no setuid / setgid / sticky bits, entry / depth / name-length / declared-size limits.
-Prints `sha256=<hex> size=<n> inflated=<n> entries=<n>` on success.
+Prints `sha256=<hex> size=<n>` on success (`inflated=<n> entries=<n>` are appended with --audit-tar).
 
 Requires: python3, python3-cryptography (bare-host prerequisite, REVISED-PLAN section 4.3).
 """
@@ -348,7 +348,7 @@ def main(argv):
             os.close(fd)
         if os.path.lexists(tmp):
             os.unlink(tmp)
-    print(f"sha256={hexd} size={size} inflated={inflated} entries={entries}")
+    print(f"sha256={hexd} size={size}" + (f" inflated={inflated} entries={entries}" if a.audit_tar else ""))  # first two fields unchanged since v0 (callers compare them)
     return 0
 
 

@@ -33,6 +33,7 @@ POISON = {
     "bind-outside": ("app", "    volumes: ['/etc:/hostetc:ro']\n"),
     "env-file-outside": ("app", "    env_file: ['../../outside.env']\n"),
     "env-file-var": ("app", "    env_file: ['${HOME}/secrets.env']\n"),
+    "dup-key": ("app", "    env_file: ['../../outside.env']\n"),
     "extends-outside": ("app", "    extends: {file: '../../other.yml', service: base}\n"),
 }
 SPECIAL = {"include-outside", "secret-file-outside", "allow-override-ok"}
@@ -119,12 +120,14 @@ def main():
     if case in POISON:
         svc, extra = POISON[case]
         compose = COMPOSE_OK.replace("    command: [\"sleep\", \"3600\"]\n", "    command: [\"sleep\", \"3600\"]\n" + extra) if "volumes" not in extra else COMPOSE_OK.replace("    volumes:\n      - ./data:/data\n      - appdata:/appdata\n", extra)
-        if case == "extends-outside":
+        if case in ("extends-outside", "env-file-outside", "env-file-var"):
             compose = compose.replace("    env_file: stack.env\n", "")
     if case == "include-outside":
         compose = "include:\n  - ../../elsewhere.yml\n" + COMPOSE_OK
     if case == "secret-file-outside":
         compose = COMPOSE_OK + "secrets:\n  s:\n    file: /etc/shadow\n"
+    if case == "abs-bind":
+        compose = COMPOSE_OK.replace("      - ./data:/data\n", '      - "/srv/pbr app/data:/data"\n')
     if case == "allow-override-ok":
         compose = COMPOSE_OK.replace("    command:", "    privileged: true\n    command:")
     compose_tgz = tgz([("compose.yml", compose.encode()), ("stack.env", b"A=1\n")])
@@ -134,6 +137,7 @@ def main():
     pg_tgz = tgz([(f"{uuid.uuid4()}.dump", dump)])
     label = "/srv/pbr app"
     names = {"compose": f"compose: {label}", "bind": f"bind: {label}/data", "volume": "volume: pbrtest_appdata", "db": "db: db"}
+    if case == "manual-role": names["compose"] = f"manual: {label}"
     if case == "inject-dollar": names["bind"] = "bind: /srv/$(touch " + os.path.join(out, "CANARY") + ")"
     if case == "inject-backtick": names["bind"] = "bind: /srv/`touch " + os.path.join(out, "CANARY") + "`"
     if case == "inject-semicolon": names["bind"] = "bind: /srv/x; touch " + os.path.join(out, "CANARY")

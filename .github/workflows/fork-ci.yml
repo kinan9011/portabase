@@ -103,6 +103,25 @@ jobs:
       - run: pnpm test:fork:unit
       - run: pnpm test:fork:integration
 
+  recover-cli:
+    name: portabase-recover CLI (ShellCheck + shell tests, W14b)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: bare-host prerequisites (the same packages the "My server died" guide installs)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends shellcheck restic rclone jq python3-cryptography python3-yaml
+          openssl version; restic version; rclone version | head -1; docker compose version
+          docker pull -q busybox:latest
+      - name: ShellCheck
+        run: shellcheck -x -S style scripts/fork/recover/portabase-recover scripts/fork/recover/tests/run.sh
+      - name: shell tests (mutation, injection, truncation, read-scope, deny-list, round-trip fixtures; full restore against the runner's docker)
+        run: bash scripts/fork/recover/tests/run.sh
+
   e2e:
     name: build + test:fork e2e
     runs-on: ubuntu-latest

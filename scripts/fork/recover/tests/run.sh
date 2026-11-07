@@ -7,11 +7,14 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; REC="$(dirname "$HERE")"
 CLI="$REC/portabase-recover"; MK="$HERE/mkstore.py"
-BASE="$(mktemp -d "${TMPDIR:-/tmp}/pbr-tests.XXXXXX")"; trap 'rm -rf "$BASE"' EXIT
+BASE="$(mktemp -d "${TMPDIR:-/tmp}/pbr-tests.XXXXXX")"
 FILTER="${1:-}"; pass=0; fail=0; skip=0
 docker_ok=0; docker info >/dev/null 2>&1 && docker image inspect busybox:latest >/dev/null 2>&1 && docker_ok=1
 [ "$docker_ok" = 1 ] || { docker info >/dev/null 2>&1 && docker pull -q busybox:latest >/dev/null 2>&1 && docker_ok=1; }
 
+# the tests' own docker project (pbrtest*) must never leak between runs
+purge_docker() { [ "$docker_ok" = 1 ] || return 0; local p; for p in pbrtest pbrtest2; do docker compose -p "$p" down -v --remove-orphans >/dev/null 2>&1; docker volume rm -f "${p}_appdata" >/dev/null 2>&1; done; return 0; }
+purge_docker; trap 'purge_docker; rm -rf "$BASE"' EXIT
 ok()   { pass=$((pass + 1)); printf 'PASS  %s\n' "$1"; }
 bad()  { fail=$((fail + 1)); printf 'FAIL  %s\n' "$1"; [ -z "${2:-}" ] || printf '      %s\n' "$2"; }
 skipt(){ skip=$((skip + 1)); printf 'SKIP  %s (%s)\n' "$1" "$2"; }
@@ -99,12 +102,12 @@ if t compose; then
   run restore --yes --root "$D/full" "${C[@]}"; expect "restore refuses a non-empty restore folder" 1 'not empty'
   run restore --yes --root / "${C[@]}"; expect "restore refuses '/' as root" 2 'too broad'
   mkdir -p "$D/kitdir"; cp "$D/kit.pbkit" "$D/kitdir/"; run restore --yes --root "$D/kitdir" --kit "$D/kitdir/kit.pbkit" --passphrase-file "$D/pass.txt" --rclone-config "$D/rclone.conf" --storage-root "local:$S"; expect "restore refuses a root that is not empty (kit inside)" 1 'not empty'
-  for n in privileged host-net pid-host ipc-host devices cap-add docker-sock bind-outside env-file-var; do
+  for n in privileged host-net pid-host ipc-host devices cap-add docker-sock bind-outside; do
     new_case "c-$n" "$n" || continue
     run restore --yes --root "$D/restore" "${C[@]}"; expect "deny list: $n refused by default (exit 4)" 4 'RISK|risky|asks for powers'
     if [ "$docker_ok" = 1 ]; then docker volume inspect pbrtest_appdata >/dev/null 2>&1 && bad "$n: a volume was created before the policy check" || ok "$n: no docker volume created before the policy check"; fi
   done
-  for n in env-file-outside include-outside extends-outside secret-file-outside; do
+  for n in env-file-outside include-outside extends-outside secret-file-outside dup-key env-file-var; do
     new_case "c-$n" "$n" || continue
     run restore --yes --root "$D/restore" "${C[@]}"; expect "read-scope: $n refused on the RAW yaml before rendering (exit 4)" 4 'before it is rendered'
   done
@@ -123,6 +126,15 @@ if t full; then
     [ "$(docker run --rm -v "${PRJ}_appdata:/v:ro" busybox cat /v/sub/file-2.txt 2>/dev/null)" = "two" ] && ok "full: volume restored (strip vol/)" || bad "full: volume content wrong"
     docker compose -p "$PRJ" ps --format json 2>/dev/null | grep -q running && ok "full: container running" || bad "full: container not running"
     no_secrets "full restore"; clean_tmp "full restore"
+    cleanup_docker
+    new_case f-manual manual-role
+    run restore --yes --root "$D/restore" --project-name pbrtest2 "${C[@]}"; expect "compose folder backed up as a 'manual' folder source + --project-name rename" 0 'stack started'
+    [ "$(docker run --rm -v pbrtest2_appdata:/v:ro busybox cat /v/file-1.txt 2>/dev/null)" = "volume data one" ] && ok "full: volume renamed with the project (pbrtest2_appdata)" || bad "full: renamed volume content wrong"
+    docker compose -p pbrtest2 down -v --remove-orphans >/dev/null 2>&1
+    new_case f-abs abs-bind
+    run restore --yes --root "$D/restore" "${C[@]}"; expect "absolute bind into the ORIGINAL path is re-pointed into the restore root (override file), then policy passes" 0 're-pointed absolute bind mounts'
+    src="$(docker inspect pbrtest-app-1 --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
+    [ "$src" = "$D/restore/files/srv/pbr app/data" ] && ok "full: container /data is mounted from inside the restore root" || bad "full: /data source is '$src'"
     cleanup_docker
     new_case f-allow allow-override-ok
     run restore --yes --root "$D/restore" "${C[@]}"; expect "privileged compose refused without override (exit 4)" 4 'privileged'

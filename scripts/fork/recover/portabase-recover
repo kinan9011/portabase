@@ -454,6 +454,21 @@ restore_files() {
     FILES_MAP+=("$label|$target"); [ "$role" = compose ] && COMPOSE_DIR="$target"
     note "restored $label -> $target"
   done
+  [ -n "$COMPOSE_DIR" ] || pick_compose_dir
+}
+# the Compose project folder may have been backed up as a plain folder source: use the restored folder that is the stack's working dir or holds its compose files
+pick_compose_dir() {
+  local wd e orig best=0 h; local -a hints
+  wd="$(jq -r '.inventory.stack.working_dir_hint // empty' "$MANIFEST")"
+  mapfile -t hints < <(jq -r '.inventory.stack.config_files_hint[]?' "$MANIFEST")
+  for e in "${FILES_MAP[@]+"${FILES_MAP[@]}"}"; do
+    orig="${e%%|*}"
+    if [ -n "$wd" ] && [ "$orig" = "$wd" ]; then COMPOSE_DIR="${e#*|}"; return 0; fi
+    for h in "${hints[@]+"${hints[@]}"}"; do
+      if [[ $h == "$orig"/* ]] && [ "${#orig}" -gt "$best" ]; then best="${#orig}"; COMPOSE_DIR="${e#*|}"; fi
+    done
+  done
+  return 0
 }
 
 ORIG_PROJECT=""
@@ -564,7 +579,7 @@ remap_binds() {
   [ -n "$map" ] || return 0
   local ov="$W/compose.restore.override.yml"
   jq -r --slurpfile m <(printf '%s' "$map") --arg root "$RESTORE_ROOT" '
-    def remap($p): ($m | map(select($p == .o or ($p | startswith(.o + "/")))) | sort_by(.o|length) | last) as $hit
+    def remap($p): ($m | map(. as $e | select($p == $e.o or ($p | startswith($e.o + "/")))) | sort_by(.o|length) | last) as $hit
       | if $hit == null then $p else ($hit.t + ($p | ltrimstr($hit.o))) end;
     [ (.services // {}) | to_entries[] | .key as $k | .value.volumes // [] | map(select(.type=="bind" and (.source | startswith($root + "/") | not) and (remap(.source) != .source))) | select(length>0) | $k ] as $svcs
     | if ($svcs|length)==0 then empty else

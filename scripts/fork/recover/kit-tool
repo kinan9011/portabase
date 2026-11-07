@@ -350,6 +350,31 @@ def _targets(node, key):
     return out
 
 
+def _strict_loader(yaml):
+    """SafeLoader that REFUSES duplicate mapping keys: parsers disagree on them (PyYAML keeps the last, others the first or fail), so a poisoned
+    `env_file` hidden behind a benign duplicate must not slip past the scan. Merge keys (`<<`) are exempt."""
+    class Strict(yaml.SafeLoader):
+        pass
+
+    def construct(loader, node, deep=False):
+        seen = set()
+        for knode, _v in node.value:
+            if knode.tag == "tag:yaml.org,2002:merge":
+                continue
+            try:
+                key = loader.construct_object(knode, deep=True)
+                hash(key)
+            except TypeError:
+                raise yaml.constructor.ConstructorError(None, None, "unhashable mapping key", knode.start_mark)
+            if key in seen:
+                raise yaml.constructor.ConstructorError(None, None, "duplicate mapping key", knode.start_mark)
+            seen.add(key)
+        return yaml.SafeLoader.construct_mapping(loader, node, deep)
+
+    Strict.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct)
+    return Strict
+
+
 def compose_scan(root, files):
     try:
         import yaml
@@ -361,7 +386,7 @@ def compose_scan(root, files):
         if raw.count(b"*") > MAX_ALIASES * 20 and len(re.findall(rb"(?m)[:\-]\s+\*[A-Za-z0-9_-]+", raw)) > MAX_ALIASES:
             raise Fail("compose file has too many YAML aliases")
         try:
-            docs = list(yaml.safe_load_all(raw.decode("utf-8", "strict")))
+            docs = list(yaml.load_all(raw.decode("utf-8", "strict"), Loader=_strict_loader(yaml)))  # noqa: S506 (SafeLoader subclass)
         except (yaml.YAMLError, UnicodeDecodeError):
             raise Fail("compose file is not valid YAML (refused, fail closed)")
         if len(docs) != 1 or not isinstance(docs[0], dict):
