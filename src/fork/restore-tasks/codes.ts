@@ -7,5 +7,8 @@ export const RESTORE_REASONS = [
     "path_not_allowed", "symlink_escape", "root_not_shared", "workspace_not_owned", "mode_unsupported", "host_role_mismatch", "approval_missing",
     "manifest_invalid", "manifest_unknown_kid", "manifest_signature", "manifest_mismatch", "artifact_unavailable", "checksum_mismatch", "archive_invalid",
     "dump_format_mismatch", "volume_exists", "volume_not_owned", "disk_full", "docker_unavailable", "deadline_exceeded", "restore_failed",
+    // W17-ii (ADR-007 A14) — order is part of the contract (the agent's `Code::RESTORE` is compared index by index)
+    "compose_unavailable", "override_invalid", "raw_refused", "render_failed", "render_too_large", "policy_refused", "approval_invalid",
+    "container_conflict", "protected_container", "network_exists", "volume_not_in_compose", "db_restore_failed", "compose_failed",
 ] as const;
 export type RestoreReason = (typeof RESTORE_REASONS)[number];

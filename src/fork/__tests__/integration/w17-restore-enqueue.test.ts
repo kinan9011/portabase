@@ -8,7 +8,7 @@ import {decryptPayload} from "@/fork/agent-channel/payload";
 import {verifyEnvelope} from "@/fork/agent-channel/envelope";
 import {enqueueTask, heartbeatTask, insertSignedTask, leaseTask, submitResult} from "@/fork/agent-channel/tasks";
 import {loadTaskKey} from "@/fork/agent-channel/admin";
-import {RESTORE_TASK_TYPES} from "@/fork/agent-channel/vocab";
+import {COMPOSE_TASK_TYPES, RESTORE_TASK_TYPES} from "@/fork/agent-channel/vocab";
 import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
 import {enqueueRestoreTask, type RestoreTaskDeps} from "@/fork/restore-tasks/enqueue";
 import {resetRateLimits} from "@/fork/net/rate-limit";
@@ -188,7 +188,7 @@ describe("restore task enqueue (the only builder of restore tasks)", () => {
 describe("channel changes of W17-i", () => {
     it("the generic enqueue refuses every restore task type; targeted insert without/with a foreign target throws", async () => {
         const w = await seedW17World(t, kek, key, admin, {org});
-        for (const type of RESTORE_TASK_TYPES) expect(await enqueueTask(chDeps(t, kek, key, admin, {role: "admin"}), {agentId: w.agent, type, payload: {}})).toMatchObject({ok: false, code: "invalid_input"});
+        for (const type of [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES]) expect(await enqueueTask(chDeps(t, kek, key, admin, {role: "admin"}), {agentId: w.agent, type, payload: {}})).toMatchObject({ok: false, code: "invalid_input"});
         const e = await enrolmentOf(w.agent);
         const base = {e: e, agentName: "x", type: "restore_probe" as const, plaintext: Buffer.from("{}"), actorUserId: admin, signing: {privateKeyPem: key.privateKey}, kid: key.kid, taskKey: Buffer.alloc(32), now: NOW, ttlMs: 1000};
         await expect(t.db.transaction((tx) => insertSignedTask(tx as never, base))).rejects.toThrow(/target_agent_id/);
