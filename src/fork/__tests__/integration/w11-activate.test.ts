@@ -262,3 +262,17 @@ describe("W11 accepted exclusion (UX-20) round trip", () => {
         expect(x.sources.some((s) => s.resource_key === "volume:app_data")).toBe(false);
     });
 });
+
+describe("W12 hook: an authorized (re-)activation is the only thing that clears a run-time pause", () => {
+    it("pause columns set by re-authorization are cleared and the stack is active again after activateStackPolicy", async () => {
+        const id = await mkStack();
+        const first = await activateStackPolicy(deps(), base(id));
+        expect(first.ok).toBe(true);
+        await q("update fork_stack_policy set paused_at=now(), pause_reason='capability_lost' where stack_id=$1", [id]);
+        await q("update fork_stack set protection_state='paused' where id=$1", [id]);
+        const again = await activateStackPolicy(deps(), base(id));
+        expect(again.ok).toBe(true);
+        expect((await q("select paused_at, pause_reason from fork_stack_policy where stack_id=$1", [id])).rows[0]).toEqual({paused_at: null, pause_reason: null});
+        expect((await q("select protection_state from fork_stack where id=$1", [id])).rows[0].protection_state).toBe("active");
+    });
+});
