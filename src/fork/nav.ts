@@ -14,7 +14,7 @@ type Def = ForkNavItem & {
 
 export const FORK_NAV_DEFS: readonly Def[] = [
     {title: "Integrations", url: "/integrations", iconKey: "plug", capability: "arcane.manage", wave: "W01", shipped: true},
-    {title: "Docker Stacks", url: "/stacks", iconKey: "layers", capability: "stacks.view", wave: "W08", shipped: false},
+    {title: "Docker Stacks", url: "/stacks", iconKey: "layers", capability: "stacks.view", wave: "W08", shipped: true},
     // Recovery stays hidden until the restore UI exists (W18b, R2, D13).
     {title: "Recovery", url: "/recovery", iconKey: "life-buoy", capability: "recovery.view", wave: "W18b", shipped: false},
 ];
