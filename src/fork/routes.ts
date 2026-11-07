@@ -19,8 +19,11 @@ const RUNTIME_ROUTES: RegExp[] = [];
  * (locked mode needs the DB, which proxy must not touch).
  */
 const ADMIN_PAGES: RegExp[] = [/^\/dashboard\/integrations(\/|$)/];
+/** Member-visible fork pages (W08): hidden (real 404) whenever no fork flag is on; who may open them is decided by the page (org membership, `stacks.view`). */
+const MEMBER_PAGES: RegExp[] = [/^\/dashboard\/stacks(\/|$)/];
 
 export function forkPageHidden(pathname: string, role: string | null | undefined, source: Record<string, string | undefined> = process.env): boolean {
+    if (MEMBER_PAGES.some((r) => r.test(pathname))) return !anyForkFlagOn(source);
     if (!ADMIN_PAGES.some((r) => r.test(pathname))) return false;
     return !(anyForkFlagOn(source) && forkCan({systemRole: role}, "arcane.manage"));
 }

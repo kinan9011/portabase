@@ -46,6 +46,7 @@ describe("upstream contract — symbols the fork imports", () => {
         ["src/components/ui/select.tsx", "Select"],
         ["src/components/ui/switch.tsx", "Switch"],
         ["src/components/ui/table.tsx", "Table"],
+        ["src/components/ui/tabs.tsx", "Tabs"], // W08
         ["src/lib/utils.ts", "cn"],
         ["src/features/agents/utils/status/agent-status.ts", "getAgentStatus"],
         ["src/features/agents/utils/status/agent-status.ts", "DASHBOARD_THRESHOLDS"],
@@ -60,7 +61,7 @@ describe("upstream contract — symbols the fork imports", () => {
             "@/db/schema/08_agent", "@/db/schema/14_storage-backup",
             // W06
             "@/components/ui/alert-dialog", "@/components/ui/alert", "@/components/ui/button", "@/components/ui/dialog", "@/components/ui/input", "@/components/ui/label",
-            "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/lib/utils", "@/features/agents/utils/status/agent-status",
+            "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/components/ui/tabs", "@/lib/utils", "@/features/agents/utils/status/agent-status",
         ]);
         const walk = (dir: string): string[] =>
             readdirSync(dir, {withFileTypes: true}).flatMap((e) =>

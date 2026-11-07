@@ -145,7 +145,7 @@ export const STALE_BADGE = {label: "Stale", tone: "warning", description: "The l
 export const STACKS_PAGE = {
     title: "Docker Stacks",
     description: "Compose applications discovered through Arcane. Runtime comes from Arcane; protection comes from Portabase.",
-    sourceNote: "Source host and runtime state come from Arcane at the last sync. Protection comes from Portabase and says nothing is backed up until a policy is active.",
+    sourceNote: "Source host and runtime state come from Arcane at the last sync. Protection comes from Portabase: a stack stays Unprotected until a backup policy is active.",
     foundTile: "Found",
     unprotectedTile: "Unprotected",
     staleTile: "Stale or no longer found",
@@ -295,3 +295,14 @@ export const WARNING_COPY: Record<string, string> = {
 };
 export const WARNING_FALLBACK = "Discovery recorded a note for this stack that has no description in this release.";
 export const WARNING_SEVERITY_LABELS = {info: "Note", warn: "Warning", blocker: "Blocker"} as const;
+
+/** Service container state → label/tone (informational; never a statement about backups). */
+export const SERVICE_STATE_LABELS = {
+    running: {label: "Running", tone: "success"},
+    exited: {label: "Exited", tone: "neutral"},
+    created: {label: "Created", tone: "neutral"},
+    paused: {label: "Paused", tone: "warning"},
+    restarting: {label: "Restarting", tone: "warning"},
+    dead: {label: "Dead", tone: "danger"},
+    absent: {label: "Absent", tone: "neutral"},
+} as const satisfies Record<string, {label: string; tone: Tone}>;

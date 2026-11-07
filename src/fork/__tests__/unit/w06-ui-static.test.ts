@@ -5,8 +5,10 @@ import {describe, expect, it} from "vitest";
 /** Structural guards for the W06 UI (the key can only live in the uncontrolled input; no storage, no raw HTML). */
 const ROOT = path.resolve(__dirname, "../../..");
 const dirs = ["fork/ui"].map((d) => path.join(ROOT, d));
+// W08: the stacks UI (src/fork/ui/stacks) holds no secret input and filters with a GET form on purpose; it has its own guard (w08-ui-static).
+const isStacksUi = (f: string) => f.includes(`${path.sep}ui${path.sep}stacks${path.sep}`);
 const files = (d: string): string[] => readdirSync(d, {withFileTypes: true}).flatMap((e) => (e.isDirectory() ? files(path.join(d, e.name)) : [path.join(d, e.name)])).filter((f) => /\.tsx?$/.test(f));
-const ui = dirs.flatMap(files);
+const ui = dirs.flatMap(files).filter((f) => !isStacksUi(f));
 const page = path.join(ROOT, "../app/(customer)/dashboard/(admin)/integrations/page.tsx");
 const read = (f: string) => readFileSync(f, "utf8");
 

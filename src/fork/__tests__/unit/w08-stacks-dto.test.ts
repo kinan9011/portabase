@@ -1,5 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {CANARY, richInventory} from "@/fork/__tests__/w08-fixtures";
+import {hasControl} from "@/fork/inventory/labels";
 import {InventoryViewSchema, safeImageRef, toInventoryView} from "@/fork/stacks/dto";
 import {escapeLike, isFiltered, PAGE_SIZE, parseStackListParams, toQueryString} from "@/fork/stacks/params";
 
@@ -58,7 +59,7 @@ describe("W08 list params: untrusted URL input", () => {
         expect(parseStackListParams({runtime: ["partial", "running"], protection: "paused", sort: "attention", page: "3"})).toMatchObject({runtime: "partial", protection: "paused", sort: "attention", page: 3});
         const p = parseStackListParams({q: `${"a".repeat(500)}\u0000\u001f `, environment: "e".repeat(500)});
         expect(p.q.length).toBe(100);
-        expect(p.q).not.toMatch(/[\u0000-\u001f]/);
+        expect(hasControl(p.q)).toBe(false);
         expect(p.environment!.length).toBe(128);
     });
     it("escapes LIKE metacharacters", () => expect(escapeLike("50%_a\\b")).toBe("50\\%\\_a\\\\b"));
