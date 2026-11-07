@@ -407,6 +407,60 @@ h.update(bytes.fromhex(sys.argv[3])); x=h.hexdigest()[:20].upper(); print("-".jo
         expect(back.json.length).toBeGreaterThan(100);
     }, 420_000);
 
+    it("5. W14b / D41: the REAL offline verifier (`portabase-recover verify-kit`, digital + paper) opens the live MinIO repo and prints the code; wrong code refused; the code from the CLI verifies the kit and ONLY THEN `kit not verified` clears", async () => {
+        resetRateLimits();
+        const {spawnSync} = await import("node:child_process");
+        const kek = path.join(mkdtempSync(path.join(os.tmpdir(), "w14b-kek-")), "fork-kek");
+        const keys = {master: async () => master(), signing: async () => ({privateKeyPem: signing.privateKey, publicKeyPem: signing.publicKey})};
+        const kd: KitDeps = {db, principal: principal(), keys, kekDir: kek, verifyPassword: async () => true, assertConfigAllowed: async () => undefined};
+        const PASS = `Lab-pass-${Date.now()}-Zq9!`; // TEST-ONLY
+        const b = await beginKitGeneration(kd, {types: ["paper", "digital"], password: "lab-throwaway"});
+        if (!b.ok) throw new Error(`begin refused ${b.code}`);
+        const paper = await generateKitArtifact(kd, {kind: "paper", token: b.tokens.paper});
+        const digital = await generateKitArtifact(kd, {kind: "digital", token: b.tokens.digital, passphrase: PASS, passphraseConfirm: PASS});
+        if (!paper.ok || paper.kind !== "paper" || !digital.ok || digital.kind !== "digital") throw new Error("kit generation failed");
+        const [row] = await q("select status, fingerprint from fork_kit where superseded_at is null");
+        expect(row.status).toBe("issued");
+        // (the stack's PRIMARY state can legitimately be Failed here: test 4 left a failed RP and Failed outranks Kit-not-verified, §4.6; the kit gate itself is `isKitVerified`)
+        expect(await isKitVerified(db)).toBe(false);
+        expect((await loadKitView(db)).state).toBe("issued");
+        // files for the CLI (lab results/ is git-ignored; the passphrase is TEST-ONLY)
+        const dir = path.join(LAB_DIR, "results", "w14b"); mkdirSync(dir, {recursive: true, mode: 0o700});
+        const kitFile = path.join(dir, "kit.pbkit"); writeFileSync(kitFile, digital.body, {mode: 0o600});
+        const passFile = path.join(dir, "passphrase.txt"); writeFileSync(passFile, `${PASS}\n`, {mode: 0o600});
+        const text = paper.body.replace(/<\/?(h1|h2|p|pre|ul|li|div|body|title)[^>]*>/g, "\n").replace(/<[^>]+>/g, "");
+        const lines = text.split("\n").map((l) => l.trim()).filter((l) => /^(MASTER|KEK-k[0-9a-f]{12}) \d:|^[0-9a-f]{12} \((current|retired)\)/.test(l));
+        const paperFile = path.join(dir, "paper-lines.txt"); writeFileSync(paperFile, `${lines.join("\n")}\n`, {mode: 0o600});
+        const sc = spikeChannel as {accessKey: string; secretKey: string};
+        const rcloneFile = path.join(dir, "rclone.conf");
+        writeFileSync(rcloneFile, `[lab]\ntype = s3\nprovider = Other\naccess_key_id = ${sc.accessKey}\nsecret_access_key = ${sc.secretKey}\nendpoint = http://127.0.0.1:19000\nregion = us-east-1\nforce_path_style = true\nno_check_bucket = true\n`, {mode: 0o600});
+        writeFileSync(path.join(dir, "info.json"), JSON.stringify({stackId, bucket, storageRoot: `lab:${bucket}`}), {mode: 0o600});
+        const CLI = path.join(process.cwd(), "scripts/fork/recover/portabase-recover");
+        const run = (kitArgs: string[]) => spawnSync("bash", [CLI, "verify-kit", ...kitArgs, "--rclone-config", rcloneFile, "--storage-root", `lab:${bucket}`, "--stack", stackId], {encoding: "utf8"});
+        const t0 = Date.now();
+        const rd = run(["--kit", kitFile, "--passphrase-file", passFile]);
+        const dMs = Date.now() - t0;
+        const rp = run(["--paper-file", paperFile]);
+        console.info(`W14b LIVE verify-kit digital: exit ${rd.status} in ${dMs} ms; paper: exit ${rp.status}`);
+        expect(rd.status, rd.stderr).toBe(0);
+        expect(rp.status, rp.stderr).toBe(0);
+        expect(rd.stdout).toContain("repository opened");
+        const grab = (o: string) => o.match(/Verification code[^:]*: ([0-9A-F]{4}(?:-[0-9A-F]{4}){4})/)?.[1] ?? "";
+        const codeD = grab(rd.stdout); const codeP = grab(rp.stdout);
+        expect(codeD).toBe(codeP);
+        expect(codeD).toBe(row.fingerprint);
+        console.info("W14b LIVE both kit types print the stored verification code (value not logged here beyond equality)");
+        for (const secret of [master().toString("base64"), master().toString("hex"), PASS]) expect(rd.stdout + rd.stderr + rp.stdout + rp.stderr).not.toContain(secret);
+        const wrong = await confirmKitFingerprint(kd, {fingerprint: "0000-0000-0000-0000-0000", type: "paper"});
+        expect(wrong).toMatchObject({ok: false, code: "wrong_code"});
+        expect(await isKitVerified(db)).toBe(false); // a wrong code verifies nothing
+        expect((await loadKitView(db)).state).toBe("issued");
+        expect(await confirmKitFingerprint(kd, {fingerprint: codeP, type: "paper"})).toMatchObject({ok: true});
+        expect((await loadKitView(db)).state).toBe("verified");
+        expect(await isKitVerified(db)).toBe(true);
+        console.info("W14b LIVE kit not verified -> verified ONLY after the CLI-printed code was entered (wrong code refused first)");
+    }, 180_000);
+
     const latestVerified = async () => (await q("select * from fork_recovery_point where stack_id=$1 and status='verified' order by sequence desc limit 1", [stackId]))[0];
 
 });

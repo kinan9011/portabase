@@ -8,12 +8,21 @@ Format (agent 1.25.2, agent:src/utils/file.rs:61-170), documented, no AAD, key =
 There is NO final-chunk marker: a file cut exactly at a chunk boundary still decrypts. Pass --expect-sha256 / --expect-size
 (plaintext hash and size from the signed manifest, D24) to catch that; this tool cannot.
 
-Usage:  decrypt-archive (--key-file FILE | --key-stdin) [--expect-sha256 HEX] [--expect-size N] IN.tar.gz.enc OUT.tar.gz
+Usage:  decrypt-archive (--key-file FILE | --key-stdin | --plain) [--expect-sha256 HEX] [--expect-size N] IN.tar.gz.enc OUT.tar.gz
 The key (base64 of the 32-byte master key) is NEVER accepted on the command line. OUT must not exist. Output is written to a
 private temp file and renamed only after every chunk authenticated and every expectation matched; on any failure nothing is
 left behind. Exit: 0 ok, 1 integrity/format failure (fail closed), 2 usage. Prints `sha256=<hex> size=<n>` on success.
 
-v0 scope: round-trip of the lab fixtures. W14b hardens (gzip -t, manifest wiring, image) and ships it in `portabase-recover`.
+v1 (W14b, D42) hardening, all fail closed (exit 1, nothing left behind):
+  * the plaintext must be ONE COMPLETE gzip stream (`gzip -t` equivalent, streamed: trailer CRC + length, no trailing garbage) - the format has no
+    final-chunk marker, so this is what exposes a cut on a chunk boundary even without the manifest values (--no-gzip-check disables it for raw data);
+  * bounded output: --max-inflated-bytes (default 1 TiB) stops a gzip bomb while decrypting; --max-size bounds the plaintext itself;
+  * input must be a regular file (not a symlink / device / fifo);
+  * --audit-tar [--expect-top NAME] audits the tar inside BEFORE anything can extract it (untrusted-archive rules in `audit_tar`):
+    no absolute names, no `..`, no control characters, nothing written through a symlink, hard links only to earlier regular members, no devices /
+    fifos / sparse files, no setuid / setgid / sticky bits, entry / depth / name-length / declared-size limits.
+Prints `sha256=<hex> size=<n>` on success (`inflated=<n> entries=<n>` are appended with --audit-tar).
+
 Requires: python3, python3-cryptography (bare-host prerequisite, REVISED-PLAN section 4.3).
 """
 import argparse
@@ -22,8 +31,12 @@ import binascii
 import hashlib
 import json
 import os
+import re
+import stat
 import struct
 import sys
+import tarfile
+import zlib
 
 try:
     from cryptography.exceptions import InvalidTag
@@ -35,6 +48,11 @@ except ImportError:  # pragma: no cover
 TAG = 16
 MAX_HEADER = 4096
 MAX_CHUNK_SIZE = 64 * 1024 * 1024  # agent writes 16 MiB; bound anything larger so a hostile header cannot demand memory
+DEFAULT_MAX_INFLATED = 1 << 40  # 1 TiB of inflated bytes: a gzip bomb stops here (portabase-recover passes the free disk space instead)
+DEFAULT_MAX_ENTRIES = 5_000_000
+MAX_NAME = 4096
+MAX_COMPONENT = 255
+MAX_DEPTH = 64
 KEYS = {"version", "cipher", "chunk_size", "base_nonce"}
 
 
@@ -82,10 +100,62 @@ def write_all(fd, data):
         view = view[os.write(fd, view):]
 
 
-def decrypt(src, dst_fd, key, expect_sha, expect_size):
-    aes = AESGCM(key)
+class GzipCheck:
+    """Streaming `gzip -t`: feed plaintext pieces; finish() proves ONE complete gzip stream with nothing after it."""
+
+    def __init__(self, max_inflated):
+        self.d, self.max, self.total = zlib.decompressobj(31), max_inflated, 0  # 31 = gzip wrapper only (a zlib/raw stream is not a .tar.gz)
+        self.stream_done = False
+
+    def feed(self, data):
+        if self.stream_done:
+            raise Fail("data after the end of the gzip stream")
+        try:
+            while data:
+                out = self.d.decompress(data, 1 << 20)
+                self.total += len(out)
+                if self.total > self.max:
+                    raise Fail("inflated size exceeds the limit (decompression bomb?)")
+                if self.d.eof:
+                    if self.d.unused_data:
+                        raise Fail("data after the end of the gzip stream")
+                    self.stream_done = True
+                    return
+                data = self.d.unconsumed_tail
+        except zlib.error:
+            raise Fail("plaintext is not a valid gzip stream")
+
+    def finish(self):
+        if not self.stream_done or not self.d.eof:
+            raise Fail("gzip stream is incomplete (truncated archive)")
+        return self.total
+
+
+def decrypt(src, dst_fd, key, expect_sha, expect_size, gzip_check=True, max_inflated=DEFAULT_MAX_INFLATED, max_size=None, plain=False):
+    aes = AESGCM(key) if key is not None else None
     digest, size, idx = hashlib.sha256(), 0, 0
-    with open(src, "rb") as f:
+    gz = GzipCheck(max_inflated) if gzip_check else None
+    try:
+        f = os.fdopen(os.open(src, os.O_RDONLY | os.O_NOFOLLOW), "rb")  # a symlink in place of the archive is refused, not followed
+    except OSError as e:
+        raise Fail(f"cannot open input ({e.strerror or 'I/O error'})")
+    with f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise Fail("input is not a regular file")
+        if plain:  # already-plaintext archive (unencrypted agent setting / the inner -Fd tar.gz): same checks, no decryption
+            while True:
+                pt = f.read(1 << 20)
+                if not pt:
+                    break
+                size += len(pt)
+                if max_size is not None and size > max_size:
+                    raise Fail("plaintext size exceeds the limit")
+                if gz:
+                    gz.feed(pt)
+                write_all(dst_fd, pt)
+                digest.update(pt)
+                idx += 1
+            return _finish(digest, size, idx, expect_sha, expect_size, gz)
         base, chunk_size = read_header(f)
         while True:
             lb = f.read(4)
@@ -105,10 +175,18 @@ def decrypt(src, dst_fd, key, expect_sha, expect_size):
                 pt = aes.decrypt(base + struct.pack(">I", idx), ct, None)
             except InvalidTag:
                 raise Fail("authentication failed (wrong key or corrupted data)")
+            size += len(pt)
+            if max_size is not None and size > max_size:
+                raise Fail("plaintext size exceeds the limit")
+            if gz:
+                gz.feed(pt)
             write_all(dst_fd, pt)
             digest.update(pt)
-            size += len(pt)
             idx += 1
+    return _finish(digest, size, idx, expect_sha, expect_size, gz)
+
+
+def _finish(digest, size, idx, expect_sha, expect_size, gz):
     if idx == 0:
         raise Fail("no data chunks")
     hexd = digest.hexdigest()
@@ -116,33 +194,151 @@ def decrypt(src, dst_fd, key, expect_sha, expect_size):
         raise Fail("plaintext sha256 does not match the expected value")
     if expect_size is not None and size != expect_size:
         raise Fail("plaintext size does not match the expected value")
-    return hexd, size
+    inflated = gz.finish() if gz else 0
+    return hexd, size, inflated
+
+
+class Inflater:
+    """File-like view of a .tar.gz that inflates in bounded steps (tarfile reads it as a plain tar stream)."""
+
+    def __init__(self, path, max_inflated):
+        self.f, self.d, self.max, self.total, self.buf = open(path, "rb"), zlib.decompressobj(31), max_inflated, 0, b""
+
+    def read(self, n=-1):
+        if n is None or n < 0:
+            n = 1 << 20
+        while len(self.buf) < n and not self.d.eof:
+            raw = self.d.unconsumed_tail or self.f.read(1 << 16)
+            if not raw:
+                raise Fail("gzip stream is incomplete (truncated archive)")
+            try:
+                out = self.d.decompress(raw, 1 << 20)
+            except zlib.error:
+                raise Fail("plaintext is not a valid gzip stream")
+            self.total += len(out)
+            if self.total > self.max:
+                raise Fail("inflated size exceeds the limit (decompression bomb?)")
+            self.buf += out
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def drain(self):
+        while self.read(1 << 20):
+            pass
+        if self.d.unused_data or self.f.read(1):
+            raise Fail("data after the end of the gzip stream")
+
+
+def _clean(text, what):
+    if not text or len(text) > MAX_NAME or any(ord(c) < 32 or ord(c) == 127 for c in text):
+        raise Fail(f"unsafe {what} in archive (empty, too long or control character)")
+
+
+def _parts(name, what):
+    _clean(name, what)
+    if name.startswith("/"):
+        raise Fail(f"absolute {what} in archive")
+    parts = [p for p in name.split("/") if p not in ("", ".")]
+    if any(p == ".." for p in parts):
+        raise Fail(f"path traversal in archive {what}")
+    if len(parts) > MAX_DEPTH or any(len(p) > MAX_COMPONENT for p in parts):
+        raise Fail(f"{what} too deep or component too long")
+    return parts
+
+
+def audit_tar(path, expect_top=None, max_inflated=DEFAULT_MAX_INFLATED, max_entries=DEFAULT_MAX_ENTRIES):
+    """Untrusted-archive audit. Reads headers only (never extracts). Returns (entries, declared_bytes, inflated_bytes). Raises Fail."""
+    inf = Inflater(path, max_inflated)
+    kinds, symlinks, entries, declared = {}, set(), 0, 0
+    try:
+        tf = tarfile.open(fileobj=inf, mode="r|")
+        for m in tf:
+            entries += 1
+            if entries > max_entries:
+                raise Fail("too many archive entries")
+            parts = _parts(m.name, "member name")
+            if not parts:  # "./" root entry
+                if not m.isdir():
+                    raise Fail("unexpected root entry")
+                continue
+            if expect_top is not None and parts[0] != expect_top:
+                raise Fail("archive member outside the expected top-level directory")
+            for i in range(1, len(parts)):  # nothing may be written THROUGH a symlink created earlier in the same archive
+                if "/".join(parts[:i]) in symlinks:
+                    raise Fail("archive writes through a symlink")
+            if m.mode & 0o7000:
+                raise Fail("setuid / setgid / sticky bit in archive")
+            if m.issparse():
+                raise Fail("sparse file in archive")
+            key = "/".join(parts)
+            if m.isdir():
+                kind = "d"
+            elif m.isreg():
+                kind = "f"
+                declared += m.size
+            elif m.issym():
+                _clean(m.linkname, "symlink target")
+                kind = "l"
+            elif m.islnk():
+                tparts = _parts(m.linkname, "hard link target")
+                if kinds.get("/".join(tparts)) != "f":
+                    raise Fail("hard link to something that is not an earlier regular member")
+                kind = "f"
+            else:
+                raise Fail("device, fifo or other special file in archive")
+            if key in kinds and kinds[key] != kind:
+                raise Fail("archive member changes type")
+            kinds[key] = kind
+            if kind == "l":
+                symlinks.add(key)
+            elif key in symlinks:
+                symlinks.discard(key)
+        inf.drain()
+    except tarfile.TarError:
+        raise Fail("tar structure is invalid")
+    return entries, declared, inf.total
 
 
 def main(argv):
     p = argparse.ArgumentParser(prog="decrypt-archive", allow_abbrev=False, description="Decrypt a Portabase agent .tar.gz.enc archive")
-    g = p.add_mutually_exclusive_group(required=True)
+    g = p.add_mutually_exclusive_group()
     g.add_argument("--key-file", metavar="FILE", help="file holding the base64 master key")
     g.add_argument("--key-stdin", action="store_true", help="read the base64 master key from stdin")
     p.add_argument("--expect-sha256", metavar="HEX", help="expected plaintext SHA-256 (from the signed manifest)")
     p.add_argument("--expect-size", metavar="N", type=int, help="expected plaintext size in bytes")
+    p.add_argument("--plain", action="store_true", help="IN is already plaintext (unencrypted archive / inner -Fd tar.gz): no key, same checks")
+    p.add_argument("--no-gzip-check", action="store_true", help="plaintext is not a .tar.gz (raw data); skips the gzip -t equivalent")
+    p.add_argument("--max-size", metavar="N", type=int, help="refuse plaintext larger than N bytes")
+    p.add_argument("--max-inflated-bytes", metavar="N", type=int, default=DEFAULT_MAX_INFLATED, help="stop when the inflated size passes N (bomb guard)")
+    p.add_argument("--audit-tar", action="store_true", help="audit the tar inside (traversal, symlinks, links, devices, setuid, limits) before it is released")
+    p.add_argument("--expect-top", metavar="NAME", help="with --audit-tar: every member must live under this top-level directory (docker-volume archives: vol)")
+    p.add_argument("--max-entries", metavar="N", type=int, default=DEFAULT_MAX_ENTRIES)
     p.add_argument("src", metavar="IN")
     p.add_argument("dst", metavar="OUT")
     a = p.parse_args(argv)
-    if a.expect_sha256 is not None and len(a.expect_sha256) != 64:
+    if a.expect_sha256 is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", a.expect_sha256):
         p.error("--expect-sha256 must be 64 hex characters")
+    if a.plain == bool(a.key_file or a.key_stdin):
+        p.error("give a key (--key-file / --key-stdin) for an encrypted archive, or --plain for a plaintext one")
+    if a.audit_tar and a.no_gzip_check:
+        p.error("--audit-tar needs the gzip check")
+    if a.max_inflated_bytes < 1 or a.max_entries < 1 or (a.max_size is not None and a.max_size < 1):
+        p.error("limits must be positive")
 
     tmp = f"{a.dst}.partial-{os.getpid()}"
     fd = None
     try:
-        key = read_key(a.key_file, a.key_stdin)
+        key = None if a.plain else read_key(a.key_file, a.key_stdin)
         if os.path.lexists(a.dst):
             raise Fail("output already exists; refusing to overwrite")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        hexd, size = decrypt(a.src, fd, key, a.expect_sha256, a.expect_size)
+        hexd, size, inflated = decrypt(a.src, fd, key, a.expect_sha256, a.expect_size, not a.no_gzip_check, a.max_inflated_bytes, a.max_size, a.plain)
         os.fsync(fd)
         os.close(fd)
         fd = None
+        entries = 0
+        if a.audit_tar:
+            entries, _declared, _total = audit_tar(tmp, a.expect_top, a.max_inflated_bytes, a.max_entries)
         os.link(tmp, a.dst)  # fails if OUT appeared meanwhile (never overwrites)
     except (Fail, OSError) as e:
         sys.stderr.write(f"decrypt-archive: FAILED: {e if isinstance(e, Fail) else type(e).__name__ + ': ' + (e.strerror or 'I/O error')}\n")
@@ -152,7 +348,7 @@ def main(argv):
             os.close(fd)
         if os.path.lexists(tmp):
             os.unlink(tmp)
-    print(f"sha256={hexd} size={size}")
+    print(f"sha256={hexd} size={size}" + (f" inflated={inflated} entries={entries}" if a.audit_tar else ""))  # first two fields unchanged since v0 (callers compare them)
     return 0
 
 

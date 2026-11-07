@@ -6,7 +6,13 @@ import type {Keyring} from "@/fork/kek";
  * logged. W14b's `verify-kit` consumes exactly this document (digital: after unwrapping; paper: the retyped groups of the key sections).
  */
 export const KIT_VERSION = 1 as const;
-const PENDING = "pending-W14b";
+/**
+ * W14b: the recovery tool is a tagged part of this fork (sparse checkout, see the guide). The recover image is a convenience, published by digest only
+ * when the owner releases one: until then the kit says so instead of naming a tag (the plan forbids tags, §4.3).
+ */
+export const RECOVER_CLI_VERSION = "1.0.0 (git tag fork/w14b-done)";
+export const RECOVER_GUIDE = "scripts/fork/recover/my-server-died.md in https://github.com/kinan9011/portabase";
+export const RECOVER_IMAGE_UNPUBLISHED = "not published (use the script from the guide)";
 
 export type KitChannel = {name: string; provider: string; config: unknown};
 export type KitAnchor = {kid: string; publicKeyPem: string; spkiSha256: string; retired: boolean};
@@ -58,6 +64,6 @@ export function buildKit(s: KitSources): KitDocument {
         kek: {active: s.kek.active, keys: [...s.kek.keys.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([kid, key]) => ({kid, key_b64: key.toString("base64")}))},
         signing_public_keys: s.anchors.map((a) => ({kid: a.kid, spki_sha256: a.spkiSha256, pem: a.publicKeyPem, retired: a.retired})),
         storage: s.channels.map((c) => ({name: c.name, provider: c.provider, pointer: pointerOf(c.config), credentials_wrapped: wrapCredentials(s.master, c.config, c.name)})),
-        recover: {image_digest: PENDING, cli_version: PENDING, guide: PENDING},
+        recover: {image_digest: RECOVER_IMAGE_UNPUBLISHED, cli_version: RECOVER_CLI_VERSION, guide: RECOVER_GUIDE},
     };
 }

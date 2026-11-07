@@ -75,7 +75,9 @@ describe("W14 kit content (D25 contents, §4.2)", () => {
         expect(JSON.stringify(kit.storage[0].pointer)).not.toMatch(/AKIA|SECRET/);
         expect(kit.storage[0].credentials_wrapped).toMatchObject({alg: "AES-256-GCM"});
         expect(kit.storage[1].credentials_wrapped).toBeNull();
-        expect(kit.recover.image_digest).toBe("pending-W14b");
+        expect(kit.recover.image_digest).toMatch(/not published/);
+        expect(kit.recover.cli_version).toContain("fork/w14b-done");
+        expect(kit.recover.guide).toContain("my-server-died.md");
     });
     it("wrapped storage credentials open with the master key (HKDF-derived) and only with it", () => {
         const {master} = mkKit();
