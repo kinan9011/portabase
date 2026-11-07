@@ -73,6 +73,12 @@ export const forkStackPolicy = pgTable("fork_stack_policy", {
     appliedPlanHash: text("applied_plan_hash"),
     materializedAt: ts("materialized_at"),
     materializeState: text("materialize_state").notNull().default("none"),
+    /** W11: validated `ScheduleV1` (`@/fork/schedule/schedule`): preset + timezone (+ `cron` only for preset `cron`); the effective cron is always derived by `toCron` (W12 scheduler reads it). */
+    schedule: jsonb("schedule").notNull().default(sql`'{}'::jsonb`),
+    /** W11: operator-accepted gaps (UX-20), by completeness item key. Written only by `activateStackPolicy`. */
+    acceptedExclusions: text("accepted_exclusions").array().notNull().default(sql`'{}'::text[]`),
+    /** W11: D31 authorization record at activation: ids + capability names only (never a secret). `{}` until activated. */
+    activation: jsonb("activation").notNull().default(sql`'{}'::jsonb`),
 }, (t) => [
     index("fork_stack_policy_active_idx").on(t.stackId).where(sql`activated_at IS NOT NULL AND deactivated_at IS NULL`),
     check("fork_stack_policy_materialize_state_ck", inList("materialize_state", MATERIALIZE_STATES)),
