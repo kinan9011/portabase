@@ -18,7 +18,8 @@ export const MIGRATION_LEDGER: readonly LedgerEntry[] = [
     {tag: "0003_discovery_sync_state", wave: "W07", note: "fork_arcane_connection: last_sync_attempt_at, sync_failure_streak, circuit_open_until; fork_arcane_environment: last_sync_summary"},
     {tag: "0004_stack_sources", wave: "W10", note: "fork_stack_source (member links, FK databases SET NULL, D32); fork_stack_policy: selection, storage_channel_ids, consistency_profile, applied_plan_hash, materialize_state"},
     {tag: "0005_stack_policy_activation", wave: "W11", note: "fork_stack_policy: schedule, accepted_exclusions, activation (D31 authorization record)"},
-    // W12/W14/R2: append here; one entry per generated migration, in order.
+    {tag: "0006_stack_runs", wave: "W12", note: "fork_stack_run + fork_stack_run_item (durable step engine state, one active run per stack, slot idempotency); RP run_id FK (SET NULL) + UNIQUE(run_id), artifact stack_source_id FK (SET NULL), extended RP reasons; fork_stack_policy: paused_at, pause_reason (F7)"},
+    // W14/R2: append here; one entry per generated migration, in order.
 ];
 
 /** Informational reservation of ownership by wave (not enforced; drizzle numbers by position). */

@@ -7,6 +7,7 @@ import {forkArcaneEnvironment} from "@/fork/db/schema/arcane";
 import {
     inList, MATERIALIZE_STATES, nullOrInList, PROTECTION_STATES, RUNTIME_STATES, SOURCE_ORIGINS, SOURCE_PROBES, SOURCE_ROLES, SOURCE_STATUSES,
 } from "@/fork/db/enums";
+import {PAUSE_REASONS} from "@/fork/runs/vocab";
 
 const ts = (name: string) => timestamp(name, {withTimezone: true});
 
@@ -79,10 +80,14 @@ export const forkStackPolicy = pgTable("fork_stack_policy", {
     acceptedExclusions: text("accepted_exclusions").array().notNull().default(sql`'{}'::text[]`),
     /** W11: D31 authorization record at activation: ids + capability names only (never a secret). `{}` until activated. */
     activation: jsonb("activation").notNull().default(sql`'{}'::jsonb`),
+    /** W12: run-time re-authorization failed (F7/D31): the policy is paused (`fork_stack.protection_state='paused'`); only an authorized re-activation clears these. */
+    pausedAt: ts("paused_at"),
+    pauseReason: text("pause_reason"),
 }, (t) => [
     index("fork_stack_policy_active_idx").on(t.stackId).where(sql`activated_at IS NOT NULL AND deactivated_at IS NULL`),
     check("fork_stack_policy_materialize_state_ck", inList("materialize_state", MATERIALIZE_STATES)),
     check("fork_stack_policy_consistency_ck", inList("consistency_profile", ["crash", "dump", "stop"])),
+    check("fork_stack_policy_pause_reason_ck", nullOrInList("pause_reason", PAUSE_REASONS)),
 ]);
 
 /**
