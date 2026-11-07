@@ -1,5 +1,5 @@
 {
-  "id": "7a355539-1427-49ba-a222-a9ca1f9633f7",
+  "id": "e0a3e507-f0d3-4691-9138-2f00aa8e1f54",
   "prevId": "0cf7af32-91fe-4091-b845-3a89005c680d",
   "version": "7",
   "dialect": "postgresql",
@@ -1193,7 +1193,7 @@
         },
         "fork_stack_run_reason_ck": {
           "name": "fork_stack_run_reason_ck",
-          "value": "\"reason\" IS NULL OR \"reason\" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity')"
+          "value": "\"reason\" IS NULL OR \"reason\" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity', 'internal_error')"
         },
         "fork_stack_run_refresh_ck": {
           "name": "fork_stack_run_refresh_ck",
@@ -1290,6 +1290,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "checksums": {
+          "name": "checksums",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         }
       },
       "indexes": {
@@ -1375,7 +1382,7 @@
         },
         "fork_stack_run_item_reason_ck": {
           "name": "fork_stack_run_item_reason_ck",
-          "value": "\"reason\" IS NULL OR \"reason\" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity')"
+          "value": "\"reason\" IS NULL OR \"reason\" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity', 'internal_error')"
         }
       },
       "isRLSEnabled": false
@@ -1962,7 +1969,7 @@
         },
         "fork_recovery_point_reason_ck": {
           "name": "fork_recovery_point_reason_ck",
-          "value": "\"downgrade_reason\" IS NULL OR \"downgrade_reason\" IN ('fk_null', 'artifact_missing', 'count_mismatch', 'retention_partial', 'stack_removed', 'verify_failed', 'plaintext_hash_mismatch', 'validator_blocked', 'member_failed', 'member_timeout', 'unencrypted', 'checksum_unavailable', 'run_cancelled', 'run_not_started')"
+          "value": "\"downgrade_reason\" IS NULL OR \"downgrade_reason\" IN ('fk_null', 'artifact_missing', 'count_mismatch', 'retention_partial', 'stack_removed', 'verify_failed', 'plaintext_hash_mismatch', 'validator_blocked', 'member_failed', 'member_timeout', 'unencrypted', 'checksum_unavailable', 'run_cancelled', 'run_not_started', 'run_error')"
         },
         "fork_recovery_point_consistency_ck": {
           "name": "fork_recovery_point_consistency_ck",

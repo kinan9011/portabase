@@ -65,6 +65,8 @@ export const forkStackRunItem = pgTable("fork_stack_run_item", {
     finishedAt: ts("finished_at"),
     /** Last moment the tracker saw evidence the agent was working (status change, storage row, size, `updated_at`). Drives the stall timeout. */
     lastProgressAt: ts("last_progress_at"),
+    /** Hash step output keyed by upstream `backup_storage.id`: `{sha256, bytes}` computed by the dashboard (the agent reports none). Resumable: a computed entry is never recomputed. */
+    checksums: jsonb("checksums").notNull().default(sql`'{}'::jsonb`),
 }, (t) => [
     index("fork_stack_run_item_run_idx").on(t.runId),
     index("fork_stack_run_item_backup_idx").on(t.backupId),

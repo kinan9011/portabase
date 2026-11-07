@@ -44,6 +44,13 @@ const tickSeconds = z
         return Number.isInteger(n) && n >= 5 && n <= 3600 ? n : 60; // W10 drift/probe job period; D30 "within one tick"
     });
 
+/** Integer env value within [min, max], else the default (fail closed to the documented default, never to 0). */
+const intRange = (min: number, max: number, dflt: number) =>
+    z.string().optional().transform((v) => {
+        const n = Number(v?.trim());
+        return Number.isInteger(n) && n >= min && n <= max ? n : dflt;
+    });
+
 const schema = z.object({
     FORK_STACKS_ENABLED: flag,
     FORK_ARCANE_ENABLED: flag,
@@ -67,6 +74,20 @@ const schema = z.object({
     FORK_DISCOVERY_INTERVAL_MINUTES: discoveryMinutes,
     /** W10: period of the materializer drift/probe job in seconds (5–3600, default 60). Operator-only. */
     FORK_MATERIALIZE_TICK_SECONDS: tickSeconds,
+    /** W12 stack runs (operator-only). Tick period of the run job (scheduler + tracker + finaliser + retention). */
+    FORK_RUN_TICK_SECONDS: intRange(2, 300, 15),
+    /** W12 mandatory stuck timeouts: a `waiting` member backup the agent never picked up; an `ongoing` one with no progress; a hard cap per run. */
+    FORK_RUN_WAIT_TIMEOUT_SECONDS: intRange(10, 86_400, 600),
+    FORK_RUN_STALL_TIMEOUT_SECONDS: intRange(10, 86_400, 1800),
+    FORK_RUN_MAX_SECONDS: intRange(60, 604_800, 21_600),
+    /** ARCH-17: a due slot may start up to this long after the slot (waiting for capacity), then it is a missed slot. */
+    FORK_RUN_CAPTURE_WINDOW_MINUTES: intRange(1, 1440, 60),
+    /** §13 A12: the agent has unlimited parallelism; the fork caps concurrent runs per host agent and per organization. */
+    FORK_RUN_MAX_PER_AGENT: intRange(1, 20, 1),
+    FORK_RUN_MAX_PER_ORG: intRange(1, 50, 3),
+    /** Dashboard-side ciphertext hashing of an archive artifact: refuse objects above this size (MiB) / take longer than this (s). */
+    FORK_RUN_HASH_MAX_MIB: intRange(1, 1_048_576, 51_200),
+    FORK_RUN_HASH_TIMEOUT_SECONDS: intRange(10, 86_400, 3600),
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -83,6 +104,15 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_ARCANE_NET_ALLOWLIST: source.FORK_ARCANE_NET_ALLOWLIST,
         FORK_DISCOVERY_INTERVAL_MINUTES: source.FORK_DISCOVERY_INTERVAL_MINUTES,
         FORK_MATERIALIZE_TICK_SECONDS: source.FORK_MATERIALIZE_TICK_SECONDS,
+        FORK_RUN_TICK_SECONDS: source.FORK_RUN_TICK_SECONDS,
+        FORK_RUN_WAIT_TIMEOUT_SECONDS: source.FORK_RUN_WAIT_TIMEOUT_SECONDS,
+        FORK_RUN_STALL_TIMEOUT_SECONDS: source.FORK_RUN_STALL_TIMEOUT_SECONDS,
+        FORK_RUN_MAX_SECONDS: source.FORK_RUN_MAX_SECONDS,
+        FORK_RUN_CAPTURE_WINDOW_MINUTES: source.FORK_RUN_CAPTURE_WINDOW_MINUTES,
+        FORK_RUN_MAX_PER_AGENT: source.FORK_RUN_MAX_PER_AGENT,
+        FORK_RUN_MAX_PER_ORG: source.FORK_RUN_MAX_PER_ORG,
+        FORK_RUN_HASH_MAX_MIB: source.FORK_RUN_HASH_MAX_MIB,
+        FORK_RUN_HASH_TIMEOUT_SECONDS: source.FORK_RUN_HASH_TIMEOUT_SECONDS,
     });
 }
 

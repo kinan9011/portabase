@@ -81,7 +81,7 @@ describe("runs: durable step engine (ARCH-13, fake clock)", () => {
     });
 
     it("the W12 run sequence is fixed and has no mirror steps", () => {
-        expect([...RUN_STEPS]).toEqual(["reauthorize", "refresh_inventory", "validate", "trigger", "track", "finalize"]);
+        expect([...RUN_STEPS]).toEqual(["refresh_inventory", "validate", "trigger", "track", "hash", "finalize"]);
         expect(JSON.stringify(RUN_STEPS)).not.toMatch(/mirror/i);
     });
 });

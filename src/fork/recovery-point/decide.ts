@@ -25,6 +25,8 @@ export type ArtifactInput = {
 
 export type RunFacts = {
     cancelled: boolean;
+    /** the engine failed (internal_error): never claims success */
+    errored?: boolean;
     /** any item ended as agent_did_not_start / agent_made_no_progress / run_timeout */
     timedOut: boolean;
     queuedMembers: number;
@@ -47,6 +49,7 @@ export const artifactHasChecksum = (a: ArtifactInput): boolean =>
 export const artifactEncrypted = (a: ArtifactInput, encryptionOn: boolean): boolean => a.archive === "restic" ? true : encryptionOn && a.encrypted;
 
 export function decideRecoveryPoint(f: RunFacts): RpDecision {
+    if (f.errored) return {status: "failed", reason: "run_error", runState: "failed", runReason: "internal_error"};
     if (f.cancelled) return {status: "failed", reason: "run_cancelled", runState: "cancelled", runReason: "cancelled"};
     if (f.timedOut) return {status: "failed", reason: "member_timeout", runState: "failed", runReason: "agent_did_not_start"};
     if (f.queuedMembers === 0) return {status: "failed", reason: "run_not_started", runState: "failed", runReason: "nothing_queued"};

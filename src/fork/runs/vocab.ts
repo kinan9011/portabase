@@ -38,14 +38,18 @@ export const RUN_REASONS = [
     "cancelled",
     "interrupted", // the dashboard process died mid-run and the lease expired
     "capacity", // per-agent / per-org run limit (manual refusal)
+    "internal_error", // a step threw repeatedly; the cause is in the server log (codes only), never in a row
 ] as const;
 export type RunReason = (typeof RUN_REASONS)[number];
 
 export const REFRESH_OUTCOMES = ["ok", "failed", "skipped_locked", "not_attempted"] as const;
 export type RefreshOutcome = (typeof REFRESH_OUTCOMES)[number];
 
-/** Step engine (ARCH-13). W12 steps; W18 defines its own list with the same engine. */
-export const RUN_STEPS = ["reauthorize", "refresh_inventory", "validate", "trigger", "track", "finalize"] as const;
+/**
+ * Step engine (ARCH-13). W12 steps; W18 defines its own list with the same engine. Re-authorization (F7) is NOT a step: it runs before
+ * the run row exists (a failure pauses the policy and creates no run).
+ */
+export const RUN_STEPS = ["refresh_inventory", "validate", "trigger", "track", "hash", "finalize"] as const;
 export type RunStep = (typeof RUN_STEPS)[number];
 export const STEP_STATES = ["pending", "running", "done", "failed"] as const;
 export type StepState = (typeof STEP_STATES)[number];

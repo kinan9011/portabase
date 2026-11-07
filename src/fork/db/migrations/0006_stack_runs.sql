@@ -19,7 +19,7 @@ CREATE TABLE "fork_stack_run" (
 	CONSTRAINT "fork_stack_run_trigger_ck" CHECK ("trigger" IN ('schedule', 'manual')),
 	CONSTRAINT "fork_stack_run_state_ck" CHECK ("state" IN ('starting', 'running', 'finalizing', 'succeeded', 'incomplete', 'failed', 'cancelled', 'skipped')),
 	CONSTRAINT "fork_stack_run_skip_reason_ck" CHECK ("skip_reason" IS NULL OR "skip_reason" IN ('overlap', 'missed')),
-	CONSTRAINT "fork_stack_run_reason_ck" CHECK ("reason" IS NULL OR "reason" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity')),
+	CONSTRAINT "fork_stack_run_reason_ck" CHECK ("reason" IS NULL OR "reason" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity', 'internal_error')),
 	CONSTRAINT "fork_stack_run_refresh_ck" CHECK ("inventory_refresh" IS NULL OR "inventory_refresh" IN ('ok', 'failed', 'skipped_locked', 'not_attempted')),
 	CONSTRAINT "fork_stack_run_skipped_ck" CHECK ("fork_stack_run"."state" <> 'skipped' OR "fork_stack_run"."skip_reason" IS NOT NULL)
 );
@@ -38,8 +38,9 @@ CREATE TABLE "fork_stack_run_item" (
 	"started_at" timestamp with time zone,
 	"finished_at" timestamp with time zone,
 	"last_progress_at" timestamp with time zone,
+	"checksums" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	CONSTRAINT "fork_stack_run_item_state_ck" CHECK ("state" IN ('queued', 'running', 'succeeded', 'failed', 'skipped')),
-	CONSTRAINT "fork_stack_run_item_reason_ck" CHECK ("reason" IS NULL OR "reason" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity'))
+	CONSTRAINT "fork_stack_run_item_reason_ck" CHECK ("reason" IS NULL OR "reason" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity', 'internal_error'))
 );
 --> statement-breakpoint
 ALTER TABLE "fork_recovery_point" DROP CONSTRAINT "fork_recovery_point_reason_ck";--> statement-breakpoint
@@ -57,4 +58,4 @@ ALTER TABLE "fork_recovery_point" ADD CONSTRAINT "fork_recovery_point_run_id_for
 ALTER TABLE "fork_recovery_point_artifact" ADD CONSTRAINT "fork_recovery_point_artifact_stack_source_id_fork_stack_source_id_fk" FOREIGN KEY ("stack_source_id") REFERENCES "public"."fork_stack_source"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "fork_recovery_point" ADD CONSTRAINT "fork_recovery_point_run_uq" UNIQUE("run_id");--> statement-breakpoint
 ALTER TABLE "fork_stack_policy" ADD CONSTRAINT "fork_stack_policy_pause_reason_ck" CHECK ("pause_reason" IS NULL OR "pause_reason" IN ('user_missing', 'user_blocked', 'capability_lost', 'agent_acl_lost', 'encryption_off', 'channels_unavailable', 'agent_gone'));--> statement-breakpoint
-ALTER TABLE "fork_recovery_point" ADD CONSTRAINT "fork_recovery_point_reason_ck" CHECK ("downgrade_reason" IS NULL OR "downgrade_reason" IN ('fk_null', 'artifact_missing', 'count_mismatch', 'retention_partial', 'stack_removed', 'verify_failed', 'plaintext_hash_mismatch', 'validator_blocked', 'member_failed', 'member_timeout', 'unencrypted', 'checksum_unavailable', 'run_cancelled', 'run_not_started'));
+ALTER TABLE "fork_recovery_point" ADD CONSTRAINT "fork_recovery_point_reason_ck" CHECK ("downgrade_reason" IS NULL OR "downgrade_reason" IN ('fk_null', 'artifact_missing', 'count_mismatch', 'retention_partial', 'stack_removed', 'verify_failed', 'plaintext_hash_mismatch', 'validator_blocked', 'member_failed', 'member_timeout', 'unencrypted', 'checksum_unavailable', 'run_cancelled', 'run_not_started', 'run_error'));

@@ -25,6 +25,7 @@ export const RP_DOWNGRADE_REASONS = [
     "checksum_unavailable", // the dashboard could not compute the ciphertext checksum
     "run_cancelled",
     "run_not_started", // nothing could be queued
+    "run_error", // the run engine itself failed repeatedly (internal_error); partial artifacts are still listed
 ] as const;
 export type RpDowngradeReason = (typeof RP_DOWNGRADE_REASONS)[number];
 
