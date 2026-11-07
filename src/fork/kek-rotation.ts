@@ -16,6 +16,8 @@ import {decryptWith, defaultKekDir, encryptWith, getOrCreateKeyring, loadKeyring
 export type EnvelopeColumn = {table: string; idColumn: string; column: string; aad: (id: string) => ForkSecretAad};
 export const ENVELOPE_COLUMNS: readonly EnvelopeColumn[] = [
     {table: "fork_arcane_connection", idColumn: "id", column: "api_key_enc", aad: connectionAad},
+    // W15: per-agent task key (jsonb envelope). A kit-less KEK loss means re-enrolling the agents (ADR-007 D4).
+    {table: "fork_agent_enrollment", idColumn: "id", column: "task_key_enc", aad: (id) => ({table: "fork_agent_enrollment", rowId: id, column: "task_key_enc"})},
 ];
 
 export type ReencryptResult = {rows: number; moved: number; failed: number};

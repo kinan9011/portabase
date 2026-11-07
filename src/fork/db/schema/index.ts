@@ -7,3 +7,4 @@ export * from "./audit";
 export * from "./ops";
 export * from "./recovery";
 export * from "./kit";
+export * from "./agent-channel";

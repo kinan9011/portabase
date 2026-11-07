@@ -64,6 +64,13 @@
       "when": 1794032496525,
       "tag": "0008_manifest_kit",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794065953481,
+      "tag": "0009_agent_task_channel",
+      "breakpoints": true
     }
   ]
 }

@@ -15,7 +15,7 @@ const ACTORS: Record<string, ForkActor> = {
 
 // expected allowed capabilities per actor (the 01-Fork-Strategy table, D21)
 const VIEW: ForkCapability[] = ["stacks.view", "recovery.view", "mirrors.view"];
-const SYS_ONLY: ForkCapability[] = ["arcane.manage", "stacks.backup.manage", "recovery.kit.manage", "host_role.manage"];
+const SYS_ONLY: ForkCapability[] = ["arcane.manage", "stacks.backup.manage", "recovery.kit.manage", "host_role.manage", "agents.channel.manage"];
 const ADMIN_PLUS: ForkCapability[] = ["backup.run", "restore.plan", "restore.execute", "mirrors.manage"];
 const OWNER_PLUS: ForkCapability[] = ["restore.production.approve", "repository.prune"];
 

@@ -17,6 +17,8 @@ export const FORK_CAPABILITIES = [
     "mirrors.manage",
     "restore.production.approve",
     "repository.prune",
+    /** W15: enrol / rotate / revoke / enable agents for the fork task channel and enqueue channel diagnostics (D34). */
+    "agents.channel.manage",
 ] as const;
 
 export type ForkCapability = (typeof FORK_CAPABILITIES)[number];
@@ -42,6 +44,7 @@ const RULES: Record<ForkCapability, (a: ForkActor) => boolean> = {
     "stacks.backup.manage": isSystemAdmin,
     "recovery.kit.manage": isSystemAdmin,
     "host_role.manage": isSystemAdmin,
+    "agents.channel.manage": isSystemAdmin,
     "backup.run": isOrgAdminPlus,
     "restore.plan": isOrgAdminPlus,
     "restore.execute": isOrgAdminPlus,

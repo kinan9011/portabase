@@ -6,11 +6,11 @@ import {anyForkFlagOn} from "@/fork/env";
  * - CONFIG routes are allowed only when a flag is on (flags off ⇒ every /api/fork/* is a 404 JSON).
  * - RUNTIME routes (e.g. the R2 agent task channel, W15) must stay reachable in "locked" mode,
  *   so they are listed separately and always allowed; their handlers return 404 when mode is "off".
- *   Empty in W01 on purpose.
+ *   W15: the four agent-channel routes (bearer-authenticated by the handler, no session).
  * Each handler still authorises itself; the allowlist is not a permission check.
  */
 const CONFIG_ROUTES: RegExp[] = [/^\/api\/fork\//];
-const RUNTIME_ROUTES: RegExp[] = [];
+const RUNTIME_ROUTES: RegExp[] = [/^\/api\/fork\/agent\/[0-9a-f-]{36}\/(?:lease|hash-report|tasks\/[0-9a-f-]{36}\/(?:heartbeat|result))\/?$/];
 
 /**
  * `proxy.ts` hook (P04, `/dashboard` branch): fork PAGES that must answer with a real HTTP 404 (the

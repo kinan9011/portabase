@@ -100,6 +100,14 @@ const schema = z.object({
     /** W14 kit: hours an active-policy stack may run with an unverified kit before the §4.7 `kit.unverified` notification; how often the kit watch recomputes the live key fingerprint (minutes). */
     FORK_KIT_UNVERIFIED_HOURS: intRange(1, 720, 24),
     FORK_KIT_WATCH_MINUTES: intRange(1, 1440, 60),
+    /**
+     * W15 agent channel (ADR-007 D5): the ONLY http exemption. Honoured only together with a loopback host (`localhost`, `*.localhost`, 127/8, `::1`) — the fork lab.
+     * There is deliberately NO per-agent / LAN override (ADR-007 §http). Operator-only.
+     */
+    FORK_ALLOW_INSECURE_LOOPBACK: flag,
+    /** W15: how long a task may wait to be started (minutes, 1–60, default 10, ADR-007 D3) and how long one lease lasts without a heartbeat (seconds, 15–600, default 60). */
+    FORK_AGENT_TASK_TTL_MINUTES: intRange(1, 60, 10),
+    FORK_AGENT_LEASE_SECONDS: intRange(15, 600, 60),
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -134,6 +142,9 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_VERIFY_MAX_ATTEMPTS: source.FORK_VERIFY_MAX_ATTEMPTS,
         FORK_KIT_UNVERIFIED_HOURS: source.FORK_KIT_UNVERIFIED_HOURS,
         FORK_KIT_WATCH_MINUTES: source.FORK_KIT_WATCH_MINUTES,
+        FORK_ALLOW_INSECURE_LOOPBACK: source.FORK_ALLOW_INSECURE_LOOPBACK,
+        FORK_AGENT_TASK_TTL_MINUTES: source.FORK_AGENT_TASK_TTL_MINUTES,
+        FORK_AGENT_LEASE_SECONDS: source.FORK_AGENT_LEASE_SECONDS,
     });
 }
 
