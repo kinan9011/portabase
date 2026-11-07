@@ -19,6 +19,7 @@ export const MIGRATION_LEDGER: readonly LedgerEntry[] = [
     {tag: "0004_stack_sources", wave: "W10", note: "fork_stack_source (member links, FK databases SET NULL, D32); fork_stack_policy: selection, storage_channel_ids, consistency_profile, applied_plan_hash, materialize_state"},
     {tag: "0005_stack_policy_activation", wave: "W11", note: "fork_stack_policy: schedule, accepted_exclusions, activation (D31 authorization record)"},
     {tag: "0006_stack_runs", wave: "W12", note: "fork_stack_run + fork_stack_run_item (durable step engine state, one active run per stack, slot idempotency); RP run_id FK (SET NULL) + UNIQUE(run_id), artifact stack_source_id FK (SET NULL), extended RP reasons; fork_stack_policy: paused_at, pause_reason (F7)"},
+    {tag: "0007_notification_delivery", wave: "W13", note: "fork_notification_outbox: attempts, next_attempt_at, claimed_until, last_error_code, state `suppressed`; fork_alert_state (per-stack alert episodes: drift to Partial, no good backup)"},
     // W14/R2: append here; one entry per generated migration, in order.
 ];
 
