@@ -6,12 +6,13 @@ import {axeViolations} from "@/fork/__tests__/axe";
 import {CH_S3, STACK_ID, w11Inventory, w11View} from "@/fork/__tests__/w11-fixtures";
 import {computePreview} from "@/fork/stack-policy/preview";
 import {SelectionSchema} from "@/fork/materialize/types";
-import {CONFIGURE, SCHEDULE_TAB} from "@/fork/ui/labels";
+import {CONFIGURE, RUNS, SCHEDULE_TAB} from "@/fork/ui/labels";
 
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh}), notFound: () => { throw new Error("NEXT_NOT_FOUND"); }}));
 const activateAction = vi.fn();
 const previewAction = vi.fn();
+vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: vi.fn(), cancelStackRunAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-policy.action", () => ({activateStackPolicyAction: (...a: unknown[]) => activateAction(...a), previewStackPolicyAction: (...a: unknown[]) => previewAction(...a)}));
 
 import {ConfigureForm} from "@/fork/ui/stacks/wizard/configure-form.client";
@@ -56,7 +57,7 @@ describe("W11 form structure (single page, five sections)", () => {
         expect(why.textContent).toBe(T.review.blockers.no_channel_selected);
         const run = screen.getByTestId("run-first");
         expect(run.getAttribute("aria-disabled")).toBe("true");
-        expect(document.getElementById(run.getAttribute("aria-describedby")!)!.textContent).toBe(T.review.runFirstReason);
+        expect(document.getElementById(run.getAttribute("aria-describedby")!)!.textContent).toBe(RUNS.action.reasons.no_policy);
     });
 });
 

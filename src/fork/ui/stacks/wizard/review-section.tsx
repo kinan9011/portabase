@@ -5,7 +5,8 @@ import * as React from "react";
 import {Checkbox} from "@/components/ui/checkbox";
 import {Label} from "@/components/ui/label";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
-import {CONFIGURE} from "@/fork/ui/labels";
+import {CONFIGURE, RUNS} from "@/fork/ui/labels";
+import {RunNowButton} from "@/fork/ui/stacks/run-controls.client";
 import {fmtBytes, stackHref} from "@/fork/ui/stacks/format";
 import {TONE_MAP} from "@/fork/ui/tone";
 import type {PreviewView} from "@/fork/stack-policy/preview";
@@ -61,7 +62,7 @@ export function ReviewSection({stackId, preview, blockerList, extraReasons, pend
 
             <div className="flex flex-wrap items-start gap-3">
                 <ReasonButton type="button" onClick={onActivate} reason={reason} data-testid="activate" className="bg-[color-mix(in_oklab,var(--primary),black_25%)] text-white hover:bg-[color-mix(in_oklab,var(--primary),black_35%)]">{active ? V.edit : V.activate}</ReasonButton>
-                <ReasonButton type="button" variant="outline" reason={V.runFirstReason} data-testid="run-first">{V.runFirst}</ReasonButton>
+                <RunNowButton stackId={stackId} label={V.runFirst} testId="run-first" reason={active || outcome?.kind === "success" ? null : RUNS.action.reasons.no_policy}/>
             </div>
 
             {outcome?.kind === "success" && (

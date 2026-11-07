@@ -45,6 +45,8 @@ describe("upstream contract — symbols the fork imports", () => {
         // W12: stack runs read/queue/delete upstream backups through `src/fork/upstream/backups.ts` (own pins: w12-runs-upstream-contract.test.ts)
         ["src/db/schema/07_database.ts", "restoration"],
         ["src/lib/tasks/database/utils/backup-delete.service.ts", "deleteBackupService"],
+        ["src/features/database/services/backup-download.service.ts", "getBackupDownloadUrlService"],
+        ["src/db/schema/02_user.ts", "user"], // run-time re-authorization reads the activating user's CURRENT role / banned flag
         ["src/db/index.ts", "db"],
         // W06: Integrations UI reuses the upstream design-system primitives (Radix/shadcn) and the agent-status util
         ["src/components/ui/alert-dialog.tsx", "AlertDialog"],
@@ -74,6 +76,8 @@ describe("upstream contract — symbols the fork imports", () => {
             "@/db/schema/08_agent", "@/db/schema/14_storage-backup",
             // W10 (src/fork/upstream only — w10-static.test.ts enforces that boundary)
             "@/db/schema/13_storage-policy", "@/db/schema/10_alert-policy", "@/db/schema/01_setting", "@/utils/status-crypto",
+            // W12 (src/fork/upstream only): activating user (re-authorization)
+            "@/db/schema/02_user",
             // W06
             "@/components/ui/alert-dialog", "@/components/ui/alert", "@/components/ui/button", "@/components/ui/dialog", "@/components/ui/input", "@/components/ui/label",
             "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/components/ui/tabs", "@/lib/utils", "@/components/ui/checkbox", "@/components/ui/radio-group", "@/features/agents/utils/status/agent-status",

@@ -1,7 +1,8 @@
 import type {ForkDb} from "@/fork/db/handle";
 import {syncConnection} from "@/fork/discovery/sync";
 import {currentForkMode, type ForkMode} from "@/fork/mode";
-import {deleteBackupViaUpstream, encryptionEnabled, hashViaUpstream, readPrincipal, type DeleteBackup, type HashArtifact, type PrincipalLookup} from "@/fork/upstream";
+import {hashViaUpstream, type HashArtifact} from "@/fork/recovery-point/hash";
+import {deleteBackupViaUpstream, encryptionEnabled, readPrincipal, type DeleteBackup, type PrincipalLookup} from "@/fork/upstream";
 import {runConfig, type RunConfig} from "./config";
 
 /** Everything the run services need, with a seam for each side effect so every path runs on a fake clock / fake storage in tests. */

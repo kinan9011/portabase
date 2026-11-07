@@ -21,7 +21,8 @@ beforeAll(async () => {
         const inv = (await q("insert into fork_stack_inventory (stack_id, version, content_hash, inventory) values ($1,1,$2,'{}') returning id", [stack, "a".repeat(64)])).rows[0].id;
         const rp = await seedRp(w.pool, stack, {status: "incomplete"});
         const art = await seedArtifact(w.pool, rp);
-        ids[k] = {connection: conn, environment: env, stack, stack_inventory: inv, recovery_point: rp, recovery_point_artifact: art};
+        const run = (await q("insert into fork_stack_run (stack_id, trigger, state) values ($1,'manual','failed') returning id", [stack])).rows[0].id;
+        ids[k] = {connection: conn, environment: env, stack, stack_inventory: inv, recovery_point: rp, recovery_point_artifact: art, stack_run: run};
     }
 });
 afterAll(async () => { await w.drop(); });
