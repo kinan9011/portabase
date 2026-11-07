@@ -25,12 +25,12 @@ describe("<ForkSidebarGroups/> rendered output (flags-off parity, P05)", () => {
         expect(renderToStaticMarkup(<>{el}</>)).toBe("");
     });
 
-    it("flags on + system admin: Stack Recovery group with exactly the Integrations link, no badge", async () => {
+    it("flags on + system admin: Stack Recovery group with the Integrations and Agent channel links, no badge", async () => {
         ON();
         const el = await ForkSidebarGroups();
         const {container} = render(<SidebarProvider>{el}</SidebarProvider>);
         const links = [...container.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
-        expect(links).toEqual([["Integrations", "/dashboard/integrations"]]);
+        expect(links).toEqual([["Integrations", "/dashboard/integrations"], ["Agent channel", "/dashboard/integrations/agent-channel"]]);
         expect(container.textContent).toContain("Stack Recovery");
         expect(container.textContent).not.toMatch(/\bNew\b|beta/i);
         expect(container.textContent).not.toMatch(/Docker Stacks|Recovery$/m); // no org membership ⇒ no stacks link
@@ -48,7 +48,7 @@ describe("<ForkSidebarGroups/> rendered output (flags-off parity, P05)", () => {
         unmount();
         user.current = {systemRole: "admin", orgRole: "owner"};
         ({container, unmount} = render(<SidebarProvider>{await ForkSidebarGroups()}</SidebarProvider>));
-        expect([...container.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(["/dashboard/integrations", "/dashboard/stacks"]);
+        expect([...container.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(["/dashboard/integrations", "/dashboard/integrations/agent-channel", "/dashboard/stacks"]);
         unmount();
     });
 

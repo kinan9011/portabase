@@ -15,7 +15,7 @@ import {chEnv, chNow, type ChannelDeps} from "./deps";
 import {signEnvelope, type Envelope} from "./envelope";
 import {encryptPayload, payloadSha256} from "./payload";
 import {checkChannelTransport} from "./transport-policy";
-import {CAPABILITY_RE, MAX_CAPABILITIES, MAX_PAYLOAD_BYTES, MAX_RESULT_BYTES, NOOP_ECHO_RE, TASK_REQUIRES, TASK_TYPES, type TaskType} from "./vocab";
+import {CAPABILITY_RE, KID_RE, MAX_CAPABILITIES, MAX_PAYLOAD_BYTES, MAX_PINS, MAX_RESULT_BYTES, NOOP_ECHO_RE, PIN_PEM_MAX, PUBLIC_TASK_TYPES, TASK_REQUIRES, type TaskType} from "./vocab";
 import {redactDetails} from "@/fork/audit";
 
 /**
@@ -32,17 +32,53 @@ const refuse = (code: Refusal["code"], message: string, extra: Partial<Refusal> 
 
 const EnqueueInput = z.strictObject({
     agentId: z.uuid(),
-    type: z.enum(TASK_TYPES),
+    type: z.enum(PUBLIC_TASK_TYPES),
     payload: z.record(z.string(), z.unknown()).default({}),
 });
 
+const PAYLOAD_SCHEMAS: Record<TaskType, z.ZodType> = {
+    noop: z.strictObject({echo: z.string().regex(NOOP_ECHO_RE)}),
+    pin_add: z.strictObject({kid: z.string().regex(KID_RE), pem: z.string().max(PIN_PEM_MAX)}),
+    pin_revoke: z.strictObject({kid: z.string().regex(KID_RE)}),
+    rotate_credential: z.strictObject({credential: z.string().regex(/^fork\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/)}),
+};
+
 /** Per-type payload validation (closed: unknown keys are refused). */
-function validatePayload(type: TaskType, payload: Record<string, unknown>): string | null {
-    if (type === "noop") {
-        const p = z.strictObject({echo: z.string().regex(NOOP_ECHO_RE)}).safeParse(payload);
-        return p.success ? null : "payload_invalid";
-    }
-    return "payload_invalid";
+export function validatePayload(type: TaskType, payload: Record<string, unknown>): string | null {
+    return PAYLOAD_SCHEMAS[type].safeParse(payload).success ? null : "payload_invalid";
+}
+
+/** Agent-reported pinned kids (from a `pin_*` result): 1..MAX_PINS distinct kids, else `null` (the caller then keeps the old value). */
+export function sanitizePinned(input: unknown): string[] | null {
+    if (!Array.isArray(input) || input.length < 1 || input.length > MAX_PINS) return null;
+    if (!input.every((k): k is string => typeof k === "string" && KID_RE.test(k))) return null;
+    const uniq = [...new Set(input)].sort();
+    return uniq.length === input.length ? uniq : null;
+}
+
+const CLEAR_PENDING = {pendingCredentialHash: null, pendingTaskId: null, pendingValidUntil: null} as const;
+
+/** Drop a pending rotation that can no longer be proven: its window passed, or its task ended without the agent ever receiving it (A12). */
+export async function clearStalePending(tx: ForkDb, agentId: string, now: Date): Promise<void> {
+    await tx.update(forkAgentEnrollment).set(CLEAR_PENDING).where(and(eq(forkAgentEnrollment.agentId, agentId), sql`${forkAgentEnrollment.pendingTaskId} IS NOT NULL`, sql`(
+        ${forkAgentEnrollment.pendingValidUntil} < ${now}
+        OR EXISTS (SELECT 1 FROM fork_agent_task t WHERE t.id = ${forkAgentEnrollment.pendingTaskId} AND t.attempts = 0 AND (t.status IN ('expired', 'cancelled', 'failed') OR (t.status = 'queued' AND t.not_after < ${now}))))`));
+}
+
+/** Sign + encrypt + insert one task for an enrolment (caller holds `agent-task:<agentId>` and has already authorised the action). */
+export async function insertSignedTask(tx: ForkDb, a: {e: Enrollment; agentName: string; type: TaskType; plaintext: Buffer; actorUserId: string; signing: {privateKeyPem: string}; kid: string; taskKey: Buffer; now: Date; ttlMs: number}): Promise<{taskId: string; seq: number; notAfter: Date}> {
+    const {e, type, plaintext, now} = a;
+    const agentId = e.agentId!;
+    const requires = [...TASK_REQUIRES[type]];
+    const taskId = randomUUID();
+    const [{seq}] = await tx.update(forkAgentEnrollment).set({nextSeq: sql`${forkAgentEnrollment.nextSeq} + 1`}).where(eq(forkAgentEnrollment.id, e.id)).returning({seq: sql<number>`${forkAgentEnrollment.nextSeq} - 1`});
+    const notAfter = new Date(now.getTime() + a.ttlMs);
+    const envelope: Envelope = {v: 1, task_id: taskId, agent_id: agentId, enroll_id: e.enrollId, type, seq, issued_at: Math.floor(now.getTime() / 1000), not_after: Math.floor(notAfter.getTime() / 1000),
+        nonce: randomBytes(16).toString("base64url"), payload_sha256: payloadSha256(plaintext), requires, kid: a.kid};
+    const signed = signEnvelope(envelope, a.signing.privateKeyPem);
+    await tx.insert(forkAgentTask).values({id: taskId, agentId, agentName: a.agentName, enrollId: e.enrollId, type, requires, seq, envelopeText: signed.text, signature: signed.signature, kid: a.kid,
+        payloadEnc: encryptPayload(a.taskKey, {taskId, agentId, type}, plaintext), payloadSha256: envelope.payload_sha256, status: "queued", createdBy: a.actorUserId, createdAt: now, notAfter});
+    return {taskId, seq, notAfter};
 }
 
 export type EnqueueResult = {ok: true; taskId: string; seq: number; notAfter: string} | Refusal;
@@ -84,14 +120,7 @@ export async function enqueueTask(d: ChannelDeps, raw: unknown): Promise<Enqueue
         const requires = [...TASK_REQUIRES[type]];
         if (!requires.every((c) => e.capabilities.includes(c))) { await audit("denied", {reason: "capability_missing", type, requires}, tx); return refuse("capability_missing", "This agent has not reported that it can do this yet."); }
         const taskKey = await loadTaskKey(d, e);
-        const taskId = randomUUID();
-        const [{seq}] = await tx.update(forkAgentEnrollment).set({nextSeq: sql`${forkAgentEnrollment.nextSeq} + 1`}).where(eq(forkAgentEnrollment.id, e.id)).returning({seq: sql<number>`${forkAgentEnrollment.nextSeq} - 1`});
-        const notAfter = new Date(now.getTime() + ttlMs);
-        const envelope: Envelope = {v: 1, task_id: taskId, agent_id: agentId, enroll_id: e.enrollId, type, seq, issued_at: Math.floor(now.getTime() / 1000), not_after: Math.floor(notAfter.getTime() / 1000),
-            nonce: randomBytes(16).toString("base64url"), payload_sha256: payloadSha256(plaintext), requires, kid};
-        const signed = signEnvelope(envelope, signing.privateKeyPem);
-        await tx.insert(forkAgentTask).values({id: taskId, agentId, agentName: a.name, enrollId: e.enrollId, type, requires, seq, envelopeText: signed.text, signature: signed.signature, kid,
-            payloadEnc: encryptPayload(taskKey, {taskId, agentId, type}, plaintext), payloadSha256: envelope.payload_sha256, status: "queued", createdBy: p.userId, createdAt: now, notAfter});
+        const {taskId, seq, notAfter} = await insertSignedTask(tx, {e, agentName: a.name, type, plaintext, actorUserId: p.userId, signing, kid, taskKey, now, ttlMs});
         await audit("success", {taskId, type, seq, enrollId: e.enrollId}, tx);
         return {ok: true, taskId, seq, notAfter: notAfter.toISOString()};
     });
@@ -120,6 +149,7 @@ export async function leaseTask(db: ForkDb, e: Enrollment, a: {capabilities: unk
             .where(and(mine, inArray(forkAgentTask.status, ["leased", "running"]), lt(forkAgentTask.leaseUntil, now), sql`${forkAgentTask.attempts} >= ${MAX_ATTEMPTS}`));
         await tx.update(forkAgentTask).set({status: "queued", leaseId: null, leaseUntil: null})
             .where(and(mine, inArray(forkAgentTask.status, ["leased", "running"]), lt(forkAgentTask.leaseUntil, now)));
+        await clearStalePending(tx, e.agentId!, now);
         // 3. one task in flight at a time: an unexpired lease is handed out again (same lease id) — the agent dedups by task id
         const [inflight] = await tx.select().from(forkAgentTask).where(and(mine, inArray(forkAgentTask.status, ["leased", "running"]))).orderBy(asc(forkAgentTask.seq)).limit(1);
         const leaseUntil = new Date(now.getTime() + a.leaseSeconds * 1000);
@@ -167,6 +197,12 @@ export async function submitResult(db: ForkDb, e: Enrollment, a: {taskId: string
         if (["succeeded", "failed", "rejected"].includes(t.status)) return t.status === b.status ? {ok: true as const, duplicate: true} : {ok: false as const, status: 409 as const, code: "conflict" as const};
         if (!["leased", "running"].includes(t.status) || t.leaseId !== b.lease_id) return {ok: false as const, status: 409 as const, code: "lease_mismatch" as const};
         await tx.update(forkAgentTask).set({status: b.status, result, finishedAt: now, leaseId: null, leaseUntil: null, payloadEnc: null}).where(eq(forkAgentTask.id, t.id));
+        // bookkeeping of the REPORTING agent's own enrolment row only; nothing is executed because of a result (ADR-007 A11)
+        if ((t.type === "pin_add" || t.type === "pin_revoke") && b.status === "succeeded") {
+            const pinned = sanitizePinned((b.result ?? {}).pinned);
+            if (pinned) await tx.update(forkAgentEnrollment).set({pinnedKids: pinned}).where(eq(forkAgentEnrollment.id, e.id));
+        }
+        if (t.type === "rotate_credential" && b.status !== "succeeded") await tx.update(forkAgentEnrollment).set(CLEAR_PENDING).where(and(eq(forkAgentEnrollment.id, e.id), eq(forkAgentEnrollment.pendingTaskId, t.id)));
         await recordAudit(tx, {organizationId: a.organizationId, actorKind: "system", action: "fork.agent_task.result", resourceType: "agent_task", resourceId: t.id, result: b.status === "succeeded" ? "success" : "failure",
             details: {agentId: e.agentId, type: t.type, status: b.status, reason: b.reason ?? null}, now});
         return {ok: true as const};

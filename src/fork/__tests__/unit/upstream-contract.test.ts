@@ -58,6 +58,7 @@ describe("upstream contract — symbols the fork imports", () => {
         ["src/components/ui/input.tsx", "Input"],
         ["src/components/ui/label.tsx", "Label"],
         ["src/components/ui/select.tsx", "Select"],
+        ["src/components/ui/textarea.tsx", "Textarea"], // W15b agent channel page (PEM + read-only bundle fields)
         ["src/components/ui/switch.tsx", "Switch"],
         ["src/components/ui/table.tsx", "Table"],
         ["src/components/ui/tabs.tsx", "Tabs"], // W08
@@ -85,6 +86,7 @@ describe("upstream contract — symbols the fork imports", () => {
             // W06
             "@/components/ui/alert-dialog", "@/components/ui/alert", "@/components/ui/button", "@/components/ui/dialog", "@/components/ui/input", "@/components/ui/label",
             "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/components/ui/tabs", "@/lib/utils", "@/components/ui/checkbox", "@/components/ui/radio-group", "@/features/agents/utils/status/agent-status",
+            "@/components/ui/textarea", // W15b
         ]);
         const walk = (dir: string): string[] =>
             readdirSync(dir, {withFileTypes: true}).flatMap((e) =>
