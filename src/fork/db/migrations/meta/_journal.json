@@ -57,6 +57,13 @@
       "when": 1794028806905,
       "tag": "0007_notification_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794032496525,
+      "tag": "0008_manifest_kit",
+      "breakpoints": true
     }
   ]
 }
