@@ -371,7 +371,7 @@ describe("Sync now (W07): real action, honest states, no fake success", () => {
         expect(screen.getByRole("button", {name: "Syncing…"}).getAttribute("aria-disabled")).toBe("true");
         expect(screen.getByRole("heading", {level: 2, name: "Arcane"}).parentElement?.textContent).toContain("Syncing…");
         done({data: {ok: true, run: run()}});
-        await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Sync finished: 3 stacks found, 2 changed."));
+        await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Sync finished: 3 stacks found, 2 new or changed."));
         expect(h.refresh).toHaveBeenCalled(); // state is re-read from the server, not invented
         expect(screen.getByRole("button", {name: "Sync now"})).toBeTruthy();
     });
