@@ -17,7 +17,8 @@ const KEY = Buffer.alloc(32, 9);
 const principal: ForkPrincipal = {userId: "00000000-0000-4000-8000-0000000000aa", systemRole: "admin", memberships: [{organizationId: "", role: "owner"}]};
 const deps = (): MaterializeDeps => ({db: t.db, principal, masterKey: async () => KEY, assertConfigAllowed: async () => undefined, rate: () => ({ok: true})});
 const q = (s: string, p: unknown[] = []) => pool.query(s, p);
-const NOW = new Date("2026-11-07T12:00:00Z");
+// Relative to the REAL clock on purpose: the Docker-evidence rule compares last_contact with the real time (<= 5 min); a fixed past NOW expires (failed from 2026-11-07 12:05Z).
+const NOW = new Date();
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
 // NB: `databases.last_contact` / `agents.last_contact` are `timestamp` WITHOUT tz and drizzle reads them as UTC: write UTC wall time (ISO string), never a Date through raw pg (that uses the process TZ).
 const utc = (d: Date | null) => (d ? d.toISOString() : null);
