@@ -16,7 +16,7 @@ import {splitMethod} from "@/features/database/utils/backup-method";
 import {SECRET_FIELDS, encryptSecret, stackProjectSlug, stripSecrets, withEncryptedSecrets} from "@/fork/upstream";
 import {planStack} from "@/fork/materialize/plan";
 import {SelectionSchema} from "@/fork/materialize/types";
-import {cleanInventory} from "@/fork/__tests__/w09-fixtures";
+import {w10Inventory} from "@/fork/__tests__/w10-fixtures";
 
 /**
  * D31 CONTRACT TESTS for the controlled copies in `src/fork/upstream/` — run on EVERY W-SYNC (03-Upstream-Sync-Runbook).
@@ -64,7 +64,7 @@ describe("credentials copy ↔ upstream", () => {
 });
 
 describe("generated configs ↔ upstream config schema", () => {
-    const inv = cleanInventory();
+    const inv = w10Inventory();
     inv.services.push({name: "db", state: "running", image: {ref: "postgres:16", pinned: false, built_locally: false}, ports: [], networks: [], mounts: [], env_keys: [], database_hint: {engine: "postgresql", basis: "image"}});
     inv.services.push({name: "lite", state: "running", image: {ref: "x", pinned: false, built_locally: false}, ports: [], networks: [], mounts: [], env_keys: [], database_hint: {engine: "sqlite", basis: "mount"}});
     const plan = planStack(inv, SelectionSchema.parse({databases: {db: {kind: "dump", host: "demo-db", port: 5432, username: "u", database: "d"}, lite: {kind: "sqlite", path: "/lab/sqlite/app.db"}}}));

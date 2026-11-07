@@ -94,6 +94,7 @@ export function planStack(inv: StackInventoryV1, sel: Selection, allowedRoots: r
 
     // ---- compose directory (+ env files, implicit .env) ----------------------------------------------------------------
     const wd = safeAbsPath(inv.stack.working_dir_hint);
+    const nested = new Set<string>(); // bind mount keys covered through the compose directory source
     if (!wd) skip("dir:?", "compose_location_unknown");
     else {
         const key = `dir:${wd}`;
@@ -101,10 +102,18 @@ export function planStack(inv: StackInventoryV1, sel: Selection, allowedRoots: r
         if (v.unsupported || v.directive) skip(key, "bind_path_denied");
         else if (isExcluded(key, false)) skip(key, reason(key));
         else {
+            // A bind mount under the compose directory is already INSIDE the directory source (and may be a single file, which a `files`
+            // source cannot back up on its own): it is covered through it. Explicit selection (`includeKeys`) still gives it a source of its own.
+            for (const m of inv.mounts) {
+                const hp = m.kind === "bind" ? safeAbsPath(m.host_path_hint) : null;
+                const mk = `mount:${m.id}`;
+                if (hp && isUnder(hp, wd) && !include.has(mk) && !isExcluded(mk, allExcluded(m.consumers)) && !pathVerdict(hp, allowedRoots).unsupported && !pathVerdict(hp, allowedRoots).directive) nested.add(mk);
+            }
             const covers = [
                 ...inv.stack.config_files_hint.filter((p) => safeAbsPath(p) !== null && isUnder(p, wd)).map((p) => `file:${p}`),
                 ...inv.env_files.filter((e) => safeAbsPath(e.path_hint) !== null && isUnder(e.path_hint, wd)).map((e) => `env:${e.path_hint}`),
                 "env:implicit",
+                ...[...nested],
             ];
             const engine = sel.composeMethod === "snapshot" ? "restic" : "archive";
             const config = {path: wd};
@@ -119,6 +128,7 @@ export function planStack(inv: StackInventoryV1, sel: Selection, allowedRoots: r
         if (m.kind !== "bind") continue;
         const key = `mount:${m.id}`;
         if (isExcluded(key, allExcluded(m.consumers))) { skip(key, reason(key)); continue; }
+        if (nested.has(key)) continue; // covered through the compose directory source
         if (!include.has(key) && dumpCovers(m.consumers)) continue; // data dir of a dump-covered DB: covered through the DB source
         const p = safeAbsPath(m.host_path_hint);
         const v = p ? pathVerdict(p, allowedRoots) : {unsupported: "denied_path" as const};

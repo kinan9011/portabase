@@ -5,16 +5,17 @@ import type {StackInventoryV1} from "@/fork/inventory/schema";
 import {planStack} from "@/fork/materialize/plan";
 import {isAcceptableDbHost, isAdoptableVolumeName, SelectionSchema, VOLUME_NAME_RE, type Selection} from "@/fork/materialize/types";
 import {cleanInventory} from "@/fork/__tests__/w09-fixtures";
+import {w10Inventory} from "@/fork/__tests__/w10-fixtures";
 
 const sel = (o: Partial<Selection> = {}): Selection => SelectionSchema.parse(o);
 /** Bypasses the schema on purpose: the planner must hold even if a caller hands it an unvalidated selection. */
 const selRaw = (o: Partial<Selection>): Selection => ({...SelectionSchema.parse({}), ...o});
 const M1 = "m:0000000000000001"; // named volume app_data
-const M2 = "m:0000000000000002"; // bind /srv/app/uploads
+const M2 = "m:0000000000000002"; // bind /data/uploads
 
 /** cleanInventory + a postgres service (named data volume + a second named volume for assets). */
 function withDb(over: Partial<StackInventoryV1> = {}): StackInventoryV1 {
-    const inv = cleanInventory();
+    const inv = w10Inventory();
     inv.services.push({name: "db", state: "running", image: {ref: "postgres:16", pinned: false, built_locally: false}, ports: [], networks: [], mounts: ["m:00000000000000a1"], env_keys: [], database_hint: {engine: "postgresql", basis: "image"}});
     inv.mounts.push({id: "m:00000000000000a1", kind: "named_volume", volume_name: "app_pgdata", destination: "/var/lib/postgresql/data", rw: true, consumers: ["db"], ownership: "stack_owned"});
     inv.volumes.push({name: "app_pgdata", driver: "local", in_use_by: ["db"], ownership: "stack_owned"});
@@ -24,10 +25,10 @@ const DUMP = {kind: "dump" as const, host: "demo-db", port: 5432, username: "dem
 
 describe("W10 plan: mapping (wave §Scope)", () => {
     it("compose dir + env → ONE files source (snapshot default), bind → files, named volume → docker-volume", () => {
-        const p = planStack(cleanInventory(), sel());
+        const p = planStack(w10Inventory(), sel());
         expect(p.sources.map((s) => [s.role, s.dbms, s.engine, s.config])).toEqual([
             ["compose", "files", "restic", {path: "/srv/app"}],
-            ["bind", "files", "archive", {path: "/srv/app/uploads"}],
+            ["bind", "files", "archive", {path: "/data/uploads"}],
             ["volume", "docker-volume", "archive", {volume_name: "app_data"}],
         ]);
         const compose = p.sources[0];
@@ -35,7 +36,7 @@ describe("W10 plan: mapping (wave §Scope)", () => {
         expect(p.skipped).toEqual([]);
     });
     it("composeMethod archive is honoured", () => {
-        expect(planStack(cleanInventory(), sel({composeMethod: "archive"})).sources[0].engine).toBe("archive");
+        expect(planStack(w10Inventory(), sel({composeMethod: "archive"})).sources[0].engine).toBe("archive");
     });
     it("never emits container_name or cron/retention-like keys in any config (D29, D33)", () => {
         const inv = withDb();
@@ -53,11 +54,39 @@ describe("W10 plan: mapping (wave §Scope)", () => {
         expect(planStack(inv, sel({databases: {db: DUMP}})).planHash).toBe(a.planHash);
     });
     it("planHash changes when the inventory gains a resource (inventory drift) or the selection changes", () => {
-        const base = planStack(cleanInventory(), sel());
-        const inv = cleanInventory();
+        const base = planStack(w10Inventory(), sel());
+        const inv = w10Inventory();
         inv.volumes.push({name: "extra_vol", driver: "local", in_use_by: ["web"], ownership: "stack_owned"});
         expect(planStack(inv, sel()).planHash).not.toBe(base.planHash);
-        expect(planStack(cleanInventory(), sel({composeMethod: "archive"})).planHash).not.toBe(base.planHash);
+        expect(planStack(w10Inventory(), sel({composeMethod: "archive"})).planHash).not.toBe(base.planHash);
+    });
+});
+
+describe("W10 plan: bind mounts under the compose directory", () => {
+    it("are covered THROUGH the compose directory source (no second source; works for single-file binds); explicit include gives them their own", () => {
+        const nested = cleanInventory(); // bind /srv/app/uploads sits under working dir /srv/app
+        const p = planStack(nested, sel());
+        expect(p.sources.map((s) => s.role)).toEqual(["compose", "volume"]);
+        expect(p.sources[0].covers).toContain(`mount:${M2}`);
+        expect(p.coverage[`mount:${M2}`]).toBe("files");
+        const own = planStack(nested, sel({includeKeys: [`mount:${M2}`]}));
+        expect(own.sources.map((s) => s.role)).toEqual(["compose", "bind", "volume"]);
+        expect(own.sources.find((s) => s.role === "compose")?.covers).not.toContain(`mount:${M2}`);
+    });
+    it("an excluded or denied nested bind is not silently added to the compose source", () => {
+        const inv = cleanInventory();
+        inv.services[0].backup_hints = {exclude: true};
+        expect(planStack(inv, sel()).sources[0].covers).not.toContain(`mount:${M2}`);
+        const sock = cleanInventory();
+        sock.mounts[1] = {...sock.mounts[1], host_path_hint: "/srv/app/docker.sock"};
+        const p = planStack(sock, sel());
+        expect(p.sources[0].covers).not.toContain(`mount:${M2}`);
+    });
+    it("if the compose directory itself is refused, binds under it get sources of their own (or a skip reason)", () => {
+        const p = planStack(cleanInventory(), sel(), ["/data"]); // working dir /srv/app outside the allowed roots
+        expect(p.skipped).toContainEqual({key: "dir:/srv/app", reason: "bind_path_denied"});
+        expect(p.sources.some((s) => s.role === "bind")).toBe(false);
+        expect(p.skipped).toContainEqual({key: `mount:${M2}`, reason: "bind_path_denied"});
     });
 });
 
@@ -68,21 +97,21 @@ describe("W10 plan: SEC-24 volume guard", () => {
         expect(VOLUME_NAME_RE.test("/tmp/x")).toBe(false);
     });
     it.each([["/tmp/x"], ["/"], ["../etc"], ["a b"], ["0123456789abcdef".repeat(4)]])("a volume named %j in the inventory never becomes a docker-volume source", (name) => {
-        const inv = cleanInventory();
+        const inv = w10Inventory();
         inv.volumes = [{name, driver: "local", in_use_by: ["web"], ownership: "stack_owned"}];
         const p = planStack(inv, sel());
         expect(p.sources.filter((s) => s.dbms === "docker-volume")).toEqual([]);
         expect(p.skipped.some((s) => s.key === `volume:${name}` && (s.reason === "volume_name_invalid" || s.reason === "anonymous_volume"))).toBe(true);
     });
     it("a named mount whose volume is not in the inventory is refused (existence rule)", () => {
-        const inv = cleanInventory();
+        const inv = w10Inventory();
         inv.volumes = [];
         const p = planStack(inv, sel());
         expect(p.sources.some((s) => s.dbms === "docker-volume")).toBe(false);
         expect(p.skipped).toContainEqual({key: "volume:app_data", reason: "volume_not_in_inventory"});
     });
     it("external-shared and non-local-driver volumes are skipped with their reason", () => {
-        const inv = cleanInventory();
+        const inv = w10Inventory();
         inv.volumes = [{name: "shared_vol", driver: "local", in_use_by: ["web"], ownership: "external_shared"}, {name: "nfs_vol", driver: "nfs", in_use_by: ["web"], ownership: "stack_owned"}];
         const p = planStack(inv, sel());
         expect(p.sources.filter((s) => s.dbms === "docker-volume")).toEqual([]);
@@ -90,7 +119,7 @@ describe("W10 plan: SEC-24 volume guard", () => {
         expect(p.skipped).toContainEqual({key: "volume:nfs_vol", reason: "unsupported_driver"});
     });
     it("anonymous volume mounts are never adopted (flagged by the validator instead)", () => {
-        const inv = cleanInventory();
+        const inv = w10Inventory();
         inv.mounts.push({id: "m:00000000000000b1", kind: "anonymous_volume", destination: "/cache", rw: true, consumers: ["web"], ownership: "unknown"});
         const p = planStack(inv, sel());
         expect(p.skipped).toContainEqual({key: "mount:m:00000000000000b1", reason: "anonymous_volume"});
@@ -100,7 +129,7 @@ describe("W10 plan: SEC-24 volume guard", () => {
 
 describe("W10 plan: bind paths (never silently dropped)", () => {
     it.each([["/etc/app"], ["/var/run/docker.sock"], ["/"], ["/proc/1"], ["relative/path"]])("bind %s → no source, a skip reason (blocker stays visible in the validator)", (host) => {
-        const inv = cleanInventory();
+        const inv = w10Inventory();
         inv.mounts[1] = {...inv.mounts[1], host_path_hint: host};
         const p = planStack(inv, sel());
         expect(p.sources.some((s) => s.role === "bind")).toBe(false);
@@ -109,9 +138,9 @@ describe("W10 plan: bind paths (never silently dropped)", () => {
         expect(report.complete).toBe(false);
     });
     it("a bind outside allowed_path_roots is refused; inside is accepted", () => {
-        const inv = cleanInventory();
-        expect(planStack(inv, sel(), ["/data"]).skipped).toContainEqual({key: `mount:${M2}`, reason: "bind_path_denied"});
-        expect(planStack(inv, sel(), ["/srv"]).sources.some((s) => s.role === "bind")).toBe(true);
+        const inv = w10Inventory();
+        expect(planStack(inv, sel(), ["/srv"]).skipped).toContainEqual({key: `mount:${M2}`, reason: "bind_path_denied"});
+        expect(planStack(inv, sel(), ["/data", "/srv"]).sources.some((s) => s.role === "bind")).toBe(true);
     });
 });
 
@@ -172,23 +201,23 @@ describe("W10 plan: databases (D29)", () => {
 
 describe("W10 plan: exclusions (D18) and manual sources (D19)", () => {
     it("an exclude hint is a default; explicit include wins; explicit exclude wins over defaults", () => {
-        const inv = cleanInventory();
+        const inv = w10Inventory();
         inv.services[0].backup_hints = {exclude: true};
         const dflt = planStack(inv, sel());
         expect(dflt.sources.map((s) => s.role)).toEqual(["compose"]);
         expect(dflt.skipped.map((s) => s.reason)).toEqual(["excluded_hint", "excluded_hint"]);
         const forced = planStack(inv, sel({includeKeys: ["volume:app_data", `mount:${M2}`]}));
         expect(forced.sources.map((s) => s.role).sort()).toEqual(["bind", "compose", "volume"]);
-        const out = planStack(cleanInventory(), sel({excludeKeys: ["volume:app_data"]}));
+        const out = planStack(w10Inventory(), sel({excludeKeys: ["volume:app_data"]}));
         expect(out.skipped).toContainEqual({key: "volume:app_data", reason: "excluded_selection"});
     });
     it("stop hints are carried as data and never reach a source config", () => {
-        const p = planStack(cleanInventory(), sel({stop: ["web", "web"]}));
+        const p = planStack(w10Inventory(), sel({stop: ["web", "web"]}));
         expect(p.stop).toEqual(["web"]);
         expect(JSON.stringify(p.sources)).not.toContain("container");
     });
     it("a manual source needs a configured root, a safe path inside it, and existing keys; it covers them as manual_files", () => {
-        const inv = cleanInventory({stack: {...cleanInventory().stack, compose_read: "none"}});
+        const inv = w10Inventory({stack: {...w10Inventory().stack, compose_read: "none"}});
         const m = {path: "/srv/extra", covers: ["env:undetermined"]};
         expect(planStack(inv, sel({manual: [m]}), []).skipped).toContainEqual({key: "manual:/srv/extra", reason: "manual_invalid"});
         expect(planStack(inv, sel({manual: [{...m, path: "/opt/x"}]}), ["/srv"]).skipped).toContainEqual({key: "manual:/opt/x", reason: "manual_invalid"});
@@ -202,11 +231,11 @@ describe("W10 plan: exclusions (D18) and manual sources (D19)", () => {
         }
     });
     it("env:undetermined is never covered automatically (compose not read ⇒ only a manual source resolves it)", () => {
-        const inv = cleanInventory({stack: {...cleanInventory().stack, compose_read: "none"}});
+        const inv = w10Inventory({stack: {...w10Inventory().stack, compose_read: "none"}});
         expect(planStack(inv, sel()).coverage["env:undetermined"]).toBeUndefined();
     });
     it("no working dir → no compose source and an explicit skip", () => {
-        const inv = cleanInventory({stack: {...cleanInventory().stack, working_dir_hint: undefined}});
+        const inv = w10Inventory({stack: {...w10Inventory().stack, working_dir_hint: undefined}});
         const p = planStack(inv, sel());
         expect(p.skipped).toContainEqual({key: "dir:?", reason: "compose_location_unknown"});
         expect(p.sources.some((s) => s.role === "compose")).toBe(false);
@@ -216,7 +245,7 @@ describe("W10 plan: exclusions (D18) and manual sources (D19)", () => {
 describe("W10 plan ↔ W09 validator contract", () => {
     const probes = (keys: string[]): Record<string, ProbeResult> => Object.fromEntries(keys.map((k) => [k, "readable" as const]));
     it("a full plan of a clean stack, with every member probed readable, is COMPLETE", () => {
-        const inv = cleanInventory();
+        const inv = w10Inventory();
         const p = planStack(inv, sel());
         const ctx: CompletenessContext = {coverage: p.coverage, probes: probes(Object.keys(p.coverage)), acceptedExclusions: [], allowedRoots: []};
         const r = validateCompleteness(inv, ctx);
@@ -224,7 +253,7 @@ describe("W10 plan ↔ W09 validator contract", () => {
         expect(r.complete).toBe(true);
     });
     it("the same plan WITHOUT probes is not complete (covered host paths stay unknown until a probe says readable)", () => {
-        const inv = cleanInventory();
+        const inv = w10Inventory();
         const r = validateCompleteness(inv, {coverage: planStack(inv, sel()).coverage, probes: {}, acceptedExclusions: [], allowedRoots: []});
         expect(r.complete).toBe(false);
         expect(r.items.filter((i) => i.status === "unknown").length).toBeGreaterThan(0);

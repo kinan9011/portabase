@@ -9,7 +9,7 @@ import {CANARY_TIMEOUT_MS, MEMBER_STALE_MS, driftStack, materializeTick} from "@
 import {resetRateLimits} from "@/fork/net/rate-limit";
 import {StackDetailSchema} from "@/fork/stacks/dto";
 import {loadStackDetail} from "@/fork/stacks/queries";
-import {cleanInventory} from "@/fork/__tests__/w09-fixtures";
+import {w10Inventory} from "@/fork/__tests__/w10-fixtures";
 import {freshForkDb, seedAgent, seedChannel, seedConnection, seedEnvironment, seedOrg, seedProject, type W04Db} from "@/fork/__tests__/w04-helpers";
 
 let t: W04Db; let pool: Pool; let org: string; let agent: string; let chan: string; let env: string;
@@ -23,7 +23,7 @@ const ago = (ms: number) => new Date(NOW.getTime() - ms);
 const utc = (d: Date | null) => (d ? d.toISOString() : null);
 const contact = (table: "databases" | "agents", id: string, d: Date | null) => q(`update ${table} set last_contact=$2 where id=$1`, [id, utc(d)]);
 
-async function mkStack(inv: StackInventoryV1 = cleanInventory(), envId = env, name?: string): Promise<string> {
+async function mkStack(inv: StackInventoryV1 = w10Inventory(), envId = env, name?: string): Promise<string> {
     const project = name ?? `s${randomUUID().slice(0, 8)}`;
     const i = {...inv, stack: {...inv.stack, compose_project: project, display_name: project}};
     const r = await q("insert into fork_stack (organization_id, environment_id, environment_name, compose_project, display_name) values ($1,$2,'env',$3,$3) returning id", [org, envId, project]);
@@ -45,7 +45,7 @@ async function liveStack(inv?: StackInventoryV1): Promise<{id: string; ag: strin
     await q("update agents set version='1.25.2' where id=$1", [ag]); await contact("agents", ag, NOW);
     const envId = await seedEnvironment(pool, await seedConnection(pool, org, `c-${randomUUID().slice(0, 6)}`), ag, "a"); await q("update fork_arcane_environment set enabled=true where id=$1", [envId]);
     await q("insert into databases (name, dbms, agent_id, config, created_at, last_contact) values ('evidence','docker-volume',$1,'{\"volume_name\":\"zz1\"}',$2,$3)", [ag, utc(ago(3_600_000)), utc(NOW)]);
-    const id = await mkStack(inv ?? cleanInventory(), envId);
+    const id = await mkStack(inv ?? w10Inventory(), envId);
     const r = await materializeStack(deps(), {stackId: id, storageChannelIds: [chan]});
     expect(r.ok && r.deferred).toEqual([]);
     return {id, ag, envId};
@@ -133,7 +133,7 @@ describe("structural drift is a BLOCKER, never auto-fixed, and clears when the l
         const ag = await seedAgent(pool, org, "a-sec"); await q("update agents set version='1.25.2' where id=$1", [ag]); await contact("agents", ag, NOW);
         const e = await seedEnvironment(pool, await seedConnection(pool, org, "c-sec"), ag, "a"); await q("update fork_arcane_environment set enabled=true where id=$1", [e]);
         await q("insert into databases (name, dbms, agent_id, config, created_at, last_contact) values ('ev','docker-volume',$1,'{\"volume_name\":\"zz2\"}',$2,$3)", [ag, utc(ago(3_600_000)), utc(NOW)]);
-        const id = await mkStack(cleanInventory(), e);
+        const id = await mkStack(w10Inventory(), e);
         await materializeStack(deps(), {stackId: id});
         const vol = await link(id, "volume:app_data");
         await q("update databases set config='{\"volume_name\":\"/tmp/x\"}'::jsonb where id=$1", [vol.database_id]);
@@ -201,7 +201,7 @@ describe("probes (P-2) and the coverage/probe feed into the W09 views", () => {
         expect(JSON.stringify(d.inventory.configuration.sources)).not.toMatch(/password|"config"|database_id|desired/);
     });
     it("agent fresh but a member never contacted after > 3 min → unreadable (blocker, resolvable); agent silent → no probe written; sqlite never probed", async () => {
-        const inv = cleanInventory();
+        const inv = w10Inventory();
         inv.services.push({name: "lite", state: "running", image: {ref: "x", pinned: false, built_locally: false}, ports: [], networks: [], mounts: [], env_keys: [], database_hint: {engine: "sqlite", basis: "mount"}});
         const {id, ag} = await liveStack(inv);
         await materializeStack(deps(), {stackId: id, storageChannelIds: [chan], selection: {databases: {lite: {kind: "sqlite", path: "/lab/s/app.db"}}}});
@@ -238,7 +238,7 @@ describe("Docker gate: canary, promotion, rollback, one finding per agent (CH-22
         const e = await seedEnvironment(pool, await seedConnection(pool, org, `c-${randomUUID().slice(0, 6)}`), ag, "a"); await q("update fork_arcane_environment set enabled=true where id=$1", [e]);
         return {ag, e};
     };
-    const twoVolumes = () => { const i = cleanInventory(); i.volumes.push({name: "app_data2", driver: "local", in_use_by: ["web"], ownership: "stack_owned"}); return i; };
+    const twoVolumes = () => { const i = w10Inventory(); i.volumes.push({name: "app_data2", driver: "local", in_use_by: ["web"], ownership: "stack_owned"}); return i; };
 
     it("canary confirmed by the agent's first contact → active, and the other planned docker-volume members are created", async () => {
         const {ag, e} = await fresh();
@@ -276,7 +276,7 @@ describe("Docker gate: canary, promotion, rollback, one finding per agent (CH-22
     });
     it("planned docker-volume members are promoted once Docker access is evidenced (no operator word needed)", async () => {
         const {ag, e} = await fresh();
-        const id = await mkStack(cleanInventory(), e);
+        const id = await mkStack(w10Inventory(), e);
         await materializeStack(deps(), {stackId: id});
         expect(await link(id, "volume:app_data")).toMatchObject({status: "planned", database_id: null});
         await q("insert into databases (name, dbms, agent_id, config, created_at, last_contact) values ('ev','docker-volume',$1,'{\"volume_name\":\"zz3\"}',$2,$3)", [ag, utc(ago(3_600_000)), utc(NOW)]);
@@ -286,7 +286,7 @@ describe("Docker gate: canary, promotion, rollback, one finding per agent (CH-22
     it("ONE poll-failing finding per agent per stack, naming the culprit source and the other affected stacks (not N duplicates)", async () => {
         const {ag, e} = await fresh();
         await q("insert into databases (name, dbms, agent_id, config, created_at, last_contact) values ('ev','docker-volume',$1,'{\"volume_name\":\"zz4\"}',$2,$3)", [ag, utc(ago(3_600_000)), utc(NOW)]);
-        const a = await mkStack(twoVolumes(), e, "stack-a"); const b = await mkStack(cleanInventory(), e, "stack-b");
+        const a = await mkStack(twoVolumes(), e, "stack-a"); const b = await mkStack(w10Inventory(), e, "stack-b");
         await materializeStack(deps(), {stackId: a}); await materializeStack(deps(), {stackId: b});
         await contact("agents", ag, ago(600_000)); // agent stopped reporting
         const envId = e;

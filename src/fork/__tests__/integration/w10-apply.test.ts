@@ -9,7 +9,7 @@ import {materializeStack, assertEncryptionForActivation, type MaterializeDeps} f
 import {removeStackSources} from "@/fork/materialize/remove";
 import {ForkLockedError} from "@/fork/mode";
 import {resetRateLimits} from "@/fork/net/rate-limit";
-import {cleanInventory} from "@/fork/__tests__/w09-fixtures";
+import {w10Inventory} from "@/fork/__tests__/w10-fixtures";
 import {freshForkDb, seedAgent, seedChannel, seedConnection, seedEnvironment, seedOrg, seedProject, type W04Db} from "@/fork/__tests__/w04-helpers";
 
 let t: W04Db; let pool: Pool; let org: string; let otherOrg: string; let agent: string; let chan: string; let env: string;
@@ -20,7 +20,7 @@ const deps = (p: ForkPrincipal | null = principal("admin", "owner"), over: Parti
     ({db: t.db, principal: p, masterKey: async () => KEY, assertConfigAllowed: async () => undefined, rate: () => ({ok: true}), ...over});
 const q = (s: string, p: unknown[] = []) => pool.query(s, p);
 
-async function mkStack(inv: StackInventoryV1 = cleanInventory(), envId = env): Promise<string> {
+async function mkStack(inv: StackInventoryV1 = w10Inventory(), envId = env): Promise<string> {
     const project = `s${randomUUID().slice(0, 8)}`;
     const i = {...inv, stack: {...inv.stack, compose_project: project, display_name: project}};
     const r = await q("insert into fork_stack (organization_id, environment_id, environment_name, compose_project, display_name) values ($1,$2,'env',$3,$3) returning id", [org, envId, project]);
@@ -29,7 +29,7 @@ async function mkStack(inv: StackInventoryV1 = cleanInventory(), envId = env): P
 }
 const audits = async () => (await q("select action, result, redacted_details as details from fork_audit_event order by seq")).rows as {action: string; result: string; details: Record<string, unknown>}[];
 const DB_INV = (): StackInventoryV1 => {
-    const inv = cleanInventory();
+    const inv = w10Inventory();
     inv.services.push({name: "db", state: "running", image: {ref: "postgres:16", pinned: false, built_locally: false}, ports: [], networks: [], mounts: ["m:00000000000000a1"], env_keys: [], database_hint: {engine: "postgresql", basis: "image"}});
     inv.mounts.push({id: "m:00000000000000a1", kind: "named_volume", volume_name: "app_pgdata", destination: "/var/lib/postgresql/data", rw: true, consumers: ["db"], ownership: "stack_owned"});
     inv.volumes.push({name: "app_pgdata", driver: "local", in_use_by: ["db"], ownership: "stack_owned"});
@@ -64,7 +64,7 @@ describe("W10 apply: members are ordinary Portabase sources (D30/D33, ADR-001)",
         expect((await q("select * from retention_policies where project_id=$1", [proj.id])).rows).toEqual([]);
         const dbs = (await q("select d.* from databases d where d.project_id=$1 order by d.name", [proj.id])).rows;
         expect(dbs.map((d) => [d.dbms, d.backup_engine, d.config])).toEqual([
-            ["files", "archive", {path: "/srv/app/uploads"}], // `bind: …` sorts before `compose: …`
+            ["files", "archive", {path: "/data/uploads"}], // `bind: …` sorts before `compose: …`
             ["files", "restic", {path: "/srv/app"}],
         ]);
         for (const d of dbs) {
@@ -95,7 +95,7 @@ describe("W10 apply: members are ordinary Portabase sources (D30/D33, ADR-001)",
     it("Docker gate (CH-22c): with evidence the docker-volume source is created; with confirm and no evidence ONE canary is created", async () => {
         const a2 = await seedAgent(pool, org, "a2"); await q("update agents set version='1.25.2', last_contact=now() where id=$1", [a2]);
         const e2 = await seedEnvironment(pool, await seedConnection(pool, org, "arcane2"), a2, "a2"); await q("update fork_arcane_environment set enabled=true where id=$1", [e2]);
-        const id = await mkStack(cleanInventory(), e2);
+        const id = await mkStack(w10Inventory(), e2);
         const c = await materializeStack(deps(), {stackId: id, confirmDockerAccess: true});
         expect(c).toMatchObject({ok: true, deferred: []});
         expect((await members(id)).find((l) => l.resource_key === "volume:app_data")).toMatchObject({status: "canary"});
@@ -103,7 +103,7 @@ describe("W10 apply: members are ordinary Portabase sources (D30/D33, ADR-001)",
         const a3 = await seedAgent(pool, org, "a3"); await q("update agents set version='1.25.2', last_contact=now() where id=$1", [a3]);
         await q("insert into databases (name, dbms, agent_id, config, created_at, last_contact) values ('other-vol','docker-volume',$1,'{\"volume_name\":\"x1\"}', now() - interval '1 hour', now())", [a3]);
         const e3 = await seedEnvironment(pool, await seedConnection(pool, org, "arcane3"), a3, "a3"); await q("update fork_arcane_environment set enabled=true where id=$1", [e3]);
-        const id3 = await mkStack(cleanInventory(), e3);
+        const id3 = await mkStack(w10Inventory(), e3);
         const r3 = await materializeStack(deps(), {stackId: id3});
         expect(r3).toMatchObject({ok: true, deferred: []});
         expect((await members(id3)).find((l) => l.resource_key === "volume:app_data")).toMatchObject({status: "active"});
@@ -189,15 +189,15 @@ describe("W10 apply: authorization, gates, compensation", () => {
 
     it("gates: no agent, environment disabled, agent too old, archived agent, channel of another org, missing secret, unknown input", async () => {
         const noAgentEnv = await seedEnvironment(pool, await seedConnection(pool, org, "c-noagent"), null, null);
-        expect(await materializeStack(deps(), {stackId: await mkStack(cleanInventory(), noAgentEnv)})).toMatchObject({reason: "no_agent"});
+        expect(await materializeStack(deps(), {stackId: await mkStack(w10Inventory(), noAgentEnv)})).toMatchObject({reason: "no_agent"});
         const disabled = await seedEnvironment(pool, await seedConnection(pool, org, "c-dis"), agent, "lab-agent");
-        expect(await materializeStack(deps(), {stackId: await mkStack(cleanInventory(), disabled)})).toMatchObject({reason: "environment_disabled"});
+        expect(await materializeStack(deps(), {stackId: await mkStack(w10Inventory(), disabled)})).toMatchObject({reason: "environment_disabled"});
         const old = await seedAgent(pool, org, "old"); await q("update agents set version='1.23.0' where id=$1", [old]);
         const eOld = await seedEnvironment(pool, await seedConnection(pool, org, "c-old"), old, "old"); await q("update fork_arcane_environment set enabled=true where id=$1", [eOld]);
-        expect(await materializeStack(deps(), {stackId: await mkStack(cleanInventory(), eOld)})).toMatchObject({reason: "agent_version"});
+        expect(await materializeStack(deps(), {stackId: await mkStack(w10Inventory(), eOld)})).toMatchObject({reason: "agent_version"});
         const arch = await seedAgent(pool, org, "arch"); await q("update agents set version='1.25.2', is_archived=true where id=$1", [arch]);
         const eArch = await seedEnvironment(pool, await seedConnection(pool, org, "c-arch"), arch, "arch"); await q("update fork_arcane_environment set enabled=true where id=$1", [eArch]);
-        expect(await materializeStack(deps(), {stackId: await mkStack(cleanInventory(), eArch)})).toMatchObject({reason: "agent_unavailable"});
+        expect(await materializeStack(deps(), {stackId: await mkStack(w10Inventory(), eArch)})).toMatchObject({reason: "agent_unavailable"});
         const foreign = await seedChannel(pool, otherOrg);
         expect(await materializeStack(deps(), {stackId: await mkStack(), storageChannelIds: [foreign]})).toMatchObject({reason: "channels_unavailable"});
         const dbId = await mkStack(DB_INV());
