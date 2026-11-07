@@ -7,6 +7,8 @@ import {registerDiscoveryCron} from "@/fork/cron";
 import {registerMaterializeDriftJob} from "@/fork/materialize/job";
 import {registerNotificationsJob} from "@/fork/notifications/job";
 import {registerStackRunsJob} from "@/fork/runs/job";
+import {registerKitWatchJob} from "@/fork/kit/watch";
+import {registerVerifyJob} from "@/fork/verify/job";
 import {startForkRuntime} from "@/fork/runtime";
 
 const log = logger.child({module: "fork/init"});
@@ -28,6 +30,8 @@ export async function initFork(): Promise<ForkModeResult> {
         registerMaterializeDriftJob();
         registerStackRunsJob();
         registerNotificationsJob();
+        registerVerifyJob();
+        registerKitWatchJob();
         invalidateForkModeCache();
         const mode = await currentForkMode();
         const {started, failed} = await startForkRuntime(mode.mode);

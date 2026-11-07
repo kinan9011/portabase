@@ -988,3 +988,102 @@ export const SCHEDULE_EDIT = {
         refused: "This stack has no active backup policy to edit. Configure and activate one first.",
     } as Record<string, string>,
 } as const;
+
+/** W14 recovery kit (D25/D41). Controlled copy: every sentence on the kit page and the banner comes from here. */
+export const KIT = {
+    banner: {
+        none: {title: "Recovery kit not created", body: "Backups can only be restored without this dashboard if you hold a recovery kit. Create one and keep it offline.", cta: "Create the recovery kit"},
+        issued: {title: "Recovery kit not verified", body: "A recovery kit was created, but it has not been verified yet. Until it is, no stack can show as protected.", cta: "Verify the recovery kit"},
+        stale: {title: "Recovery kit needs to be re-verified", body: "The backup keys changed or the last verification is more than 12 months old. Create a new kit or verify it again.", cta: "Open the recovery kit page"},
+    },
+    page: {
+        title: "Recovery kit",
+        intro: "The recovery kit lets you restore your backups on a new server even if this dashboard is lost. It holds the keys that read your backups: anyone with it can read them. Keep it offline.",
+        notAdmin: "Only a system administrator can create or verify the recovery kit.",
+        locked: "Configuration is locked until the single-organization check passes.",
+    },
+    states: {
+        none: "No recovery kit has been created.",
+        issued: "A recovery kit was created. It is not verified.",
+        verified: (when: string, type: string) => `Verified on ${when} (${type} kit).`,
+        stale: "The kit no longer matches the current keys or its verification expired. Create a new kit.",
+    },
+    types: {paper: "paper", digital: "digital file"},
+    create: {
+        heading: "Create a kit",
+        help: "Confirm it is you, choose how to keep the kit, then print it or save the file. You can create both.",
+        password: "Your account password",
+        paper: "Paper (print once, keep offline)",
+        digital: "Digital file (protected by a passphrase)",
+        start: "Continue",
+        working: "Working…",
+        ready: "Confirmed. The steps below work once and expire in 5 minutes.",
+        paperHeading: "Paper kit",
+        paperButton: "Show the print view",
+        paperNote: "The page is shown once and is not stored. If you close it without printing, create a new kit.",
+        printButton: "Print",
+        closeButton: "Close and forget",
+        digitalHeading: "Digital kit",
+        passphrase: "Passphrase (at least 14 characters, three kinds of characters, or 24 or more characters)",
+        passphraseConfirm: "Repeat the passphrase",
+        digitalButton: "Save the kit file",
+        digitalNote: "The passphrase is never stored or shown. If you lose it, the file cannot be opened.",
+        saved: "The file was saved. Keep it and its passphrase in different places.",
+    },
+    confirm: {
+        heading: "Enter the verification code",
+        help: "Run the verifier on your kit, offline, and type the short code it prints. Never type a key here. The verifier ships with the recovery tool; until then the kit stays unverified.",
+        code: "Verification code (20 characters)",
+        type: "Which kit did you verify?",
+        button: "Check the code",
+        ok: "The code matches. The kit is verified.",
+    },
+    errors: {
+        forbidden: "Only a system administrator can do this.",
+        locked: "Configuration is locked until the single-organization check passes.",
+        rate_limited: "Too many attempts. Wait a moment and try again.",
+        invalid_input: "Check what you entered.",
+        step_up_failed: "The password is not correct.",
+        no_password: "This account has no password, so it cannot confirm its identity for this step.",
+        token_invalid: "This step expired or was already used. Confirm your password again.",
+        weak_passphrase: "Choose a longer, less guessable passphrase.",
+        no_kit: "No recovery kit has been created yet.",
+        wrong_code: "That code does not match this kit.",
+        code_locked: "Too many wrong codes. Try again later.",
+        never_type_key: "That looks like a key. Never type a key into the dashboard; enter only the short code.",
+        stale_kit: "The keys changed after this kit was made. Create a new kit first.",
+        unavailable: "The keys needed for the kit could not be read. Nothing was created.",
+    } as Record<string, string>,
+} as const;
+
+/** W14 D40 dashboard database backup + KEK rotation (kit page). */
+export const DASHBOARD_DB = {
+    heading: "Back up this dashboard's own database",
+    intro: "The dashboard database holds your settings, schedules and the record of every recovery point. Back it up as an ordinary PostgreSQL source on an agent that can reach it, to a storage channel that no other host's agent uses. Pick the source below once it exists.",
+    select: "Source that backs up the dashboard database",
+    none: "Not chosen yet",
+    save: "Save",
+    saved: "Saved.",
+    restoreNote: "After you restore the dashboard database on a new server: sign every user out, rotate all API keys, and rotate the storage credentials, because the old server may have been exposed.",
+    verdicts: {
+        not_declared: "No source is chosen. The dashboard database is not covered by a backup you can rely on.",
+        ok: "Covered: a scheduled backup exists, it ran recently, and its storage is not shared with other hosts.",
+        source_missing: "The chosen source no longer exists. Choose another one.",
+        no_schedule: "The source has no schedule, so it is never backed up automatically.",
+        no_channel: "The source has no storage channel.",
+        local_only: "The source only writes to storage on the dashboard host, which is lost together with the dashboard.",
+        shared_channel: "The storage is also used by another host's agent. A compromised host could delete this backup. Use a channel only this host uses.",
+        no_success: "No backup of this source has succeeded yet.",
+        stale: "The last successful backup is more than 48 hours old.",
+    } as Record<string, string>,
+    errors: {forbidden: "Only a system administrator can do this.", locked: "Configuration is locked until the single-organization check passes.", invalid_input: "Choose a source from the list.", not_found: "That source cannot be used."} as Record<string, string>,
+} as const;
+
+export const KEK_ROTATION = {
+    heading: "Rotate the fork encryption key",
+    intro: "Creates a new key for the secrets this fork stores (for example the Arcane API key) and re-encrypts them. The old key is kept until you retire it. The recovery kit becomes out of date: create and verify a new one afterwards.",
+    password: "Your account password",
+    button: "Rotate the key",
+    done: (moved: number) => `Rotated. ${moved} stored secret${moved === 1 ? "" : "s"} moved to the new key. Create a new recovery kit now.`,
+    errors: {forbidden: "Only a system administrator can do this.", locked: "Configuration is locked until the single-organization check passes.", rate_limited: "Too many attempts. Wait a moment and try again.", step_up_failed: "The password is not correct.", no_password: "This account has no password, so it cannot confirm its identity for this step.", invalid_input: "Enter your password."} as Record<string, string>,
+} as const;

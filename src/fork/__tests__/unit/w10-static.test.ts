@@ -18,7 +18,7 @@ const rel = (f: string) => path.relative(ROOT, f);
 describe("W10 structure", () => {
     it("finds the files", () => {
         expect(MATERIALIZE.map((f) => path.basename(f)).sort()).toEqual(["apply.ts", "context.ts", "drift.ts", "job.ts", "plan.ts", "remove.ts", "types.ts", "vocab.ts"]);
-        expect(UPSTREAM.map((f) => path.basename(f)).sort()).toEqual(["agents.ts", "backups.ts", "channels.ts", "credentials.ts", "index.ts", "master-key.ts", "notification-channel.ts", "notification-send.ts", "projects.ts", "sources.ts", "storage-read.ts", "users.ts"]);
+        expect(UPSTREAM.map((f) => path.basename(f)).sort()).toEqual(["agents.ts", "backups.ts", "channels.ts", "credentials.ts", "index.ts", "master-key.ts", "notification-channel.ts", "notification-send.ts", "projects.ts", "restic.ts", "sources.ts", "storage-read.ts", "users.ts"]);
     });
 
     it("D31 boundary: ONLY src/fork/upstream imports upstream tables/features; the materializer reaches upstream through the adapter", () => {

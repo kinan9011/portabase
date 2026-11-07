@@ -56,6 +56,7 @@ export async function boot(flags: Record<string, string>, seed: Seed[] = [], reu
             AUTH_DEFAULT_USER_NAME: "W01 Admin",
             SKIP_ONBOARDING: "true",
             FORK_STACKS_ENABLED: "", FORK_ARCANE_ENABLED: "", FORK_MIRRORS_ENABLED: "",
+            FORK_VERIFY_TICK_SECONDS: "3600", FORK_KIT_WATCH_MINUTES: "1440", // W14 jobs stay quiet unless a test opts in (their first tick is never earlier than their period)
             ...flags,
         },
         stdio: ["ignore", "pipe", "pipe"],
