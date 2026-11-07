@@ -6,7 +6,9 @@ import {soleOrganization} from "@/fork/arcane/connection-service";
 import {appDb} from "@/fork/db/handle";
 import {currentForkMode} from "@/fork/mode";
 import {getForkPrincipal} from "@/fork/principal";
+import {loadKitBanner} from "@/fork/kit/banner-data";
 import {forkBannerText} from "@/fork/self-check";
+import {KitBanner} from "@/fork/ui/kit/kit-banner";
 import {parseStackListParams} from "@/fork/stacks/params";
 import {loadStackList} from "@/fork/stacks/queries";
 import {loadSafetyStrip} from "@/fork/stacks/safety-queries";
@@ -56,6 +58,8 @@ export default async function StacksPage(props: {searchParams: Promise<Record<st
     // W13: "Am I safe?" strip. A failure of the strip never hides the list (and the strip never invents a state: it is simply absent with an honest note).
     let strip: SafetyStrip | null = null;
     let noChannel = false;
+    let kit: Awaited<ReturnType<typeof loadKitBanner>> | null = null;
+    try { kit = await loadKitBanner(db, organizationId); } catch { kit = null; } // never hides the list (§4.2 banner is additive)
     try {
         strip = await loadSafetyStrip(db, organizationId, {configLocked: mode.mode === "locked"});
         noChannel = forkCan(actor, "arcane.manage") && (await defaultNotificationChannel(db)) === null;
@@ -70,6 +74,7 @@ export default async function StacksPage(props: {searchParams: Promise<Record<st
                 <StatusAnnouncer>
                     <div className="flex flex-col gap-4">
                         {locked && <p role="note" data-testid="locked-note" className="rounded-lg border p-3 text-sm">{STACKS_EMPTY.locked}</p>}
+                        {kit && <KitBanner view={kit.view} hasActivePolicy={kit.hasActivePolicy} isAdmin={forkCan(actor, "recovery.kit.manage")}/>}
                         {strip && list && list.summary.total > 0 && <SafetyStripView strip={strip} noChannel={noChannel}/>}
                         {list ? <StackListView list={list} params={params} isAdmin={forkCan(actor, "arcane.manage")}/> : <StateNotice testId="load-error" tone="danger" alert title={STACKS_EMPTY.loadError.title} body={STACKS_EMPTY.loadError.body}/>}
                     </div>
