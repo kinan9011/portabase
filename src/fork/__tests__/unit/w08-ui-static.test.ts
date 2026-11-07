@@ -13,7 +13,7 @@ const read = (f: string) => readFileSync(f, "utf8");
 const code = (f: string) => read(f).split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n"); // comments may mention forbidden words
 
 describe("W08 static guards", () => {
-    it("finds the files", () => { expect(ui.length).toBeGreaterThanOrEqual(8); expect(server.length).toBe(3); expect(pages.length).toBe(2); });
+    it("finds the files", () => { expect(ui.length).toBeGreaterThanOrEqual(8); expect(server.length).toBe(4); expect(pages.length).toBe(2); });
 
     it("no SSE / WebSocket / upstream event bus, no network from the UI: progress is polled through router.refresh() only (UX-13, CH-32)", () => {
         for (const f of [...ui, ...server, ...pages]) expect(code(f), f).not.toMatch(/EventSource|text\/event-stream|WebSocket|@\/lib\/event|\bfetch\(|XMLHttpRequest|sendBeacon/);

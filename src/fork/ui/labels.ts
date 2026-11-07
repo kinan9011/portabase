@@ -1,5 +1,6 @@
 import {ARCANE_PINNED_VERSION} from "@/fork/arcane/endpoints";
 import type {ArcaneErrorClass} from "@/fork/arcane/errors";
+import type {ConsistencyFacet, Deletable, DirectiveCode, ItemKind, ItemStatus, PrimaryState, ReasonCode} from "@/fork/completeness/types";
 import type {HostRole} from "@/fork/db/enums";
 import type {Tone} from "@/fork/ui/tone";
 
@@ -233,8 +234,7 @@ export const STACK_DETAILS = {
         recovery: "Latest recovery point",
         noRecovery: "None yet",
         noRecoveryNote: "No backup exists for this stack. Discovery lists resources; it does not back them up.",
-        blockers: "Backup blockers",
-        blockersNote: "Backup readiness is not evaluated yet. The Configuration tab (next step) will list what blocks a safe backup.",
+        verifiedCount: (n: number) => `${n} verified recovery point${n === 1 ? "" : "s"}`,
         sharedHeading: "Shared with other stacks",
         sharedNone: "No shared resources were detected.",
         sharedNote: "Shared resources are used by more than one stack. Backing up or restoring this stack never changes them.",
@@ -306,3 +306,155 @@ export const SERVICE_STATE_LABELS = {
     dead: {label: "Dead", tone: "danger"},
     absent: {label: "Absent", tone: "neutral"},
 } as const satisfies Record<string, {label: string; tone: Tone}>;
+
+// ================================================================================================================
+// W09 — completeness, protection state (§4.6) and the Configuration tab. All copy for these views lives here (UX-11).
+// Honesty rules: discovered ≠ backed up ≠ verified ≠ restore-tested. "Protected" is only ever said for the state `protected`;
+// nothing here says a backup exists unless a verified recovery point does. Rendered inline / aria-describedby, never hover-only.
+// ================================================================================================================
+
+/** Primary protection state, precedence order Failed > Partial > Stale > Kit not verified > Awaiting first backup > Protected > Unprotected. */
+export const PRIMARY_STATE_LABELS = {
+    failed: {label: "Failed", tone: "danger", description: "The latest backup run failed. Fix the cause shown in Activity; the last good backup, if any, is still listed below."},
+    partial: {label: "Partial", tone: "warning", description: "Backups run, but something this stack needs is not covered. Full-stack recovery is not available until the gaps below are resolved."},
+    stale: {label: "Stale", tone: "warning", description: "The last good backup is older than the schedule allows. Check that scheduled backups still run."},
+    kit_not_verified: {label: "Recovery kit not verified", tone: "warning", description: "Backups can exist, but the recovery kit has not been generated and verified, so recovery without this dashboard is not proven."},
+    awaiting_first_backup: {label: "Awaiting first backup", tone: "neutral", description: "A backup is configured but no verified recovery point exists yet. A backup that is still being verified does not count."},
+    protected: {label: "Protected", tone: "success", description: "A verified recovery point exists, every required resource is covered and the recovery kit is verified."},
+    unprotected: {label: "Unprotected", tone: "neutral", description: "No backup is active for this stack. Discovery alone does not back anything up."},
+} as const satisfies Record<PrimaryState, {label: string; tone: Tone; description: string}>;
+
+/** Recovery-point status wording (D43). `pending_verification` is NEVER "Protected". */
+export const RP_STATUS_LABELS = {
+    incomplete: {label: "Incomplete", tone: "warning", description: "Some parts of this recovery point are missing. It cannot be used for a full recovery."},
+    pending_verification: {label: "Backed up · verifying", tone: "neutral", description: "The backup finished and is being verified. It does not count as protection until verification passes."},
+    verified: {label: "Verified", tone: "success", description: "The backup was checked against its signed manifest."},
+    failed: {label: "Failed", tone: "danger", description: "The backup or its verification failed."},
+} as const satisfies Record<string, {label: string; tone: Tone; description: string}>;
+
+export const ITEM_STATUS_LABELS = {
+    captured: {label: "Captured", tone: "success", description: "A backup source covers this."},
+    missing: {label: "Missing", tone: "danger", description: "Nothing backs this up yet."},
+    inaccessible: {label: "Inaccessible", tone: "danger", description: "The agent cannot read this."},
+    unsupported: {label: "Not supported", tone: "warning", description: "This cannot be captured as it is."},
+    external: {label: "External", tone: "neutral", description: "Not owned by this stack. A backup of this stack never changes it."},
+    excluded: {label: "Excluded by label", tone: "neutral", description: "A label on the container or volume asks to leave it out. Labels are defaults only."},
+    accepted_exclusion: {label: "Accepted exclusion", tone: "neutral", description: "An operator accepted that this is not backed up. It is not counted as a warning."},
+    unknown: {label: "Unknown", tone: "warning", description: "Portabase cannot tell yet. It is treated as not covered."},
+} as const satisfies Record<ItemStatus, {label: string; tone: Tone; description: string}>;
+
+export const ITEM_KIND_LABELS = {
+    compose_file: "Compose file", env_file: "Environment file", bind: "Bind mount", volume: "Named volume", anonymous_volume: "Anonymous volume",
+    database: "Database", image: "Image", network: "Network", dependency: "Dependency",
+} as const satisfies Record<ItemKind, string>;
+
+/** One sentence per reason: what is true and what to do. Shown inline next to the item. */
+export const REASON_COPY = {
+    captured: "A backup source covers this and it was checked.",
+    captured_manual: "Covered by a source you added by hand.",
+    db_file_copy_only: "This database is saved only by copying its files while it runs. That can be inconsistent, so the stack stays Partial until a database dump covers it.",
+    not_covered: "No backup source covers this yet.",
+    compose_location_unknown: "The location of the compose file is not known. Add it as a manual source.",
+    file_absent: "The agent looked for this file and it is not there.",
+    unreadable: "The agent cannot read this path. Fix the permissions on the host or add a readable copy as a manual source.",
+    probe_pending: "A source covers this, but the agent has not confirmed it can read it yet.",
+    env_files_undetermined: "The compose file was not read, so Portabase cannot tell which environment files this stack needs.",
+    env_implicit_unknown: "A .env file next to the compose file is only known by looking on the host, which has not happened yet.",
+    denied_path: "This path is refused: it is the root of the filesystem, not absolute, or contains unsafe parts.",
+    outside_allowed_roots: "This path is outside the folders the environment allows backups from.",
+    volume_driver: "This volume uses a driver Portabase cannot read by name.",
+    image_local: "This image was built on the host and is not published. Rebuild it from its source on a new host, or keep an archive of it.",
+    anonymous_volume: "An anonymous volume has no stable name, so it is not covered by name. Name it in the compose file, or accept the exclusion.",
+    external_volume: "This volume is shared with other stacks or created outside this stack. Its data is not part of this stack's backup.",
+    external_network: "This network is shared with other stacks or created outside this stack. A restore never changes it; it must exist on the target.",
+    external_dependency: "This service runs outside the stack. Its data is not backed up here.",
+    excluded_by_label: "Left out because of a backup label.",
+    accepted: "Accepted by an operator.",
+} as const satisfies Record<ReasonCode, string>;
+
+export const DIRECTIVE_COPY = {
+    privileged: "Runs privileged. A restore refuses this unless you confirm it for this service.",
+    host_network: "Uses the host network. A restore refuses this unless you confirm it for this service.",
+    shared_netns: "Shares another container's network. A restore refuses this unless you confirm it for this service.",
+    docker_socket: "Mounts the Docker socket, which gives full control of Docker on this machine. A restore refuses this unless you confirm it for this service.",
+    system_path: "Mounts a system path of the host. It is not backed up by design.",
+} as const satisfies Record<DirectiveCode, string>;
+
+export const FACET_COPY = {
+    heading: "Backup facts",
+    lastGood: {
+        label: "Last good backup",
+        never: "No verified backup yet",
+        ago: (h: number) => (h < 1 ? "less than an hour ago" : h < 48 ? `${Math.floor(h)} h ago` : `${Math.floor(h / 24)} d ago`),
+        verifying: "A newer backup is being verified (Backed up · verifying). It counts once verification passes.",
+        description: "Only verified recovery points count.",
+    },
+    testRestore: {label: "Data verified by test restore", never: "Not tested", ago: (d: number) => `${Math.floor(d)} d ago`, description: "A test restore proves the data can be read back. Automatic test restores arrive in release R2."},
+    deletable: {
+        label: "Deletable from source host",
+        values: {yes: "Yes", no: "No", not_checked: "Not checked"} as const satisfies Record<Deletable, string>,
+        description: {
+            yes: "Someone with access to the source host can delete the backup copy.",
+            no: "The backup copy cannot be deleted with the source host's credentials.",
+            not_checked: "Nobody has checked whether the source host can delete the copy. Treated as yes.",
+        } as const satisfies Record<Deletable, string>,
+    },
+    hostCompromise: {label: "Not protected against host compromise", description: "If the source host is taken over, the backup copies may be deleted too. This needs attention but does not make the stack Partial."},
+    consistency: {
+        label: "Consistency",
+        values: {database_saved_safely: "Database saved safely", files_copied_running: "Files copied while running", app_paused: "App paused during copy"} as const satisfies Record<ConsistencyFacet, string>,
+        none: "No member is covered yet.",
+    },
+    paused: {label: "Paused", description: "The backup is paused. The user who activated it no longer has the rights to run it; an administrator must re-authorise it."},
+    inventoryStale: {label: "Inventory stale", description: "Arcane could not be reached. Backups use the last known inventory."},
+    configLocked: {label: "Fork configuration locked", description: "Stack Recovery configuration is locked because this instance is not single-organization. Scheduled backups are not affected."},
+    needsAttention: "Needs attention",
+    yes: "Yes",
+} as const;
+
+export const BLOCKERS_PANEL = {
+    heading: "Backup blockers",
+    none: "No blockers: every required resource is covered or accounted for.",
+    noneNotComplete: "No blockers, but some items are not confirmed yet. See the Configuration tab.",
+    unavailable: "Full-stack recovery is not available until resolved.",
+    summary: (blockers: number, gaps: number) => `${blockers} blocker${blockers === 1 ? "" : "s"}, ${gaps} item${gaps === 1 ? "" : "s"} not covered in total.`,
+    more: (n: number) => `${n} more on the Configuration tab.`,
+    viewAll: "Open Configuration",
+    unreadable: "Blockers cannot be shown because the inventory could not be read.",
+} as const;
+
+export const CONFIG_TAB = {
+    tab: "Configuration",
+    intro: "What a full recovery of this stack needs, and whether each part is covered. Names, paths and hashes only: file contents and variable values are never shown and never stored here.",
+    checklist: {heading: "Coverage checklist", caption: "Required resources and their coverage", columns: {resource: "Resource", kind: "Type", status: "Status", why: "Why"}, none: "No required resources were found.", summary: (done: number, total: number) => `${done} of ${total} covered or accounted for`},
+    files: {
+        heading: "Compose and environment files",
+        caption: "Compose and environment files with placement, status and hash",
+        columns: {file: "File", placement: "Placement", status: "Status", hash: "Hash"},
+        placement: {here: "Managed here", outside: "Referenced from outside"},
+        placementNote: "Managed here means the file sits inside the stack's working directory. Referenced from outside means it lives elsewhere on the host.",
+        hashNone: "Not captured yet",
+        none: "No compose or environment files are known for this stack.",
+    },
+    env: {
+        heading: "Environment variable names",
+        caption: "Environment variable names per service; values hidden",
+        masked: "Hidden: values are never read or stored",
+        note: "Only the names Arcane reported from the compose file. Values stay on the host.",
+        undetermined: "The compose file was not read, so variable names are not known.",
+        none: "No environment variables are declared.",
+        more: (n: number) => `${n} more name${n === 1 ? "" : "s"} not shown`,
+        columns: {service: "Service", names: "Variable", value: "Value"},
+    },
+    directives: {heading: "Restore safety notes", note: "Informational. These never block a backup; a restore asks you to confirm each one.", none: "No privileged, host-network or Docker-socket settings were found."},
+    networks: {heading: "Networks", caption: "Networks with owner and subnets", columns: {network: "Network", ownership: "Owner", subnets: "Subnets"}, ownership: {stack_owned: "This stack", shared_external: "Shared (external)", manual: "Not owned, no record"}, noSubnets: "Default"},
+    hash: {heading: "Inventory", label: "Inventory hash", note: "Fingerprint of the discovered inventory shown here. File hashes appear once files are captured."},
+    resolve: {
+        addSource: "Add manual source",
+        addSourceReason: "Adding a source by hand arrives with backup configuration, which is not built yet.",
+        accept: "Accept exclusion",
+        acceptReason: "Accepting a gap arrives with backup configuration, which is not built yet.",
+        help: "Missing compose files, environment files and unreadable paths can be resolved by adding a source by hand. Other items need a change in the stack itself or an accepted exclusion.",
+    },
+    readOnly: "This tab is read-only. There is no download of file contents.",
+} as const;

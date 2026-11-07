@@ -103,7 +103,7 @@ describe("W08 stacks pages (real build)", () => {
         expect(det.status).toBe(200);
         const html = await det.text();
         expect(html, `details page missing the stack name; server log: ${logs().split("\n").filter((x) => /error|digest/i.test(x)).slice(-3).join(" | ").slice(0, 800)}`).toContain("forklab-demo");
-        for (const s of ["forklab-demo", "lab_proxy", "Shared", "Overview", "Resources", "Unprotected", "Running", "None yet", "Configure backup", "Back up now", "Restore", "Backup readiness is not evaluated yet"]) expect(html, s).toContain(s);
+        for (const s of ["forklab-demo", "lab_proxy", "Shared", "Overview", "Resources", "Unprotected", "Running", "None yet", "Configure backup", "Back up now", "Restore"]) expect(html, s).toContain(s);
         expect(html).toContain('aria-disabled="true"');
         for (const s of SECRET_NAMES) expect(html, `details leaks ${s}`).not.toContain(s);
         const resources = await (await get(base, `/dashboard/stacks/${demo}?tab=resources`, member)).text();
