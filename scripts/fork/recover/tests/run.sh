@@ -75,7 +75,7 @@ fi
 # ------------------------------------------------------------------ mutation fixtures: hard stops (exit 3)
 if t mutation; then
   for c in forged-sig:'NOT valid' flipped-manifest:'NOT valid' unknown-kid:'unknown signer' stack-mismatch:'different stack' bad-schema:'expected shape' \
-           tampered-archive:'checksum mismatch' tampered-consistent:'failed verification' truncated-consistent:'failed verification' bad-plaintext-hash:'failed verification' dump-format-mismatch:'differs from the signed manifest'; do
+           tampered-archive:'checksum mismatch' tampered-consistent:'failed verification' truncated-consistent:'failed verification' bad-plaintext-hash:'failed verification' dump-format-mismatch:'differs from the signed manifest' fd-poison:'inner -Fd archive failed verification'; do
     n="${c%%:*}"; re="${c#*:}"; new_case "m-$n" "$n" || continue
     run plan --deep "${C[@]}"; expect "hard stop: $n (exit 3, never overridable)" 3 "$re"
     run restore --yes --root "$D/restore" "${C[@]}"; expect "restore refuses too: $n" 3 "$re"
@@ -131,6 +131,13 @@ if t full; then
     run restore --yes --root "$D/restore" --project-name pbrtest2 "${C[@]}"; expect "compose folder backed up as a 'manual' folder source + --project-name rename" 0 'stack started'
     [ "$(docker run --rm -v pbrtest2_appdata:/v:ro busybox cat /v/file-1.txt 2>/dev/null)" = "volume data one" ] && ok "full: volume renamed with the project (pbrtest2_appdata)" || bad "full: renamed volume content wrong"
     docker compose -p pbrtest2 down -v --remove-orphans >/dev/null 2>&1
+    for fmt in fc fd; do
+      new_case "f-pg-$fmt" "pg-real-$fmt" || continue
+      run restore --yes --root "$D/restore" "${C[@]}"; expect "REAL pg_dump -F$fmt: restored by pg_restore inside the stack's postgres container" 0 'database db restored \(pg_'
+      got="$(docker exec pbrtest-db-1 psql -U app -d app -Atc "select string_agg(id||chr(58)||payload, chr(44) order by id) from items" 2>/dev/null | sha256sum | cut -d' ' -f1)"
+      [ "$got" = "$(jq -r .rows_sha "$D/info.json")" ] && ok "full: -F$fmt restore diff=0 (500 rows hash equals the source)" || bad "full: -F$fmt rows differ"
+      cleanup_docker
+    done
     new_case f-abs abs-bind
     run restore --yes --root "$D/restore" "${C[@]}"; expect "absolute bind into the ORIGINAL path is re-pointed into the restore root (override file), then policy passes" 0 're-pointed absolute bind mounts'
     src="$(docker inspect pbrtest-app-1 --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"

@@ -31,10 +31,10 @@ POISON = {
     "cap-add": ("app", "    cap_add: [SYS_ADMIN]\n"),
     "docker-sock": ("app", "    volumes: ['/var/run/docker.sock:/var/run/docker.sock']\n"),
     "bind-outside": ("app", "    volumes: ['/etc:/hostetc:ro']\n"),
-    "env-file-outside": ("app", "    env_file: ['../../outside.env']\n"),
+    "env-file-outside": ("app", "    env_file: ['../../../../../../../../../../outside.env']\n"),
     "env-file-var": ("app", "    env_file: ['${HOME}/secrets.env']\n"),
-    "dup-key": ("app", "    env_file: ['../../outside.env']\n"),
-    "extends-outside": ("app", "    extends: {file: '../../other.yml', service: base}\n"),
+    "dup-key": ("app", "    env_file: ['../../../../../../../../../../outside.env']\n"),
+    "extends-outside": ("app", "    extends: {file: '../../../../../../../../../../other.yml', service: base}\n"),
 }
 SPECIAL = {"include-outside", "secret-file-outside", "allow-override-ok"}
 
@@ -95,6 +95,38 @@ def paper_lines(master, kek, kid, spki):
     return "\n".join(lines("MASTER", master) + lines(f"KEK-{kid}", kek) + [f"{spki[:12]} (current) — SHA-256 {' '.join(spki[j:j + 4] for j in range(0, 64, 4))}"]) + "\n"
 
 
+def real_pg(fmt):
+    """REAL pg_dump output of a seeded postgres:17-alpine (Fc: one file; Fd: the directory as the agent tars it) + the row oracle hash."""
+    nm = "pbr-dumpsrc-" + secrets.token_hex(3)
+    sh(["docker", "run", "-d", "--rm", "--name", nm, "-e", "POSTGRES_USER=app", "-e", "POSTGRES_PASSWORD=x", "-e", "POSTGRES_DB=app", "postgres:17-alpine"])
+    try:
+        for _ in range(60):
+            if subprocess.run(["docker", "exec", nm, "pg_isready", "-U", "app", "-d", "app"], capture_output=True).returncode == 0 and subprocess.run(["docker", "exec", nm, "psql", "-U", "app", "-d", "app", "-Atc", "select 1"], capture_output=True).returncode == 0:
+                break
+            subprocess.run(["sleep", "1"])
+        sh(["docker", "exec", nm, "psql", "-U", "app", "-d", "app", "-v", "ON_ERROR_STOP=1", "-qc", "create table items(id int primary key, payload text); insert into items select i, md5(i::text) from generate_series(1,500) i"])
+        rows = sh(["docker", "exec", nm, "psql", "-U", "app", "-d", "app", "-Atc", "select string_agg(id||chr(58)||payload, chr(44) order by id) from items"])
+        if fmt == "fc":
+            data = sh(["docker", "exec", nm, "pg_dump", "-U", "app", "-Fc", "app"])
+        else:
+            data = sh(["docker", "exec", nm, "sh", "-c", "rm -rf /tmp/d && pg_dump -U app -Fd -f /tmp/d app && tar -C /tmp/d -czf - ."])
+        return data, hashlib.sha256(rows).hexdigest()
+    finally:
+        subprocess.run(["docker", "rm", "-f", nm], capture_output=True)
+
+
+COMPOSE_PG = """name: pbrtest
+services:
+  db:
+    image: postgres:17-alpine
+    env_file: stack.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
+"""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("outdir")
@@ -123,18 +155,27 @@ def main():
         if case in ("extends-outside", "env-file-outside", "env-file-var"):
             compose = compose.replace("    env_file: stack.env\n", "")
     if case == "include-outside":
-        compose = "include:\n  - ../../elsewhere.yml\n" + COMPOSE_OK
+        compose = "include:\n  - ../../../../../../../../../../elsewhere.yml\n" + COMPOSE_OK
     if case == "secret-file-outside":
         compose = COMPOSE_OK + "secrets:\n  s:\n    file: /etc/shadow\n"
     if case == "abs-bind":
         compose = COMPOSE_OK.replace("      - ./data:/data\n", '      - "/srv/pbr app/data:/data"\n')
     if case == "allow-override-ok":
         compose = COMPOSE_OK.replace("    command:", "    privileged: true\n    command:")
-    compose_tgz = tgz([("compose.yml", compose.encode()), ("stack.env", b"A=1\n")])
+    stack_env = b"A=1\n"
+    if case.startswith("pg-real-"):
+        compose, stack_env = COMPOSE_PG, b"POSTGRES_USER=app\nPOSTGRES_PASSWORD=x\nPOSTGRES_DB=app\n"
+    compose_tgz = tgz([("compose.yml", compose.encode()), ("stack.env", stack_env)])
     data_files = [("hello.txt", b"hello from the bind path\n"), ("dir/more.txt", b"more\n")]
     vol_tgz = tgz([("vol/file-1.txt", b"volume data one\n"), ("vol/sub/file-2.txt", b"two\n")])
     dump = b"PGDMP\x01\x0e\x00" + secrets.token_bytes(300)
-    pg_tgz = tgz([(f"{uuid.uuid4()}.dump", dump)])
+    pg_tgz, pg_format, rows_sha = tgz([(f"{uuid.uuid4()}.dump", dump)]), "pg_custom", None
+    if case == "pg-real-fc":
+        real, rows_sha = real_pg("fc"); pg_tgz = tgz([(f"{uuid.uuid4()}.dump", real)])
+    if case == "pg-real-fd":
+        real, rows_sha = real_pg("fd"); pg_tgz, pg_format = tgz([(f"{gid}.tar.gz", real)]), "pg_directory"
+    if case == "fd-poison":  # inner -Fd archive with a traversal member (hostile archive inside a valid outer one)
+        pg_tgz, pg_format = tgz([(f"{gid}.tar.gz", tgz([("../evil", b"x")]))]), "pg_directory"
     label = "/srv/pbr app"
     names = {"compose": f"compose: {label}", "bind": f"bind: {label}/data", "volume": "volume: pbrtest_appdata", "db": "db: db"}
     if case == "manual-role": names["compose"] = f"manual: {label}"
@@ -163,7 +204,7 @@ def main():
     t = lambda name: case.replace("tampered-", "") == name and case.startswith("tampered-")
     add_archive("compose", compose_tgz, "files", "backups/proj/compose.tar.gz.enc")
     add_archive("volume", vol_tgz, "docker-volume", "backups/proj/volume.tar.gz.enc", tamper="flip" if case == "tampered-archive" else "flip-consistent" if case == "tampered-consistent" else "truncate-consistent" if case == "truncated-consistent" else "bad-plain-hash" if case == "bad-plaintext-hash" else None)
-    add_archive("db", pg_tgz, "postgresql", "backups/proj/db.tar.gz.enc", dump_format="pg_directory" if case == "dump-format-mismatch" else "pg_custom")
+    add_archive("db", pg_tgz, "postgresql", "backups/proj/db.tar.gz.enc", dump_format="pg_directory" if case == "dump-format-mismatch" else pg_format)
     # restic artifact repo (bind path)
     rdir = os.path.join(folder, "restic", gid); os.makedirs(os.path.dirname(rdir), exist_ok=True)
     pwf = os.path.join(out, "pw.restic"); open(pwf, "w").write(hkdf(master, f"portabase/restic/v1/{gid}").hex())
@@ -206,7 +247,7 @@ def main():
     open(os.path.join(out, "secrets.txt"), "w").write("\n".join([base64.b64encode(master).decode(), master.hex(), base64.b64encode(kek).decode(), kek.hex(), pw, hkdf(master, f"portabase-fork/manifest/v1/{stack}").hex(), hkdf(master, f"portabase/restic/v1/{gid}").hex()]) + "\n")
     open(os.path.join(out, "rclone.conf"), "w").write("[local]\ntype = local\n")
     code_in = hashlib.sha256(b"portabase-fork-kit/v1\0" + master + b"\0" + kekid.encode() + b":" + kek + b"\0" + bytes.fromhex(spki)).hexdigest()[:20].upper()
-    json.dump({"stack": stack, "rp": rp, "store": store, "code": "-".join(code_in[i:i + 4] for i in range(0, 20, 4)), "label": label, "kid": kid}, open(os.path.join(out, "info.json"), "w"))
+    json.dump({"stack": stack, "rp": rp, "store": store, "code": "-".join(code_in[i:i + 4] for i in range(0, 20, 4)), "label": label, "kid": kid, "rows_sha": rows_sha}, open(os.path.join(out, "info.json"), "w"))
     for f in os.listdir(out):
         p = os.path.join(out, f)
         if os.path.isfile(p): os.chmod(p, 0o600)

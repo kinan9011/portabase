@@ -421,7 +421,9 @@ h.update(bytes.fromhex(sys.argv[3])); x=h.hexdigest()[:20].upper(); print("-".jo
         if (!paper.ok || paper.kind !== "paper" || !digital.ok || digital.kind !== "digital") throw new Error("kit generation failed");
         const [row] = await q("select status, fingerprint from fork_kit where superseded_at is null");
         expect(row.status).toBe("issued");
-        expect(JSON.stringify(await loadStackDetail(db, org, stackId))).toContain("kit_not_verified");
+        // (the stack's PRIMARY state can legitimately be Failed here: test 4 left a failed RP and Failed outranks Kit-not-verified, §4.6; the kit gate itself is `isKitVerified`)
+        expect(await isKitVerified(db)).toBe(false);
+        expect((await loadKitView(db)).state).toBe("issued");
         // files for the CLI (lab results/ is git-ignored; the passphrase is TEST-ONLY)
         const dir = path.join(LAB_DIR, "results", "w14b"); mkdirSync(dir, {recursive: true, mode: 0o700});
         const kitFile = path.join(dir, "kit.pbkit"); writeFileSync(kitFile, digital.body, {mode: 0o600});
@@ -451,12 +453,12 @@ h.update(bytes.fromhex(sys.argv[3])); x=h.hexdigest()[:20].upper(); print("-".jo
         for (const secret of [master().toString("base64"), master().toString("hex"), PASS]) expect(rd.stdout + rd.stderr + rp.stdout + rp.stderr).not.toContain(secret);
         const wrong = await confirmKitFingerprint(kd, {fingerprint: "0000-0000-0000-0000-0000", type: "paper"});
         expect(wrong).toMatchObject({ok: false, code: "wrong_code"});
-        expect(JSON.stringify(await loadStackDetail(db, org, stackId))).toContain("kit_not_verified"); // still not verified after a wrong code
+        expect(await isKitVerified(db)).toBe(false); // a wrong code verifies nothing
+        expect((await loadKitView(db)).state).toBe("issued");
         expect(await confirmKitFingerprint(kd, {fingerprint: codeP, type: "paper"})).toMatchObject({ok: true});
         expect((await loadKitView(db)).state).toBe("verified");
-        const after = JSON.stringify(await loadStackDetail(db, org, stackId));
-        console.info("W14b LIVE after the CLI code was entered: kit view verified; stack still says kit_not_verified?", after.includes("kit_not_verified"));
-        expect(after).not.toContain('"primary":"kit_not_verified"');
+        expect(await isKitVerified(db)).toBe(true);
+        console.info("W14b LIVE kit not verified -> verified ONLY after the CLI-printed code was entered (wrong code refused first)");
     }, 180_000);
 
     const latestVerified = async () => (await q("select * from fork_recovery_point where stack_id=$1 and status='verified' order by sequence desc limit 1", [stackId]))[0];
