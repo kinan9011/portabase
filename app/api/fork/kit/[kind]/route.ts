@@ -20,10 +20,10 @@ const json = (body: unknown, status: number) => NextResponse.json(body, {status,
 const STATUS: Record<string, number> = {forbidden: 403, locked: 423, rate_limited: 429, invalid_input: 400, token_invalid: 410, weak_passphrase: 422, unavailable: 503};
 
 export async function POST(req: Request, ctx: {params: Promise<{kind: string}>}) {
-    if ((await currentForkMode()).mode === "off") return json({message: "This API route does not exist.", status: 404}, 404);
-    if (req.headers.has("x-api-key") || req.headers.has("authorization")) return json({code: "forbidden", message: "The recovery kit is not available through the API."}, 403);
     const denied = forkCsrfGuard(req);
     if (denied) return denied;
+    if ((await currentForkMode()).mode === "off") return json({message: "This API route does not exist.", status: 404}, 404);
+    if (req.headers.has("x-api-key") || req.headers.has("authorization")) return json({code: "forbidden", message: "The recovery kit is not available through the API."}, 403);
     const {kind} = await ctx.params;
     if (kind !== "paper" && kind !== "digital") return json({message: "This API route does not exist.", status: 404}, 404);
     let body: unknown;

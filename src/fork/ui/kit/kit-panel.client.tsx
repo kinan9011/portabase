@@ -103,7 +103,7 @@ export function KitPanel({view, canManage, lockedReason}: {view: KitView; canMan
             <section aria-labelledby="kit-create" className="flex flex-col gap-3 rounded-xl border p-4">
                 <h2 id="kit-create" className="font-semibold">{KIT.create.heading}</h2>
                 <p className="text-sm text-muted-foreground">{KIT.create.help}</p>
-                <form onSubmit={begin} className="flex flex-col gap-3" aria-disabled={disabled}>
+                <form method="post" onSubmit={begin} className="flex flex-col gap-3" aria-disabled={disabled}>
                     <SecretInput ref={pw} label={KIT.create.password} name="kit-password" required/>
                     <fieldset className="flex flex-col gap-1.5" disabled={disabled}>
                         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={want.paper} onChange={(e) => setWant((w) => ({...w, paper: e.target.checked}))}/>{KIT.create.paper}</label>
@@ -129,7 +129,7 @@ export function KitPanel({view, canManage, lockedReason}: {view: KitView; canMan
                     </div>
                 )}
                 {grant?.digital && (
-                    <form onSubmit={saveDigital} className="flex flex-col gap-3" data-testid="kit-digital-step">
+                    <form method="post" onSubmit={saveDigital} className="flex flex-col gap-3" data-testid="kit-digital-step">
                         <h3 className="font-medium">{KIT.create.digitalHeading}</h3>
                         <SecretInput ref={pass} label={KIT.create.passphrase} name="kit-passphrase" required/>
                         <SecretInput ref={pass2} label={KIT.create.passphraseConfirm} name="kit-passphrase-confirm" required/>
@@ -142,7 +142,7 @@ export function KitPanel({view, canManage, lockedReason}: {view: KitView; canMan
             <section aria-labelledby="kit-confirm" className="flex flex-col gap-3 rounded-xl border p-4">
                 <h2 id="kit-confirm" className="font-semibold">{KIT.confirm.heading}</h2>
                 <p className="text-sm text-muted-foreground">{KIT.confirm.help}</p>
-                <form onSubmit={confirm} className="flex flex-col gap-3">
+                <form method="post" onSubmit={confirm} className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1.5">
                         <Label htmlFor="kit-code">{KIT.confirm.code}</Label>
                         <Input id="kit-code" value={code} onChange={(e) => setCode(e.target.value)} maxLength={40} autoComplete="off" spellCheck={false} inputMode="text" disabled={disabled} className="max-w-sm font-mono"/>

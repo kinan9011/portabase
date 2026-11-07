@@ -25,7 +25,7 @@ export function DashboardDbCard({view, candidates, disabled}: {view: DashboardDb
             <p className="text-sm text-muted-foreground">{DASHBOARD_DB.intro}</p>
             <p className="text-sm font-medium" data-testid="dashboard-db-verdict">{DASHBOARD_DB.verdicts[verdict]}</p>
             {view.channels.length > 0 && <ul className="text-sm text-muted-foreground">{view.channels.map((c) => <li key={c.name}>{c.name} ({c.provider}){c.local ? " · on the dashboard host" : ""}{c.sharedWithOtherHosts ? " · shared with another host" : ""}</li>)}</ul>}
-            <form onSubmit={save} className="flex flex-col gap-2">
+            <form method="post" onSubmit={save} className="flex flex-col gap-2">
                 <label htmlFor="dbsrc-select" className="text-sm">{DASHBOARD_DB.select}</label>
                 <select id="dbsrc-select" value={sel} onChange={(e) => setSel(e.target.value)} disabled={disabled} className="max-w-sm rounded-md border bg-background p-2 text-sm">
                     <option value="">{DASHBOARD_DB.none}</option>
@@ -55,7 +55,7 @@ export function KekCard({disabled}: {disabled: boolean}) {
         <section aria-labelledby="kek" className="flex flex-col gap-3 rounded-xl border p-4">
             <h2 id="kek" className="font-semibold">{KEK_ROTATION.heading}</h2>
             <p className="text-sm text-muted-foreground">{KEK_ROTATION.intro}</p>
-            <form onSubmit={rotate} className="flex flex-col gap-3">
+            <form method="post" onSubmit={rotate} className="flex flex-col gap-3">
                 <SecretInput ref={pw} label={KEK_ROTATION.password} name="kek-password" required/>
                 <Button type="submit" disabled={disabled} variant="outline" className="w-fit">{KEK_ROTATION.button}</Button>
             </form>
