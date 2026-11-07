@@ -86,7 +86,7 @@ describe("W11 Configure Backup (real build)", () => {
             [stackId, JSON.stringify({preset: "daily", timezone: "Europe/Berlin", minute: 30, hour: 2, weekday: 0, monthday: 1}), JSON.stringify({keep_last: 3, daily: 7, weekly: 4, monthly: 6, yearly: 0}), [channelId]],
         );
         const sched = await (await get(base, `/dashboard/stacks/${stackId}?tab=schedule`, admin)).text();
-        for (const s of ["Backup schedule", "30 2 * * *", "Europe/Berlin", "newest 3, then 7 daily, 4 weekly, 6 monthly, 0 yearly", "offsite-e2e", "Backup runs are not built yet"]) expect(sched, s).toContain(s);
+        for (const s of ["Backup schedule", "30 2 * * *", "Europe/Berlin", "newest 3, then 7 daily, 4 weekly, 6 monthly, 0 yearly", "offsite-e2e", "Latest run", "No backup has run yet."]) expect(sched, s).toContain(s);
         expect(sched).not.toContain(CANARY);
 
         // ---- self-check failure (D21): the form still renders but says configuration is locked
