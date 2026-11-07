@@ -122,7 +122,7 @@ export function ConnectionCard({connection, state, errorClass, lastVerification,
                 open={disconnectOpen}
                 onOpenChange={setDisconnectOpen}
                 title="Disconnect Arcane?"
-                description={<><p>Portabase forgets the Arcane address and deletes the stored key. Discovery stops until you connect again.</p><p>Your backups, recovery points and stacks are <strong>not</strong> touched.</p></>}
+                description={<><p>Portabase forgets the Arcane address, the stored key and the environment settings (enabled, agent mapping, host role). Discovery stops until you connect again.</p><p>Your backups, recovery points and stacks are <strong>not</strong> touched.</p></>}
                 confirmLabel="Disconnect"
                 onConfirm={onDisconnect}
             />
