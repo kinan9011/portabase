@@ -44,7 +44,7 @@ describe("W11 form structure (single page, five sections)", () => {
         expect(container.querySelector("[name*=stop i], [id*=stop i], [value=stop]")).toBeNull();
         expect(container.querySelector("[title]")).toBeNull();
         expect(await axeViolations(container)).toEqual([]);
-    });
+    }, 30_000); // axe over the whole form takes ~3 s locally, > 5 s on a CI runner
 
     it("every interactive control is natively focusable (no positive tabindex); aria-disabled buttons stay focusable with a visible reason", () => {
         const {container} = mount(w11View());
