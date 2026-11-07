@@ -799,3 +799,51 @@ export const RUNS = {
         cancelled: "The run was cancelled.",
     },
 } as const;
+
+// ================================================================================================================
+// W13 — notification bodies (§4.7). FIXED sentences keyed by closed codes: a notification body is built from these + the sanitised stack
+// name + a link, and from nothing else (no path, key name, raw error, environment value). Unknown codes fall back to the generic sentence.
+// ================================================================================================================
+export const NOTIFY = {
+    titlePrefix: "Portabase",
+    generic: "Open the dashboard for details.",
+    stackFallback: "A stack",
+    kinds: {
+        "run.failed": {title: "Backup failed", sentence: "The backup failed."},
+        "run.blocked": {title: "Backup incomplete", sentence: "The backup is incomplete: some required resources are not covered."},
+        "run.incomplete": {title: "Backup incomplete", sentence: "The backup finished but is incomplete."},
+        "run.skipped": {title: "Scheduled backup skipped", sentence: "A scheduled backup did not run."},
+        "run.policy_paused": {title: "Backups paused", sentence: "Scheduled backups are paused until an administrator re-authorises them."},
+        "stack.partial": {title: "Backup no longer covers everything", sentence: "This stack is now only partly covered by its backup."},
+        "stack.no_good_backup": {title: "No good backup", sentence: "There has been no verified backup for this stack for a long time."},
+        "kit.unverified": {title: "Recovery kit not verified", sentence: "The recovery kit needs to be verified."},
+        "kit.key_rotated": {title: "Recovery kit needs re-verification", sentence: "The backup key was rotated; verify the recovery kit again."},
+        "fork.selfcheck.failed": {title: "Fork configuration locked", sentence: "Stack Recovery configuration is locked. Scheduled backups keep running."},
+        "fork.selfcheck.recovered": {title: "Fork configuration unlocked", sentence: "Stack Recovery configuration is open again."},
+    },
+    /** Short reason phrases keyed by the closed recovery-point / skip / pause codes. */
+    reasons: {
+        validator_blocked: "Some required resources are not covered.",
+        member_failed: "At least one part of the stack could not be backed up.",
+        member_timeout: "An agent did not start or finish a backup in time.",
+        unencrypted: "A backup was not encrypted.",
+        checksum_unavailable: "A backup checksum could not be computed.",
+        run_cancelled: "The run was cancelled.",
+        run_not_started: "No part of the stack could be started.",
+        run_error: "The run stopped because of an internal error.",
+        artifact_missing: "A backup file is missing.",
+        count_mismatch: "A backup file is missing.",
+        fk_null: "A backup file is missing.",
+        overlap: "The previous run was still going.",
+        missed: "The run could not start in time.",
+        user_missing: "The administrator who activated the backup no longer exists.",
+        user_blocked: "The administrator who activated the backup can no longer sign in.",
+        capability_lost: "The administrator who activated the backup is no longer a system administrator.",
+        agent_acl_lost: "The administrator who activated the backup no longer manages the agent.",
+        encryption_off: "Backup encryption was turned off.",
+        channels_unavailable: "A storage channel is no longer available.",
+        agent_gone: "The Portabase agent for this stack no longer exists.",
+    } as Record<string, string>,
+    noGoodBackupHours: (h: number) => `No verified backup for ${h} h.`,
+    noChannelNote: {title: "Alerts are not delivered", body: "No notification channel is set as the default in the instance settings, so backup alerts are recorded but not sent."},
+} as const;

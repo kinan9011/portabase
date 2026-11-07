@@ -88,6 +88,10 @@ const schema = z.object({
     /** Dashboard-side ciphertext hashing of an archive artifact: refuse objects above this size (MiB) / take longer than this (s). */
     FORK_RUN_HASH_MAX_MIB: intRange(1, 1_048_576, 51_200),
     FORK_RUN_HASH_TIMEOUT_SECONDS: intRange(10, 86_400, 3600),
+    /** W13 notifications (operator-only): delivery tick; how often alert conditions (drift to Partial, no good backup) are evaluated; dead-man floor in hours. */
+    FORK_NOTIFY_TICK_SECONDS: intRange(5, 3600, 60),
+    FORK_NOTIFY_EVAL_MINUTES: intRange(1, 1440, 5),
+    FORK_DEADMAN_MIN_HOURS: intRange(1, 720, 12),
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -113,6 +117,9 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_RUN_MAX_PER_ORG: source.FORK_RUN_MAX_PER_ORG,
         FORK_RUN_HASH_MAX_MIB: source.FORK_RUN_HASH_MAX_MIB,
         FORK_RUN_HASH_TIMEOUT_SECONDS: source.FORK_RUN_HASH_TIMEOUT_SECONDS,
+        FORK_NOTIFY_TICK_SECONDS: source.FORK_NOTIFY_TICK_SECONDS,
+        FORK_NOTIFY_EVAL_MINUTES: source.FORK_NOTIFY_EVAL_MINUTES,
+        FORK_DEADMAN_MIN_HOURS: source.FORK_DEADMAN_MIN_HOURS,
     });
 }
 
