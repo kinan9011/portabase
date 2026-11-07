@@ -85,7 +85,7 @@ export function validateCompleteness(inv: Inv, ctx: CompletenessContext = EMPTY_
     if (inv.stack.config_files_hint.length === 0) add({key: "file:?", kind: "compose_file", name: "", uncovered: {status: "missing", reason: "compose_location_unknown", severity: "blocker"}, resolvable: true});
     for (const p of inv.stack.config_files_hint) {
         const v = pathVerdict(p, ctx.allowedRoots);
-        add({key: `file:${p}`, kind: "compose_file", name: p, needsProbe: true, placement: isSafeAbsPath(p) ? placementOf(p) : null, hardUnsupported: v.unsupported, resolvable: true});
+        add({key: `file:${p}`, kind: "compose_file", name: p, needsProbe: true, placement: isSafeAbsPath(p) ? placementOf(p) : null, hardUnsupported: v.unsupported ?? (v.directive ? "denied_path" : undefined), resolvable: true});
     }
     if (inv.stack.compose_read === "none") {
         // The compose definition was not read, so which env files exist is unknown (fail closed).
@@ -93,7 +93,7 @@ export function validateCompleteness(inv: Inv, ctx: CompletenessContext = EMPTY_
     } else {
         for (const e of inv.env_files) {
             const v = pathVerdict(e.path_hint, ctx.allowedRoots);
-            add({key: `env:${e.path_hint}`, kind: "env_file", name: e.path_hint, consumers: e.referenced_by, needsProbe: true, placement: isSafeAbsPath(e.path_hint) ? placementOf(e.path_hint) : null, hardUnsupported: v.unsupported, resolvable: true});
+            add({key: `env:${e.path_hint}`, kind: "env_file", name: e.path_hint, consumers: e.referenced_by, needsProbe: true, placement: isSafeAbsPath(e.path_hint) ? placementOf(e.path_hint) : null, hardUnsupported: v.unsupported ?? (v.directive ? "denied_path" : undefined), resolvable: true});
         }
     }
     // An implicit `.env` next to the compose file is not named anywhere: only a host probe can say. Absent ⇒ no item.

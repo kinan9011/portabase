@@ -213,6 +213,14 @@ describe("paths (SEC-15 / SEC-22 / SEC-24)", () => {
         const r = validateCompleteness(inv, full());
         expect(find(r, "file:/srv/app/../../etc/shadow")).toMatchObject({status: "unsupported", reason: "denied_path", placement: null});
     });
+    it("a compose/env file hint inside a system path or at the docker socket is refused (never a captured config file)", () => {
+        const inv = cleanInventory();
+        inv.stack.config_files_hint = ["/etc/passwd", "/var/run/docker.sock"];
+        inv.env_files = [{path_hint: "/proc/self/environ", key_names: [], referenced_by: ["web"]}];
+        const r = validateCompleteness(inv, full());
+        for (const k of ["file:/etc/passwd", "file:/var/run/docker.sock", "env:/proc/self/environ"]) expect(find(r, k), k).toMatchObject({status: "unsupported", reason: "denied_path"});
+        expect(r.complete).toBe(false);
+    });
     it("placement: files under the working dir are managed here, others are referenced from outside", () => {
         const inv = cleanInventory();
         inv.stack.config_files_hint = ["/srv/app/compose.yml", "/opt/shared/base.yml"];
