@@ -30,6 +30,13 @@ describe("upstream contract — symbols the fork imports", () => {
         ["src/db/schema/04_member.ts", "member"],
         ["src/db/schema/06_project.ts", "project"],
         ["src/db/schema/07_database.ts", "backup"],
+        // W10: the copy-and-own adapter `src/fork/upstream/` (own pins: w10-upstream-contract.test.ts)
+        ["src/db/schema/07_database.ts", "database"],
+        ["src/db/schema/07_database.ts", "retentionPolicy"],
+        ["src/db/schema/13_storage-policy.ts", "storagePolicy"],
+        ["src/db/schema/10_alert-policy.ts", "alertPolicy"],
+        ["src/db/schema/01_setting.ts", "setting"],
+        ["src/utils/status-crypto.ts", "isAgentVersionAtLeast"],
         ["src/db/schema/08_agent.ts", "agent"],
         ["src/db/schema/08_agent.ts", "organizationAgent"],
         ["src/db/schema/12_storage-channel.ts", "storageChannel"],
@@ -59,6 +66,8 @@ describe("upstream contract — symbols the fork imports", () => {
             "@/lib/auth/current-user", "@/lib/logger", "@/lib/safe-actions/actions", "@/features/layout/components/menu-sidebar", "@/components/ui/sidebar",
             "@/db/schema/03_organization", "@/db/schema/04_member", "@/db/schema/06_project", "@/db/schema/07_database",
             "@/db/schema/08_agent", "@/db/schema/14_storage-backup",
+            // W10 (src/fork/upstream only — w10-static.test.ts enforces that boundary)
+            "@/db/schema/13_storage-policy", "@/db/schema/10_alert-policy", "@/db/schema/01_setting", "@/utils/status-crypto",
             // W06
             "@/components/ui/alert-dialog", "@/components/ui/alert", "@/components/ui/button", "@/components/ui/dialog", "@/components/ui/input", "@/components/ui/label",
             "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/components/ui/tabs", "@/lib/utils", "@/features/agents/utils/status/agent-status",

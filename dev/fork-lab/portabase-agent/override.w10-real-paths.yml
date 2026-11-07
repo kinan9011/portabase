@@ -1,0 +1,7 @@
+# W10 live run: the discovery inventory carries the REAL host path of the demo compose directory (compose `working_dir` label), so the agent
+# needs the same absolute path inside its container for the materialised `files` sources to be readable (ADR-001 §C: explicit same-path bind).
+# Read-only is enough for backup. Lab only.
+services:
+  agent:
+    volumes:
+      - ${LAB_DIR:?}/demo-stack:${LAB_DIR:?}/demo-stack:ro

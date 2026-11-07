@@ -20,6 +20,7 @@ export const DUMP_FORMATS = ["pg_custom", "pg_directory"] as const;
 export const ARCHIVE_KINDS = ["restic_snapshot", "archive_enc", "archive_plain"] as const;
 
 export {RP_STATUSES, RP_DOWNGRADE_REASONS, ARTIFACT_PRESENCE};
+export {MATERIALIZE_STATES, SOURCE_DRIFT_REASONS, SOURCE_ORIGINS, SOURCE_PROBES, SOURCE_ROLES, SOURCE_STATUSES} from "@/fork/materialize/vocab";
 
 /** `col IN ('a','b')` (values are compile-time constants; quotes escaped defensively). */
 export const inList = (col: string, values: readonly string[]): SQL =>

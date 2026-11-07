@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {SOURCE_DRIFT_REASONS, SOURCE_ORIGINS, SOURCE_PROBES, SOURCE_ROLES, SOURCE_STATUSES} from "@/fork/materialize/vocab";
 import type {StackInventoryV1} from "@/fork/inventory/schema";
 import {deriveFacets, type FacetInputs} from "./facets";
 import {derivePrimaryState, type PrimaryInputs} from "./precedence";
@@ -42,6 +43,17 @@ export const ProtectionViewSchema = z.strictObject({
 });
 export type ProtectionView = z.infer<typeof ProtectionViewSchema>;
 
+/** W10: one materialized member source as the browser sees it: name, role, status, probe, reason. NEVER its config, path-bearing key or credential. */
+export const SourceViewSchema = z.strictObject({
+    name: z.string().max(255),
+    role: z.enum(SOURCE_ROLES),
+    origin: z.enum(SOURCE_ORIGINS),
+    status: z.enum(SOURCE_STATUSES),
+    probe: z.enum(SOURCE_PROBES).nullable(),
+    reason: z.enum(SOURCE_DRIFT_REASONS).nullable(),
+});
+export type SourceView = z.infer<typeof SourceViewSchema>;
+
 const ENV_NAMES_PER_SERVICE = 100;
 export const ConfigurationViewSchema = z.strictObject({
     composeRead: z.enum(["none", "arcane_compose", "agent_files"]),
@@ -52,6 +64,8 @@ export const ConfigurationViewSchema = z.strictObject({
     envNames: z.array(z.strictObject({service: z.string().max(128), names: z.array(z.string().max(256)).max(ENV_NAMES_PER_SERVICE), more: z.number().int().min(0)})).max(500),
     /** Content hash of the inventory version shown (sha256 hex). File hashes arrive with the materialiser (W10). */
     inventoryHash: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+    /** W10: backup sources this stack manages ("Managed by this stack", D30). Empty until the stack configuration was applied. */
+    sources: z.array(SourceViewSchema).max(500),
 });
 export type ConfigurationView = z.infer<typeof ConfigurationViewSchema>;
 
@@ -68,7 +82,7 @@ export function toProtectionView(report: CompletenessReport, primary: PrimaryInp
     });
 }
 
-export function toConfigurationView(inv: StackInventoryV1, report: CompletenessReport, inventoryHash: string | null): ConfigurationView {
+export function toConfigurationView(inv: StackInventoryV1, report: CompletenessReport, inventoryHash: string | null, sources: readonly SourceView[] = []): ConfigurationView {
     const showEnv = inv.stack.compose_read !== "none"; // names exist only when the compose definition was read
     return ConfigurationViewSchema.parse({
         composeRead: inv.stack.compose_read,
@@ -79,5 +93,6 @@ export function toConfigurationView(inv: StackInventoryV1, report: CompletenessR
             ? inv.services.filter((s) => s.env_keys.length > 0).map((s) => ({service: s.name, names: s.env_keys.slice(0, ENV_NAMES_PER_SERVICE), more: Math.max(0, s.env_keys.length - ENV_NAMES_PER_SERVICE)}))
             : [],
         inventoryHash,
+        sources: sources.map((x) => SourceViewSchema.parse(x)),
     });
 }

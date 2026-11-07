@@ -9,7 +9,7 @@ export type ItemStatus = (typeof ITEM_STATUSES)[number];
 /** Statuses that mean "a required resource is not safely covered". `unknown` is a gap on purpose: unknown never counts as complete. */
 export const GAP_STATUSES: readonly ItemStatus[] = ["missing", "inaccessible", "unsupported", "unknown"];
 
-export const ITEM_KINDS = ["compose_file", "env_file", "bind", "volume", "anonymous_volume", "database", "image", "network", "dependency"] as const;
+export const ITEM_KINDS = ["compose_file", "env_file", "bind", "volume", "anonymous_volume", "database", "image", "network", "dependency", "member_source", "agent", "policy"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
 /** Why an item has its status. Closed vocabulary: the UI looks the sentence up in `labels.ts`, never prints a raw code alone. */
@@ -20,6 +20,8 @@ export const REASON_CODES = [
     "denied_path", "outside_allowed_roots", "volume_driver", "image_local", "anonymous_volume",
     "external_volume", "external_network", "external_dependency",
     "excluded_by_label", "accepted",
+    // W10 (materializer): problems of the sources/agent/policy themselves, not of an inventory resource.
+    "agent_poll_failing", "agent_unavailable", "source_drifted", "encryption_off", "inventory_changed",
 ] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];
 
@@ -31,6 +33,19 @@ export type CoverageKind = "engine_dump" | "files" | "manual_files";
 /** Agent probe results (W10). A missing entry = not probed = unknown. */
 export type ProbeResult = "readable" | "unreadable" | "absent";
 
+/** W10: a problem with the stack's own member sources / agent / policy, fed by the materializer's persisted state (never invented by the validator). */
+export type SourceIssue = {
+    key: string;
+    kind: "member_source" | "agent" | "policy";
+    /** Source member name or culprit source names: hint data rendered as text only. */
+    name: string;
+    reason: Extract<ReasonCode, "agent_poll_failing" | "agent_unavailable" | "source_drifted" | "encryption_off" | "inventory_changed">;
+    status: Extract<ItemStatus, "inaccessible" | "unknown" | "unsupported">;
+    severity: Severity;
+    /** Names of the other stacks the same agent problem affects (names only). */
+    consumers?: readonly string[];
+};
+
 export type CompletenessContext = {
     /** key → what covers it. Keys: `file:<path>`, `env:<path>`, `mount:<id>`, `volume:<name>`, `db:<service>`, `image:<service>`. */
     coverage: Readonly<Record<string, CoverageKind>>;
@@ -39,8 +54,10 @@ export type CompletenessContext = {
     acceptedExclusions: readonly string[];
     /** `fork_arcane_environment.allowed_path_roots`; empty = none configured (only the hard deny list applies). */
     allowedRoots: readonly string[];
+    /** W10: materializer findings; absent = none. Each becomes an item (a blocker is a gap ⇒ never complete). */
+    sourceIssues?: readonly SourceIssue[];
 };
-export const EMPTY_CONTEXT: CompletenessContext = {coverage: {}, probes: {}, acceptedExclusions: [], allowedRoots: []};
+export const EMPTY_CONTEXT: CompletenessContext = {coverage: {}, probes: {}, acceptedExclusions: [], allowedRoots: [], sourceIssues: []};
 
 export type Item = {
     key: string;

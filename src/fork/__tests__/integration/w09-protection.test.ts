@@ -32,6 +32,8 @@ beforeAll(async () => {
     t = await freshForkDb(); pool = t.pool;
     orgA = await seedOrg(pool, "a"); orgB = await seedOrg(pool, "b");
     envA = await seedEnvironment(pool, await seedConnection(pool, orgA));
+    // W10 (D39): an ACTIVE policy with backup encryption off is a blocker; these W09 scenarios are about the other inputs, so encryption is on.
+    await pool.query("insert into settings (name, encryption) values ('w09', true)");
 });
 afterAll(async () => { await t?.drop(); });
 

@@ -38,7 +38,7 @@ describe("central fork-migration numbering (ARCH-14)", () => {
         }
     });
     it("FKs into upstream tables are limited to the D32 set and every one is ON DELETE SET NULL or CASCADE-to-organization", () => {
-        const upstream = new Set(["organization", "agents", "projects", "backups", "backup_storage"]);
+        const upstream = new Set(["organization", "agents", "projects", "databases", "backups", "backup_storage"]);
         for (const e of MIGRATION_LEDGER) {
             const sql = readFileSync(path.join(dir, `${e.tag}.sql`), "utf8");
             for (const m of sql.matchAll(/REFERENCES "public"\."([a-z_]+)"\("id"\) ON DELETE ([a-z ]+?) ON UPDATE/gi)) {

@@ -2,6 +2,7 @@ import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from "@/c
 import type {ConfigurationView} from "@/fork/completeness/view";
 import {CONFIG_TAB as T, DIRECTIVE_COPY} from "@/fork/ui/labels";
 import {CoverageChecklist} from "@/fork/ui/stacks/config-tab/coverage-checklist";
+import {SourcesTable} from "@/fork/ui/stacks/config-tab/sources-table";
 import {ScrollRegion} from "@/fork/ui/stacks/scroll-region";
 import {ItemStatusBadge} from "@/fork/ui/stacks/stack-status-badges";
 
@@ -66,6 +67,8 @@ export function ConfigTab({c}: {c: ConfigurationView}) {
                 <p className="text-muted-foreground max-w-prose text-xs">{T.resolve.help}</p>
                 <CoverageChecklist items={c.items}/>
             </section>
+
+            <SourcesTable sources={c.sources}/>
 
             <section aria-labelledby="cfg-dir" className="flex flex-col gap-2" data-testid="config-directives">
                 <h2 id="cfg-dir" className="text-lg font-semibold">{T.directives.heading}</h2>

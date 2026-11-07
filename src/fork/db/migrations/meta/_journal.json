@@ -29,6 +29,13 @@
       "when": 1794011203101,
       "tag": "0003_discovery_sync_state",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794017905866,
+      "tag": "0004_stack_sources",
+      "breakpoints": true
     }
   ]
 }

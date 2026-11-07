@@ -54,10 +54,12 @@ export async function evaluateSelfCheck(db: ForkDb, env: SelfCheckEnv = process.
                  limit 1`);
             if (agents.rows.length) failed.push("agent-foreign-org");
 
-            // Channels referenced by fork rows: RP artifacts today (denormalised ids, no FK); W10 adds fork_stack_source.storage_channel_ids.
+            // Channels referenced by fork rows: RP artifacts (denormalised ids, no FK) and, since W10, the channels of a stack's policy
+            // (`fork_stack_policy.storage_channel_ids`, copied ids).
             const storage = await db.execute(sql`
                 select 1 from storage_channel c
-                 where c.id in (select channel_id from fork_recovery_point_artifact where channel_id is not null)
+                 where (c.id in (select channel_id from fork_recovery_point_artifact where channel_id is not null)
+                        or c.id in (select unnest(storage_channel_ids) from fork_stack_policy))
                    and (c.organization_id is distinct from null and c.organization_id <> ${orgId}
                         or exists (select 1 from organization_storage_channels os where os.storage_channel_id = c.id and os.organization_id <> ${orgId}))
                  limit 1`);

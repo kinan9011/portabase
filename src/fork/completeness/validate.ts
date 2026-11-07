@@ -57,7 +57,7 @@ function build(spec: Spec, ctx: CompletenessContext, accepted: ReadonlySet<strin
 }
 
 /** Path checks common to bind mounts and file hints: hard-unsupported reason, or a system-path/socket directive, or fine. */
-function pathVerdict(path: string, roots: readonly string[]): {unsupported?: ReasonCode; directive?: "docker_socket" | "system_path"} {
+export function pathVerdict(path: string, roots: readonly string[]): {unsupported?: ReasonCode; directive?: "docker_socket" | "system_path"} {
     if (!isSafeAbsPath(path) || normPath(path) === "/") return {unsupported: "denied_path"};
     if (isDockerSocket(path)) return {directive: "docker_socket"};
     if (isSystemPath(path)) return {directive: "system_path"};
@@ -148,6 +148,11 @@ export function validateCompleteness(inv: Inv, ctx: CompletenessContext = EMPTY_
     for (const n of networks) if (n.ownership !== "stack_owned") add({key: `network:${n.name}`, kind: "network", name: n.name, external: "external_network"});
     for (const d of inv.external_dependencies) {
         if (d.kind === "remote_service" || d.kind === "other") add({key: `dep:${d.kind}:${d.name}`, kind: "dependency", name: d.name, external: "external_dependency"});
+    }
+
+    // ---- materializer findings (W10): the stack's own sources / agent / policy ------------------------------------------------
+    for (const i of ctx.sourceIssues ?? []) {
+        items.push({key: i.key, kind: i.kind, name: i.name, status: i.status, reason: i.reason, severity: i.severity, gap: GAP_STATUSES.includes(i.status), resolvable: false, consumers: i.consumers ?? [], placement: null, consistency: null});
     }
 
     // ---- verdict ------------------------------------------------------------------------------------------------------
