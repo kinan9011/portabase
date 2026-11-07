@@ -115,3 +115,183 @@ export const SETUP_PATH = {
         "Enable the environments Portabase should discover and map each to its Portabase agent.",
     ],
 };
+
+// ================================================================================================================
+// W08 — Docker Stacks list + details. Every state word, empty state, action reason and honesty note of the stacks UI.
+// Honest wording (REVISED-PLAN §8.2 / Overview): discovered ≠ backed up ≠ verified ≠ restore-tested. Nothing on these
+// pages can say "protected" unless `protection_state` says so, and no recovery point exists before W12.
+// ================================================================================================================
+
+export const RUNTIME_LABELS = {
+    running: {label: "Running", tone: "success", description: "All services of this stack were running at the last sync. Informational only: it says nothing about backups."},
+    partial: {label: "Partially running", tone: "warning", description: "Some services were running and some were not at the last sync. Informational only."},
+    stopped: {label: "Stopped", tone: "neutral", description: "No service of this stack was running at the last sync. Informational only."},
+    absent: {label: "No longer found", tone: "warning", description: "The last successful sync did not list this stack any more. Its last known inventory is kept."},
+    unknown: {label: "Runtime unknown", tone: "neutral", description: "No runtime state has been read for this stack yet."},
+} as const satisfies Record<string, {label: string; tone: Tone; description: string}>;
+export type RuntimeStateKey = keyof typeof RUNTIME_LABELS;
+
+/** Protection comes from Portabase only (never from Arcane). Before W10/W11 every stack is "Unprotected". */
+export const PROTECTION_LABELS = {
+    unprotected: {label: "Unprotected", tone: "neutral", description: "No Portabase backup policy is active for this stack. Discovery alone does not back anything up."},
+    configured: {label: "Backup configured", tone: "neutral", description: "A backup policy is saved but not active yet."},
+    active: {label: "Backup active", tone: "neutral", description: "A backup policy is active. Whether recovery points exist and are verified is shown separately."},
+    paused: {label: "Backup paused", tone: "warning", description: "The backup policy is paused. No scheduled backup runs for this stack."},
+} as const satisfies Record<string, {label: string; tone: Tone; description: string}>;
+export type ProtectionStateKey = keyof typeof PROTECTION_LABELS;
+
+export const STALE_BADGE = {label: "Stale", tone: "warning", description: "The last sync failed, so this is older data."} as const satisfies {label: string; tone: Tone; description: string};
+
+export const STACKS_PAGE = {
+    title: "Docker Stacks",
+    description: "Compose applications discovered through Arcane. Runtime comes from Arcane; protection comes from Portabase.",
+    sourceNote: "Source host and runtime state come from Arcane at the last sync. Protection comes from Portabase and says nothing is backed up until a policy is active.",
+    foundTile: "Found",
+    unprotectedTile: "Unprotected",
+    staleTile: "Stale or no longer found",
+    searchLabel: "Search stacks",
+    searchPlaceholder: "Name or project",
+    environmentLabel: "Environment",
+    runtimeLabel: "Runtime",
+    protectionLabel: "Protection",
+    sortLabel: "Sort",
+    allEnvironments: "All environments",
+    allRuntime: "All runtime states",
+    allProtection: "All protection states",
+    apply: "Apply",
+    clear: "Clear filters",
+    sortOptions: {name: "Name", attention: "Needs attention", updated: "Recently changed"},
+    results: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total} stack${total === 1 ? "" : "s"}`,
+    resultsNone: "No stacks match.",
+    previous: "Previous page",
+    next: "Next page",
+    open: "Open",
+    tableCaption: "Discovered Docker stacks with runtime state, resources and protection",
+    columns: {stack: "Stack", environment: "Environment", runtime: "Runtime", resources: "Resources", protection: "Protection", latestRp: "Latest recovery point", seen: "Last seen"},
+    noRecoveryPoint: "None yet",
+    resourceUnits: {services: "services", volumes: "volumes", binds: "bind mounts", networks: "networks", databases: "databases"},
+    sharedFlag: (n: number) => `${n} shared`,
+    syncing: "Syncing…",
+    syncingDone: "Sync finished. The list is up to date.",
+} as const;
+
+export const STALE_BANNER = {
+    title: "Some inventory may be out of date",
+    body: (n: number) => `${n} stack${n === 1 ? "" : "s"} could not be refreshed by the last sync. Cached results are shown and marked stale. Protection status comes from Portabase and is current.`,
+    circuit: "Automatic discovery is paused after repeated failures. Cached results are shown.",
+    link: "View the integration",
+} as const;
+
+/** Role-aware empty states (D35): the same situation reads differently for an administrator and for a member. */
+export const STACKS_EMPTY = {
+    noConnection: {
+        title: "No stacks discovered yet",
+        admin: "Connect an Arcane Manager and turn on discovery for at least one environment. Stacks appear here after the first sync.",
+        member: "A system administrator has not connected an Arcane Manager yet. Ask them to set up Stack Recovery; nothing is needed from you.",
+        adminAction: "Connect Arcane",
+    },
+    noEnabledEnvironment: {
+        title: "Discovery is off for every environment",
+        admin: "Arcane is connected, but no environment is enabled for discovery. Turn one on in Integrations, then sync.",
+        member: "Arcane is connected but discovery is not turned on yet. A system administrator needs to enable an environment.",
+        adminAction: "Open Integrations",
+    },
+    noStacks: {
+        title: "No stacks found yet",
+        admin: "Discovery is on but the last sync found no Compose projects. Run Sync now in Integrations, or check that the environment runs Compose projects.",
+        member: "Discovery is on but no stacks have been found yet. They appear here after the next sync.",
+        adminAction: "Open Integrations",
+    },
+    filtered: {title: "No stacks match these filters", body: "Change or clear the filters to see more."},
+    unauthorized: {title: "You do not have access to Docker Stacks", body: "Stacks are visible to members of the organization. Ask an organization owner or administrator to add you."},
+    notReadable: {title: "This stack's inventory could not be read", body: "The stored inventory does not match the version this release understands. Nothing was changed. The next successful sync replaces it."},
+    noInventory: {title: "No inventory has been recorded for this stack", body: "The stack is known but no inventory version exists. Run a sync to record one."},
+    loadError: {title: "Stacks could not be loaded", body: "The server could not read stack data. Nothing was changed; reload the page."},
+    locked: "Fork configuration is locked. You can still look at stacks; configuration actions are paused.",
+} as const;
+
+export const STACK_DETAILS = {
+    back: "All stacks",
+    tabs: {overview: "Overview", resources: "Resources"},
+    tabsLabel: "Stack sections",
+    lastSync: "Last sync",
+    inventoryCaptured: "Inventory captured",
+    environment: "Environment",
+    composeProject: "Compose project",
+    notSynced: "Not synced yet",
+    goneBanner: {title: "No longer found in Arcane", body: "The last successful sync did not list this stack. The inventory below is the last known one and may not match what runs now."},
+    staleBanner: {title: "This inventory is stale", body: (when: string) => `The last sync failed. The data below was captured ${when} and may be out of date.`},
+    notInRelease: "Not in this release",
+    actions: {
+        configure: {label: "Configure backup", admin: "Backup configuration is not built yet. It arrives in a later step of this release.", member: "Only a system administrator configures backups, and the form is not built yet."},
+        backupNow: {label: "Back up now", reason: "A backup has to be configured first, and nothing can be configured yet."},
+        restore: {label: "Restore", reason: "Restoring from the dashboard is planned for release R2."},
+        mirror: {label: "Create test mirror", reason: "Test mirrors are not part of this release."},
+    },
+    overview: {
+        resources: "Resource summary",
+        recovery: "Latest recovery point",
+        noRecovery: "None yet",
+        noRecoveryNote: "No backup exists for this stack. Discovery lists resources; it does not back them up.",
+        blockers: "Backup blockers",
+        blockersNote: "Backup readiness is not evaluated yet. The Configuration tab (next step) will list what blocks a safe backup.",
+        sharedHeading: "Shared with other stacks",
+        sharedNone: "No shared resources were detected.",
+        sharedNote: "Shared resources are used by more than one stack. Backing up or restoring this stack never changes them.",
+        warnings: "Discovery notes",
+        noWarnings: "Discovery recorded no notes for this stack.",
+        facts: "Discovery details",
+        inventoryVersion: "Inventory version",
+        composeRead: {none: "Not read (names and paths come from container labels only)", arcane_compose: "Read through Arcane (names only)", agent_files: "Read from the host by the agent"},
+        composeReadLabel: "Compose file",
+        ports: "Published ports",
+    },
+    resources: {
+        heading: "Resources",
+        agentNote: "Arcane lists these resources; it cannot read their contents. Bind mounts and volume data are read from the host by the Portabase agent when a backup runs.",
+        tabsLabel: "Resource types",
+        sections: {services: "Services", volumes: "Named volumes", binds: "Bind mounts", databases: "Databases", networks: "Networks"},
+        empty: {services: "No services in the inventory.", volumes: "No named volumes.", binds: "No bind mounts.", databases: "No database was recognised in this stack.", networks: "No networks."},
+        columns: {
+            service: "Service", image: "Image", state: "State", ports: "Ports", networks: "Networks", mounts: "Mounts",
+            volume: "Volume", driver: "Driver", usedBy: "Used by", ownership: "Ownership", destination: "Container path", hostPath: "Host path", access: "Access", consumers: "Used by",
+            engine: "Engine", basis: "Detected from", network: "Network", kind: "Kind", members: "Members", flags: "Flags",
+        },
+        ownership: {stack_owned: "This stack", external_shared: "Shared (external)", unknown: "Unknown"},
+        classification: {stack_owned: "This stack", shared_external: "Shared (external)", manual: "Manual / not owned"},
+        sharedMarker: "Shared",
+        externalMarker: "External",
+        anonymousWarning: "Anonymous volume: it is not a named volume and will not be backed up by name.",
+        rw: {true: "Read-write", false: "Read-only"},
+        imagePinned: "pinned",
+        imageUnpinned: "not pinned",
+        builtLocally: "built locally",
+        privileged: "privileged",
+        internalNetwork: "internal",
+        dbBasis: {image: "image name", port: "port", mount: "mount name"},
+        dbNote: "A guess from the image, port or mount name. It is a hint only: Portabase has not connected to any database.",
+        bindNote: "Host paths come from the container's labels and mounts and are hints. The agent checks them again before any backup.",
+        envNote: (n: number) => `${n} environment variable name${n === 1 ? "" : "s"} (values are never stored)`,
+    },
+} as const;
+
+/** Discovery warning codes → copy. Unknown codes fall back to a generic note: raw codes are never shown as the only text. */
+export const WARNING_COPY: Record<string, string> = {
+    "anonymous-volume-not-backed-up": "A service uses an anonymous volume. It has no stable name, so it is not covered by name.",
+    "network-shared-external": "A network is shared with other stacks or created outside this stack.",
+    "network-manual": "A network is not owned by this stack and no network record was visible.",
+    "image-not-pinned": "A service uses an image that is not pinned to a digest.",
+    "privileged-service": "A service runs privileged.",
+    "bind-mount-host-path": "A bind mount uses a host path. The agent checks the path again before any backup.",
+    "backup-hint-ignored": "A backup hint label had an invalid value and was ignored.",
+    "compose-definition-not-read": "The compose file was not read; names and paths come from container labels only.",
+    "compose-yaml-rejected": "The compose file was refused by the safety limits and was not used.",
+    "container-without-service-label": "A container of this project has no service label and was skipped.",
+    "mount-destination-rejected": "A mount destination was refused as unsafe and was skipped.",
+    "mount-path-rejected": "A mount host path was refused as unsafe and was left out.",
+    "mount-type-unsupported": "A mount of an unsupported type was skipped.",
+    "label-path-rejected": "A path label was refused as unsafe and was left out.",
+    "unknown-container-state": "A container reported a state this release does not know.",
+};
+export const WARNING_FALLBACK = "Discovery recorded a note for this stack that has no description in this release.";
+export const WARNING_SEVERITY_LABELS = {info: "Note", warn: "Warning", blocker: "Blocker"} as const;
