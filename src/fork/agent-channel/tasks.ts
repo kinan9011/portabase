@@ -15,7 +15,9 @@ import {chEnv, chNow, type ChannelDeps} from "./deps";
 import {signEnvelope, type Envelope} from "./envelope";
 import {encryptPayload, payloadSha256} from "./payload";
 import {checkChannelTransport} from "./transport-policy";
-import {CAPABILITY_RE, KID_RE, MAX_CAPABILITIES, MAX_PAYLOAD_BYTES, MAX_PINS, MAX_RESULT_BYTES, NOOP_ECHO_RE, PIN_PEM_MAX, PUBLIC_TASK_TYPES, TASK_REQUIRES, type TaskType} from "./vocab";
+import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
+import {ApplyPayload, CleanupPayload, ProbePayload, StagePayload} from "@/fork/restore-tasks/payload-schema";
+import {CAPABILITY_RE, KID_RE, MAX_CAPABILITIES, MAX_PAYLOAD_BYTES, MAX_PINS, MAX_RESULT_BYTES, NOOP_ECHO_RE, PIN_PEM_MAX, PUBLIC_TASK_TYPES, TARGETED_TASK_TYPES, TASK_REQUIRES, type TaskType} from "./vocab";
 import {redactDetails} from "@/fork/audit";
 
 /**
@@ -24,7 +26,7 @@ import {redactDetails} from "@/fork/audit";
  * expiry never interleave. A task is leased only by the agent it was signed for: every query filters on `agent_id` AND the enrolment generation.
  */
 const MAX_ATTEMPTS = 5;
-const REASONS = ["bad_signature", "unknown_kid", "bad_envelope", "agent_mismatch", "enroll_mismatch", "expired", "not_yet_valid", "replayed", "seq_rollback", "unsupported_type", "capability_missing", "payload_hash", "payload_invalid", "channel_disabled", "state_unavailable", "target_mismatch", "execution_error"] as const;
+const REASONS = ["bad_signature", "unknown_kid", "bad_envelope", "agent_mismatch", "enroll_mismatch", "expired", "not_yet_valid", "replayed", "seq_rollback", "unsupported_type", "capability_missing", "payload_hash", "payload_invalid", "channel_disabled", "state_unavailable", "target_mismatch", "execution_error", ...RESTORE_REASONS] as const;
 export type ResultReason = (typeof REASONS)[number];
 
 type Refusal = {ok: false; code: "forbidden" | "locked" | "rate_limited" | "invalid_input" | "not_enrolled" | "insecure_transport" | "invalid_url" | "capability_missing" | "agent_disabled" | "signing_unavailable"; message: string; retryAfterSeconds?: number};
@@ -41,6 +43,7 @@ const PAYLOAD_SCHEMAS: Record<TaskType, z.ZodType> = {
     pin_add: z.strictObject({kid: z.string().regex(KID_RE), pem: z.string().max(PIN_PEM_MAX)}),
     pin_revoke: z.strictObject({kid: z.string().regex(KID_RE)}),
     rotate_credential: z.strictObject({credential: z.string().regex(/^fork\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/)}),
+    restore_probe: ProbePayload, restore_stage: StagePayload, restore_apply: ApplyPayload, restore_cleanup: CleanupPayload,
 };
 
 /** Per-type payload validation (closed: unknown keys are refused). */
@@ -66,15 +69,19 @@ export async function clearStalePending(tx: ForkDb, agentId: string, now: Date):
 }
 
 /** Sign + encrypt + insert one task for an enrolment (caller holds `agent-task:<agentId>` and has already authorised the action). */
-export async function insertSignedTask(tx: ForkDb, a: {e: Enrollment; agentName: string; type: TaskType; plaintext: Buffer; actorUserId: string; signing: {privateKeyPem: string}; kid: string; taskKey: Buffer; now: Date; ttlMs: number}): Promise<{taskId: string; seq: number; notAfter: Date}> {
+export async function insertSignedTask(tx: ForkDb, a: {e: Enrollment; agentName: string; type: TaskType; plaintext: Buffer; targetAgentId?: string; actorUserId: string; signing: {privateKeyPem: string}; kid: string; taskKey: Buffer; now: Date; ttlMs: number}): Promise<{taskId: string; seq: number; notAfter: Date}> {
     const {e, type, plaintext, now} = a;
     const agentId = e.agentId!;
+    // DD2: restore-class tasks are bound to the agent that must execute them; the agent refuses a missing / foreign target, we never sign one.
+    const targeted = (TARGETED_TASK_TYPES as readonly string[]).includes(type);
+    if (targeted && a.targetAgentId !== agentId) throw new Error("targeted task type needs target_agent_id equal to the enrolled agent");
+    if (!targeted && a.targetAgentId !== undefined) throw new Error("target_agent_id is only for targeted task types");
     const requires = [...TASK_REQUIRES[type]];
     const taskId = randomUUID();
     const [{seq}] = await tx.update(forkAgentEnrollment).set({nextSeq: sql`${forkAgentEnrollment.nextSeq} + 1`}).where(eq(forkAgentEnrollment.id, e.id)).returning({seq: sql<number>`${forkAgentEnrollment.nextSeq} - 1`});
     const notAfter = new Date(now.getTime() + a.ttlMs);
     const envelope: Envelope = {v: 1, task_id: taskId, agent_id: agentId, enroll_id: e.enrollId, type, seq, issued_at: Math.floor(now.getTime() / 1000), not_after: Math.floor(notAfter.getTime() / 1000),
-        nonce: randomBytes(16).toString("base64url"), payload_sha256: payloadSha256(plaintext), requires, kid: a.kid};
+        nonce: randomBytes(16).toString("base64url"), payload_sha256: payloadSha256(plaintext), requires, kid: a.kid, ...(targeted ? {target_agent_id: agentId} : {})};
     const signed = signEnvelope(envelope, a.signing.privateKeyPem);
     await tx.insert(forkAgentTask).values({id: taskId, agentId, agentName: a.agentName, enrollId: e.enrollId, type, requires, seq, envelopeText: signed.text, signature: signed.signature, kid: a.kid,
         payloadEnc: encryptPayload(a.taskKey, {taskId, agentId, type}, plaintext), payloadSha256: envelope.payload_sha256, status: "queued", createdBy: a.actorUserId, createdAt: now, notAfter});
@@ -142,8 +149,10 @@ export async function leaseTask(db: ForkDb, e: Enrollment, a: {capabilities: unk
         await tx.update(forkAgentEnrollment).set({capabilities: caps, capabilitiesSeenAt: now}).where(eq(forkAgentEnrollment.id, e.id));
         const mine = and(eq(forkAgentTask.agentId, e.agentId!), eq(forkAgentTask.enrollId, e.enrollId));
         // 1. never-started tasks past their start deadline expire (payload purged, SEC-08)
+        //    `attempts = 0`: `not_after` only limits STARTING (ADR-007 D3). A task the agent already accepted (attempts ≥ 1) whose lease lapsed is re-queued and
+        //    handed out again so the agent re-reports its stored outcome (A2 Duplicate) instead of the result being lost to an expiry (W17 G9).
         await tx.update(forkAgentTask).set({status: "expired", finishedAt: now, leaseId: null, leaseUntil: null, payloadEnc: null})
-            .where(and(mine, inArray(forkAgentTask.status, ["queued", "leased"]), lt(forkAgentTask.notAfter, now)));
+            .where(and(mine, inArray(forkAgentTask.status, ["queued", "leased"]), lt(forkAgentTask.notAfter, now), eq(forkAgentTask.attempts, 0)));
         // 2. an unrenewed lease returns the task to the queue (at-least-once); too many attempts ⇒ failed
         await tx.update(forkAgentTask).set({status: "failed", finishedAt: now, leaseId: null, leaseUntil: null, payloadEnc: null, result: {reason: "lease_lost"}})
             .where(and(mine, inArray(forkAgentTask.status, ["leased", "running"]), lt(forkAgentTask.leaseUntil, now), sql`${forkAgentTask.attempts} >= ${MAX_ATTEMPTS}`));

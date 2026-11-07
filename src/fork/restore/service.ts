@@ -127,14 +127,28 @@ export async function checkPlanFresh(d: Pick<RestoreDeps, "db" | "now">, row: Pl
     }
 }
 
-async function verifiedPlan(d: Pick<RestoreDeps, "db" | "now">, row: PlanRow, planHash: string): Promise<{ok: true; row: PlanRow; plan: RestorePlanV1} | Refusal> {
+/** The row-only part of verification: version, schema + hash tamper check, requested hash. No freshness (cleanup of an aged-out plan must still work). */
+function untamperedPlan(row: PlanRow, planHash: string): {ok: true; row: PlanRow; plan: RestorePlanV1} | Refusal {
     if (row.planVersion !== PLAN_VERSION) return {ok: false, code: "stale"};
     const plan = RestorePlanV1.safeParse(row.plan);
     if (!plan.success || hashPlan(plan.data) !== row.planHash || plan.data.inputs_digest !== row.inputsDigest) return {ok: false, code: "plan_tampered"};
     if (row.planHash !== planHash) return {ok: false, code: "hash_mismatch"};
+    return {ok: true, row, plan: plan.data};
+}
+
+async function verifiedPlan(d: Pick<RestoreDeps, "db" | "now">, row: PlanRow, planHash: string): Promise<{ok: true; row: PlanRow; plan: RestorePlanV1} | Refusal> {
+    const u = untamperedPlan(row, planHash);
+    if (!u.ok) return u;
     const f = await checkPlanFresh(d, row);
     if (!f.fresh) return {ok: false, code: f.code};
-    return {ok: true, row, plan: plan.data};
+    return {ok: true, row, plan: u.plan};
+}
+
+/** W17-i: the plan row + tamper/hash checks WITHOUT freshness and without a capability gate (the caller authorises). Only `restore_cleanup` may use it. */
+export async function loadPlanRow(d: Pick<RestoreDeps, "db">, planId: string, planHash: string): Promise<{ok: true; row: PlanRow; plan: RestorePlanV1} | Refusal> {
+    const [row] = await d.db.select().from(forkRestorePlan).where(eq(forkRestorePlan.id, planId));
+    if (!row) return {ok: false, code: "not_found"};
+    return untamperedPlan(row, planHash);
 }
 
 /** The single entry point for W16b / W18a: the plan exists, its capability gate passes, it is untampered, the hash matches, it is not expired and its inputs did not change. */

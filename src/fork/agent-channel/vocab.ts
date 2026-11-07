@@ -11,11 +11,25 @@ export const SIGN_DOMAIN = "portabase-fork-task:v1\n";
  * Maintenance types are NEVER enqueueable through the generic `enqueueTask` (`PUBLIC_TASK_TYPES`): only dedicated admin services build their payload.
  */
 export const MAINT_CAPABILITY = "channel-maint.v1";
-export const TASK_TYPES = ["noop", "pin_add", "pin_revoke", "rotate_credential"] as const;
+/**
+ * W17-i adds the four restore-engine types (ADR-007 A13). Names use underscores: the envelope `type` grammar has no dots (capabilities keep theirs).
+ * They are TARGETED (the envelope MUST carry `target_agent_id` = the executing agent) and, like the maintenance types, never public:
+ * only `src/fork/restore-tasks/enqueue.ts` builds their payload. W17-ii will add `compose_render`, `restore_db`, `compose_up` (capability `compose.render.v1`).
+ */
+export const RESTORE_CAPABILITY = "restore.target.v1";
+export const COMPOSE_CAPABILITY = "compose.render.v1";
+export const RESTORE_TASK_TYPES = ["restore_probe", "restore_stage", "restore_apply", "restore_cleanup"] as const;
+export const TASK_TYPES = ["noop", "pin_add", "pin_revoke", "rotate_credential", ...RESTORE_TASK_TYPES] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 export const PUBLIC_TASK_TYPES = ["noop"] as const;
 export const MAINT_TASK_TYPES = ["pin_add", "pin_revoke", "rotate_credential"] as const;
-export const TASK_REQUIRES: Readonly<Record<TaskType, readonly string[]>> = {noop: ["noop.v1"], pin_add: [MAINT_CAPABILITY], pin_revoke: [MAINT_CAPABILITY], rotate_credential: [MAINT_CAPABILITY]};
+/** Types whose envelope must name the executing agent in `target_agent_id` (ADR-007 D8b, DD2). The agent enforces the same list. */
+export const TARGETED_TASK_TYPES: readonly TaskType[] = [...RESTORE_TASK_TYPES];
+export const isTargetedType = (t: string): boolean => (TARGETED_TASK_TYPES as readonly string[]).includes(t);
+export const TASK_REQUIRES: Readonly<Record<TaskType, readonly string[]>> = {
+    noop: ["noop.v1"], pin_add: [MAINT_CAPABILITY], pin_revoke: [MAINT_CAPABILITY], rotate_credential: [MAINT_CAPABILITY],
+    restore_probe: [RESTORE_CAPABILITY], restore_stage: [RESTORE_CAPABILITY], restore_apply: [RESTORE_CAPABILITY], restore_cleanup: [RESTORE_CAPABILITY],
+};
 /** Pinned dashboard keys per agent (agent enforces the same bound), PEM size bound, kid grammar (first 12 hex of SHA-256(SPKI DER)). */
 export const MAX_PINS = 8;
 export const PIN_PEM_MAX = 4096;

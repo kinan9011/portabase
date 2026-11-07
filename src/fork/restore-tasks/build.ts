@@ -1,0 +1,102 @@
+import type {Action, RestorePlanV1} from "@/fork/restore/schema";
+import type {ApprovalKind} from "@/fork/restore/vocab";
+import type {z} from "zod";
+import type {ApplyPayload, CleanupPayload, ProbePayload, RestoreHeader, StagePayload} from "./payload-schema";
+
+/**
+ * Pure payload builders of the W17-i restore tasks (plan-W17 §4.0, §4.1 i-2): a verified plan in, a strict payload out. NO I/O, no clock, no env, no DB
+ * (a static test pins the import list). The enqueue service resolves the artifact ↔ manifest index map and the download URLs and hands them in.
+ * Anything the agent engine cannot do yet is a `BuildError` with a closed code, never a silently dropped action.
+ */
+export class BuildError extends Error {
+    constructor(readonly code: "mode_unsupported" | "manifest_mismatch" | "artifact_unavailable" | "invalid_input") { super(code); }
+}
+
+export type BuildInput = {
+    restoreId: string; planId: string; planHash: string; plan: RestorePlanV1; approvals: readonly ApprovalKind[];
+    /** `fork_recovery_point_artifact.id` → index in the VERIFIED manifest's `artifacts[]`. */
+    indexOf: ReadonlyMap<string, number>;
+};
+
+export const workspaceOf = (plan: RestorePlanV1): string => {
+    if (!plan.target.restore_root) throw new BuildError("invalid_input");
+    return `${plan.target.restore_root}/${plan.target.project}`;
+};
+
+export function buildHeader(i: BuildInput): z.infer<typeof RestoreHeader> {
+    const {plan} = i;
+    if (plan.mode === "existing_stack") throw new BuildError("mode_unsupported"); // OD-W17-5: in-place destructive restore is deferred
+    return {v: 1, restore_id: i.restoreId, plan_id: i.planId, plan_hash: i.planHash, stack_id: plan.rp.stack_id, rp_id: plan.rp.id, purpose: plan.purpose, mode: plan.mode,
+        host_role: plan.target.host_role, approvals: [...new Set(i.approvals)].sort(), workspace: workspaceOf(plan), project: plan.target.project};
+}
+
+/** Actions that move data (everything except planner `skip`). */
+const live = (plan: RestorePlanV1): Action[] => plan.actions.filter((a) => a.op !== "skip");
+const indexFor = (i: BuildInput, a: Action): number => {
+    const id = a.artifact_ids[0];
+    const ix = id === undefined ? undefined : i.indexOf.get(id);
+    if (ix === undefined) throw new BuildError("manifest_mismatch");
+    return ix;
+};
+const isUnder = (p: string, root: string) => p.startsWith(`${root}/`);
+
+/** Every artifact index that must be downloaded + verified (each once), in manifest order. */
+export function artifactIndexes(i: BuildInput): number[] {
+    const out = new Set<number>();
+    for (const a of live(i.plan)) if (a.artifact_ids.length > 0) out.add(indexFor(i, a));
+    return [...out].sort((x, y) => x - y);
+}
+
+export function buildStagePayload(i: BuildInput, a: {manifest: {jsonB64: string; sigB64: string; sha256: string; minSequence?: number}; urls: ReadonlyMap<number, string>}): z.infer<typeof StagePayload> {
+    const header = buildHeader(i);
+    const paths: {index: number; dest: string}[] = [];
+    for (const act of live(i.plan)) {
+        // path-destination data actions extract into `dest`; stage_only artifacts and PostgreSQL dumps are only staged (W17-ii restores the dump)
+        if (act.destination.kind !== "path" || act.kind === "stage_only" || (act.kind === "restore_db_dump" && act.source.dbms === "postgresql")) continue;
+        const dest = act.destination.path;
+        if (!dest || !isUnder(dest, header.workspace)) throw new BuildError("mode_unsupported");
+        paths.push({index: indexFor(i, act), dest});
+    }
+    const artifacts = artifactIndexes(i).map((index) => {
+        const url = a.urls.get(index);
+        if (!url) throw new BuildError("artifact_unavailable");
+        return {index, source: "archive" as const, url};
+    });
+    return {...header, manifest: {json_b64: a.manifest.jsonB64, sig_b64: a.manifest.sigB64, sha256: a.manifest.sha256, ...(a.manifest.minSequence !== undefined ? {min_sequence: a.manifest.minSequence} : {})}, artifacts, paths};
+}
+
+export function buildApplyPayload(i: BuildInput, manifestSha256: string): z.infer<typeof ApplyPayload> {
+    const header = buildHeader(i);
+    const volumes: z.infer<typeof ApplyPayload>["volumes"] = [];
+    const sqlite: z.infer<typeof ApplyPayload>["sqlite"] = [];
+    const unpack: z.infer<typeof ApplyPayload>["unpack"] = [];
+    for (const act of live(i.plan)) {
+        const d = act.destination;
+        if (act.kind === "restore_volume" && d.kind === "volume") {
+            if (!d.name) throw new BuildError("mode_unsupported");
+            const prefix = `${header.project}_`;
+            volumes.push({index: indexFor(i, act), name: d.name, compose_volume: d.name.startsWith(prefix) && d.name.length > prefix.length ? d.name.slice(prefix.length) : d.name});
+        } else if (act.kind === "restore_sqlite_file" && d.kind === "volume") {
+            if (!d.name || !d.relative_path) throw new BuildError("mode_unsupported");
+            sqlite.push({index: indexFor(i, act), volume: d.name, relative_path: d.relative_path});
+        } else if (act.kind === "restore_db_dump" && d.kind === "db_service" && act.source.dbms !== "postgresql") {
+            if (!d.name) throw new BuildError("mode_unsupported");
+            unpack.push({index: indexFor(i, act), service: d.name});
+        }
+    }
+    const networks = live(i.plan).filter((a) => a.kind === "create_network").map((a) => {
+        if (!a.destination.name) throw new BuildError("mode_unsupported");
+        return {name: a.destination.name};
+    });
+    // sqlite files may only land in a volume this same restore created (the agent re-checks ownership)
+    for (const s of sqlite) if (!volumes.some((v) => v.name === s.volume)) throw new BuildError("mode_unsupported");
+    return {...header, manifest_sha256: manifestSha256, volumes, sqlite, networks, unpack};
+}
+
+export function buildCleanupPayload(i: BuildInput, c: {workspace: boolean; volumes: boolean; networks: boolean; containers: boolean}): z.infer<typeof CleanupPayload> {
+    return {...buildHeader(i), workspace_remove: c.workspace, volumes: c.volumes, networks: c.networks, containers: c.containers};
+}
+
+export function buildProbePayload(workspace?: string): z.infer<typeof ProbePayload> {
+    return {v: 1, ...(workspace ? {workspace} : {})};
+}
