@@ -26,6 +26,7 @@ export async function POST(req: Request, ctx: {params: Promise<{kind: string}>})
     if (req.headers.has("x-api-key") || req.headers.has("authorization")) return json({code: "forbidden", message: "The recovery kit is not available through the API."}, 403);
     const {kind} = await ctx.params;
     if (kind !== "paper" && kind !== "digital") return json({message: "This API route does not exist.", status: 404}, 404);
+    if (Number(req.headers.get("content-length") ?? 0) > 8192) return json({code: "invalid_input", message: "The request is not valid."}, 413);
     let body: unknown;
     try { body = await req.json(); } catch { return json({code: "invalid_input", message: "The request is not valid."}, 400); }
     const input = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};

@@ -24,36 +24,49 @@ class Fail extends Error {
     constructor(readonly code: ArchiveFailure) { super(code); }
 }
 
-/** Pull-reader over an async byte source. */
+/** Pull-reader over an async byte source. Pieces are kept in a list and joined ONCE per read (a 16 MiB chunk arrives in ~64 KiB pieces: re-concatenating each time would copy GBs). */
 class Reader {
-    private buf = Buffer.alloc(0);
+    private parts: Buffer[] = [];
+    private len = 0;
     private it: AsyncIterator<Uint8Array>;
     private done = false;
     constructor(src: AsyncIterable<Uint8Array>) { this.it = src[Symbol.asyncIterator](); }
     private async fill(min: number): Promise<void> {
-        while (this.buf.length < min && !this.done) {
+        while (this.len < min && !this.done) {
             const n = await this.it.next();
             if (n.done) { this.done = true; break; }
-            this.buf = this.buf.length ? Buffer.concat([this.buf, n.value]) : Buffer.from(n.value);
+            const b = Buffer.from(n.value);
+            this.parts.push(b); this.len += b.length;
         }
     }
+    private take(n: number): Buffer {
+        const all = this.parts.length === 1 ? this.parts[0] : Buffer.concat(this.parts, this.len);
+        const out = all.subarray(0, n);
+        const rest = all.subarray(n);
+        this.parts = rest.length ? [rest] : [];
+        this.len = rest.length;
+        return out;
+    }
     async line(max: number): Promise<Buffer | null> {
+        let scanned = 0;
         for (;;) {
-            const i = this.buf.indexOf(0x0a);
-            if (i >= 0) { const l = this.buf.subarray(0, i + 1); this.buf = this.buf.subarray(i + 1); return l; }
-            if (this.buf.length > max) return null;
-            if (this.done) return null;
-            await this.fill(this.buf.length + 1);
+            if (this.len > scanned) {
+                const all = this.parts.length === 1 ? this.parts[0] : Buffer.concat(this.parts, this.len);
+                this.parts = [all];
+                const i = all.indexOf(0x0a, scanned);
+                if (i >= 0) return this.take(i + 1);
+                scanned = all.length;
+            }
+            if (this.len > max || this.done) return null;
+            await this.fill(this.len + 1);
         }
     }
     /** exactly n bytes, `null` at clean EOF before the first byte, throws `truncated` on a partial read */
     async exact(n: number): Promise<Buffer | null> {
         await this.fill(n);
-        if (this.buf.length === 0 && n > 0) return null;
-        if (this.buf.length < n) throw new Fail("truncated");
-        const out = this.buf.subarray(0, n);
-        this.buf = this.buf.subarray(n);
-        return out;
+        if (this.len === 0 && n > 0) return null;
+        if (this.len < n) throw new Fail("truncated");
+        return this.take(n);
     }
 }
 
