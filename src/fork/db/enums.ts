@@ -17,7 +17,14 @@ export const RUN_STATUSES = ["running", "success", "partial", "failed"] as const
 export const OUTBOX_STATES = ["pending", "delivered", "failed"] as const;
 export const CONSISTENCY_LEVELS = ["crash_consistent_files", "engine_dump", "mixed", "unknown"] as const;
 export const DUMP_FORMATS = ["pg_custom", "pg_directory"] as const;
-export const ARCHIVE_KINDS = ["restic_snapshot", "archive_enc", "archive_plain"] as const;
+/** W10: what a materialized member source covers, how it got there, and its lifecycle (text + CHECK, ADR-004 §5). */
+export const SOURCE_ROLES = ["compose", "env", "bind", "volume", "db"] as const;
+export const SOURCE_ORIGINS = ["discovered", "manual"] as const;
+/** planned = decided but no upstream row yet (docker-access gate); canary = first docker-volume source awaiting its first contact. */
+export const SOURCE_STATUSES = ["planned", "canary", "active", "drifted", "orphaned", "blocked"] as const;
+export const SOURCE_PROBES = ["readable", "unreadable"] as const;
+export const MATERIALIZE_STATES = ["none", "ready", "inventory_changed", "blocked"] as const;
+export const ARCHIVE_KINDS =["restic_snapshot", "archive_enc", "archive_plain"] as const;
 
 export {RP_STATUSES, RP_DOWNGRADE_REASONS, ARTIFACT_PRESENCE};
 

@@ -57,7 +57,7 @@ function build(spec: Spec, ctx: CompletenessContext, accepted: ReadonlySet<strin
 }
 
 /** Path checks common to bind mounts and file hints: hard-unsupported reason, or a system-path/socket directive, or fine. */
-function pathVerdict(path: string, roots: readonly string[]): {unsupported?: ReasonCode; directive?: "docker_socket" | "system_path"} {
+export function pathVerdict(path: string, roots: readonly string[]): {unsupported?: ReasonCode; directive?: "docker_socket" | "system_path"} {
     if (!isSafeAbsPath(path) || normPath(path) === "/") return {unsupported: "denied_path"};
     if (isDockerSocket(path)) return {directive: "docker_socket"};
     if (isSystemPath(path)) return {directive: "system_path"};
