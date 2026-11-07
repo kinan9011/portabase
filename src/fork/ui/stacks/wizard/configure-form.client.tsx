@@ -7,7 +7,7 @@ import * as React from "react";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {activateStackPolicyAction, previewStackPolicyAction} from "@/fork/actions/stack-policy.action";
-import {normalise, type UiResult} from "@/fork/ui/integrations/use-integrations-actions";
+import {normalise, type UiResult} from "./outcome";
 import {CONFIGURE, GENERIC_FAILURE} from "@/fork/ui/labels";
 import {SchedulePicker} from "@/fork/ui/schedule-picker";
 import {type SecretHandle} from "@/fork/ui/secret-input";
@@ -148,7 +148,7 @@ export function ConfigureForm({view, locked}: {view: ConfigureView; locked: bool
                 {!rule.ok && view.channels.length > 0 && <p id="channel-rule" role="note" className="text-sm" data-testid="channel-rule">{T.storage.rule[rule.reason]}</p>}
                 <p className="text-muted-foreground text-xs">{T.storage.deletableNote}</p>
                 <div data-testid="size-estimate">
-                    <h4 className="text-sm font-medium">{T.storage.size.heading}</h4>
+                    <h3 className="text-sm font-medium">{T.storage.size.heading}</h3>
                     <p className="text-sm">{preview.size.bytes !== null ? T.storage.size.known(fmtBytes(preview.size.bytes) ?? "", preview.size.counted) : T.storage.size.unknown}</p>
                     {preview.size.bytes !== null && preview.size.unknown > 0 && <p className="text-muted-foreground text-xs">{T.storage.size.unknownSome(preview.size.unknown)}</p>}
                 </div>

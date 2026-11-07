@@ -63,12 +63,13 @@ export function toActivateInput(st: WizardState, view: ConfigureView, secrets: R
 }
 
 /** SEC-24 at the field, before the server is asked (the server re-checks). */
-export function volumeNameError(name: string, view: Pick<ConfigureView, "volumes">, included: readonly string[]): "volume_name_path_like" | "volume_name_anonymous" | "volume_not_in_inventory" | "already" | null {
+export function volumeNameError(name: string, view: Pick<ConfigureView, "volumes">, included: readonly string[], excluded: readonly string[] = []): "volume_name_path_like" | "volume_name_anonymous" | "volume_not_in_inventory" | "already" | null {
     const n = name.trim();
     if (!VOLUME_NAME_RE.test(n) || n.length > 255) return "volume_name_path_like";
     if (!isAdoptableVolumeName(n)) return "volume_name_anonymous";
     if (!view.volumes.some((v) => v.name === n)) return "volume_not_in_inventory";
-    return included.includes(`volume:${n}`) ? "already" : null;
+    // every discovered volume is part of the backup unless it was left out: adding one that is already in is a no-op, adding a left-out one puts it back
+    return included.includes(`volume:${n}`) || !excluded.includes(`volume:${n}`) ? "already" : null;
 }
 
 export type DbFieldError = {service: string; field: "host" | "port" | "username" | "database" | "path"};

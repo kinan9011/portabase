@@ -97,7 +97,7 @@ export function SchedulePicker({value, onChange, onCronValidity}: {value: Schedu
             </details>
 
             <div data-testid="next-runs">
-                <h4 className="text-sm font-medium">{S.next}</h4>
+                <h3 className="text-sm font-medium">{S.next}</h3>
                 {runs.length === 0 ? <p className="text-muted-foreground text-sm">—</p> : (
                     <ul className="text-sm">
                         {runs.map((r) => <li key={r.toISOString()}>{fmtRun(r, value.timezone)} <span className="text-muted-foreground">({r.toISOString().slice(0, 16).replace("T", " ")} {S.nextUtc})</span></li>)}

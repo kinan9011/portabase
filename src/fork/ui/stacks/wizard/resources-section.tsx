@@ -91,11 +91,11 @@ export function ResourcesSection({view, st, set, preview, serverIssues}: {view: 
     // add docker volume by name (SEC-24, field-level, plain words)
     const [vName, setVName] = React.useState("");
     const [vTouched, setVTouched] = React.useState(false);
-    const vErr = vTouched && vName.trim() !== "" ? volumeNameError(vName, view, st.includedVolumes) : null;
+    const vErr = vTouched && vName.trim() !== "" ? volumeNameError(vName, view, st.includedVolumes, st.excluded) : null;
     const vServer = issuesFor(serverIssues, "volumes");
     const addVolume = () => {
         setVTouched(true);
-        const err = volumeNameError(vName, view, st.includedVolumes);
+        const err = volumeNameError(vName, view, st.includedVolumes, st.excluded);
         if (err) return;
         const key = `volume:${vName.trim()}`;
         set({includedVolumes: [...st.includedVolumes, key], excluded: st.excluded.filter((k) => k !== key)});
@@ -131,7 +131,7 @@ export function ResourcesSection({view, st, set, preview, serverIssues}: {view: 
             )}
 
             <section aria-labelledby={`${id}-manual`} className="flex flex-col gap-3 rounded-lg border p-3" data-testid="manual-sources">
-                <h4 id={`${id}-manual`} className="font-medium">{R.manual.heading}</h4>
+                <h3 id={`${id}-manual`} className="font-medium">{R.manual.heading}</h3>
                 <p className="text-muted-foreground text-xs">{R.manual.intro}</p>
                 {st.manual.length > 0 && (
                     <ul className="flex flex-col gap-1">
@@ -158,7 +158,7 @@ export function ResourcesSection({view, st, set, preview, serverIssues}: {view: 
             </section>
 
             <section aria-labelledby={`${id}-vol`} className="flex flex-col gap-3 rounded-lg border p-3" data-testid="add-volume">
-                <h4 id={`${id}-vol`} className="font-medium">{R.volume.heading}</h4>
+                <h3 id={`${id}-vol`} className="font-medium">{R.volume.heading}</h3>
                 <p id={`${id}-vol-hint`} className="text-muted-foreground text-xs">{R.volume.intro}</p>
                 <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                     <div className="flex flex-col gap-1.5">

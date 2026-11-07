@@ -34,7 +34,7 @@ export function ReviewSection({stackId, preview, blockerList, extraReasons, pend
                 {preview.size.bytes !== null && <p className="text-xs">{CONFIGURE.storage.size.known(fmtBytes(preview.size.bytes) ?? "", preview.size.counted)}</p>}
             </div>
             <section aria-labelledby={`${id}-src`} className="flex flex-col gap-1">
-                <h4 id={`${id}-src`} className="font-medium">{V.sources}</h4>
+                <h3 id={`${id}-src`} className="font-medium">{V.sources}</h3>
                 {preview.sources.length === 0 ? <p className="text-sm">{V.sourcesNone}</p> : (
                     <ul className="text-sm" data-testid="review-sources">{preview.sources.map((s) => <li key={s.name} className="break-all">{s.name}</li>)}</ul>
                 )}
@@ -53,7 +53,7 @@ export function ReviewSection({stackId, preview, blockerList, extraReasons, pend
 
             {reasons.length > 0 && (
                 <section aria-labelledby={`${id}-blk`} data-testid="review-blockers" className={`rounded-lg border p-3 text-sm ${TONE_MAP.warning.panel}`}>
-                    <h4 id={`${id}-blk`} className="font-medium">{V.blockersHeading}</h4>
+                    <h3 id={`${id}-blk`} className="font-medium">{V.blockersHeading}</h3>
                     <ul className="list-disc pl-5">{reasons.map((r) => <li key={r}>{r}</li>)}</ul>
                 </section>
             )}
@@ -66,7 +66,7 @@ export function ReviewSection({stackId, preview, blockerList, extraReasons, pend
 
             {outcome?.kind === "success" && (
                 <section role="status" aria-labelledby={`${id}-ok`} data-testid="activate-success" className={`rounded-lg border p-4 text-sm ${TONE_MAP.success.panel}`}>
-                    <h4 id={`${id}-ok`} className="font-medium">{V.success.title}</h4>
+                    <h3 id={`${id}-ok`} className="font-medium">{V.success.title}</h3>
                     <p>{V.success.body(outcome.result.sources.filter((s) => s.status !== "planned").length, outcome.result.nextRuns[0] ? run(outcome.result.nextRuns[0]) : "—")}</p>
                     {outcome.result.deferred.length > 0 && <p>{V.success.deferred(outcome.result.deferred.length)}</p>}
                     {outcome.result.skipped.length > 0 && <p>{V.success.skipped(outcome.result.skipped.length)}</p>}
@@ -75,7 +75,7 @@ export function ReviewSection({stackId, preview, blockerList, extraReasons, pend
             )}
             {outcome?.kind === "failure" && (
                 <section role="alert" aria-labelledby={`${id}-fail`} data-testid="activate-failure" className={`rounded-lg border p-4 text-sm ${TONE_MAP.danger.panel}`}>
-                    <h4 id={`${id}-fail`} className="font-medium">{V.failure.title}</h4>
+                    <h3 id={`${id}-fail`} className="font-medium">{V.failure.title}</h3>
                     <p>{outcome.message}</p>
                 </section>
             )}
