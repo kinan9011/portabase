@@ -137,6 +137,9 @@ Fork and upstream migrations are forward-only. Take a dump before every deploy /
 (`DATABASE_URL=... scripts/fork/predeploy-dump.sh`); rollback = stop the app, drop + recreate the database, `pg_restore --no-owner`.
 Every PR on the forks needs `[skip-release]` in its title.
 
+## Arcane discovery key
+The fork's Arcane key is list-permissions-only and scoped to ONE environment. Arcane's UI cannot do that and a key made from a user account carries no grants (dashboard then shows `partial`); create it with `scripts/fork/arcane/create-discovery-key.sh` — see `scripts/fork/arcane/README.md` and vault `ADR/ADR-002-arcane-compat` (addendum 2026-11-07).
+
 ## Syncing upstream
 Runbook (vault `03-Upstream-Sync-Runbook`): `git fetch upstream --tags` → branch `sync/upstream-YYYYMMDD` → `scripts/fork/predeploy-dump.sh` → `git merge upstream/main` →
 `FORK_TEST_DATABASE_URL=... bash scripts/fork/sync-gate.sh` (check-patches, typecheck:fork, D31 contract tests, unit + migration-lane integration; prints one PASS/FAIL table) →
