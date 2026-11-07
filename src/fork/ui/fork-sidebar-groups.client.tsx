@@ -1,10 +1,10 @@
 "use client";
 
-import {Layers, LifeBuoy, Plug} from "lucide-react";
+import {Layers, LifeBuoy, Plug, RadioTower} from "lucide-react";
 import {type SidebarGroupItem, SidebarMenuCustomBase } from "@/features/layout/components/menu-sidebar";
 import type {ForkNavGroup} from "@/fork/nav";
 
-const ICONS = {plug: Plug, layers: Layers, "life-buoy": LifeBuoy} as const;
+const ICONS = {plug: Plug, layers: Layers, "life-buoy": LifeBuoy, radio: RadioTower} as const;
 
 /** Reuses upstream `SidebarMenuCustomBase` (no copy, no type change, no badge). */
 export function ForkSidebarNav({groups}: { groups: ForkNavGroup[] }) {

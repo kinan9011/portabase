@@ -51,14 +51,17 @@ describe("sidebar nav model", () => {
         expect(buildForkNav("off", sys)).toEqual([]);
         expect(buildForkNav("locked", sys)).toEqual([]);
     });
-    it("on + system admin WITHOUT an org membership sees only Integrations (stacks.view needs membership)", () => {
+    it("on + system admin WITHOUT an org membership sees Integrations and Agent channel (stacks.view needs membership)", () => {
         const g = buildForkNav("on", sys);
-        expect(g).toEqual([{label: "Stack Recovery", items: [{title: "Integrations", url: "/integrations", iconKey: "plug"}]}]);
+        expect(g).toEqual([{label: "Stack Recovery", items: [
+            {title: "Integrations", url: "/integrations", iconKey: "plug"},
+            {title: "Agent channel", url: "/integrations/agent-channel", iconKey: "radio"},
+        ]}]);
     });
     it("W08: any org member sees Docker Stacks; a system admin who is also a member sees both", () => {
         const stacks = {title: "Docker Stacks", url: "/stacks", iconKey: "layers"};
         for (const orgRole of ["member", "admin", "owner"]) expect(buildForkNav("on", {systemRole: "user", orgRole})).toEqual([{label: "Stack Recovery", items: [stacks]}]);
-        expect(buildForkNav("on", {systemRole: "admin", orgRole: "owner"})[0].items.map((i) => i.title)).toEqual(["Integrations", "Docker Stacks"]);
+        expect(buildForkNav("on", {systemRole: "admin", orgRole: "owner"})[0].items.map((i) => i.title)).toEqual(["Integrations", "Agent channel", "Docker Stacks"]);
     });
     it("pending, non-member users and anonymous see nothing", () => {
         expect(buildForkNav("on", {systemRole: "user"})).toEqual([]);
@@ -69,7 +72,7 @@ describe("sidebar nav model", () => {
         const hidden = FORK_NAV_DEFS.filter((d) => !d.shipped).map((d) => d.title);
         expect(hidden).toEqual(["Recovery"]);
         const titles = buildForkNav("on", {systemRole: "superadmin", orgRole: "owner"}).flatMap((g) => g.items.map((i) => i.title));
-        expect(titles).toEqual(["Integrations", "Docker Stacks"]);
+        expect(titles).toEqual(["Integrations", "Agent channel", "Docker Stacks"]);
     });
     it("model is serialisable (no component functions cross the server/client boundary)", () => {
         expect(JSON.parse(JSON.stringify(buildForkNav("on", sys)))).toEqual(buildForkNav("on", sys));
