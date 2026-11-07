@@ -1087,3 +1087,20 @@ export const KEK_ROTATION = {
     done: (moved: number) => `Rotated. ${moved} stored secret${moved === 1 ? "" : "s"} moved to the new key. Create a new recovery kit now.`,
     errors: {forbidden: "Only a system administrator can do this.", locked: "Configuration is locked until the single-organization check passes.", rate_limited: "Too many attempts. Wait a moment and try again.", step_up_failed: "The password is not correct.", no_password: "This account has no password, so it cannot confirm its identity for this step.", invalid_input: "Enter your password."} as Record<string, string>,
 } as const;
+
+/**
+ * `portabase-recover` step lines (W14b, REVISED-PLAN section 4.3 "plain-language step lines matching labels.ts"). The CLI is a bash script that cannot import
+ * this module, so the lines are repeated there as `S_*` constants; `w14b-recover-static.test.ts` fails if either side drifts. Same sentences the dashboard
+ * uses for the same stages (verification of a recovery point, restore stages).
+ */
+export const RECOVER_STEPS = {
+    kit: "Reading the recovery kit",
+    list: "Looking for recovery points in storage",
+    signature: "Checking the signature on the recovery point",
+    checksums: "Checking every backup file against its recorded checksum",
+    files: "Restoring files and folders",
+    volumes: "Restoring Docker volumes",
+    policy: "Checking the stack's Compose file for risky settings",
+    databases: "Restoring databases",
+    start: "Starting the stack",
+} as const;

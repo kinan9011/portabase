@@ -67,7 +67,7 @@ Restore:
   --root DIR               restore folder (must be empty or missing; default /srv/portabase-restore/<stack>)
   --project-name NAME      compose project name for the restored stack (default: the original)
   --allow-privileged=SVC   allow the risky Compose settings of this ONE service (or type ALLOW <svc> when asked)
-  --helper-image IMAGE     image used to unpack volumes (default: alpine, by digest)
+  --helper-image IMAGE     image used to unpack volumes (default: busybox, by digest)
   --yes                    required for restore
   --deep                   (plan) also download and verify every archive
   --keep-work              keep the temporary work folder (it holds secrets: delete it yourself)
@@ -79,7 +79,7 @@ EOF
 # ------------------------------------------------------------------ option parsing
 CMD="plan"; KIT_FILE=""; PAPER_FILE=""; PASS_FILE=""; CHANNEL=""; RCLONE_CFG=""; STORAGE_ROOT=""; FOLDER="backups"
 STACK=""; RP=""; MIN_SEQ=""; ROOT=""; PROJECT=""; YES=0; DEEP=0; KEEP=0; NOSTORAGECHECK=0
-HELPER_IMAGE="${PORTABASE_RECOVER_HELPER_IMAGE:-docker.io/library/alpine@sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff4511df3ef88c}"
+HELPER_IMAGE="${PORTABASE_RECOVER_HELPER_IMAGE:-docker.io/library/busybox@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4}"
 ALLOW_SVCS=()
 CHANNEL_RE='^[A-Za-z0-9._ -]{1,128}$'
 ROOT_RE='^[A-Za-z0-9._-]+:[A-Za-z0-9._/@+=, -]*$'
@@ -335,6 +335,7 @@ fetch_artifact() {  # i -> prepared in $W/art/<i>: kind-specific; hard stops on 
         decrypt_archive --plain "${args[@]}" "$d/object" "$d/plain.tar.gz" >"$W/da.out" 2>"$W/da.err" || hard "artifact $i failed verification: $(sed -e 's/^decrypt-archive: FAILED: //' "$W/da.err" | head -c 200)"
       fi
       note "artifact $i ok ($(art_label "$i" | head -c 80)): $(cut -d' ' -f1,2 "$W/da.out")"; rm -f -- "$d/object"
+      if [ "$(art_role "$i")" = db ] && [ "$(art "$i" engine)" = postgresql ]; then check_pg_dump "$i"; fi
       ;;
     restic_snapshot)
       local gid snap; gid="$(art "$i" generated_id)"; snap="$loc"
@@ -342,13 +343,31 @@ fetch_artifact() {  # i -> prepared in $W/art/<i>: kind-specific; hard stops on 
       derive_pw "portabase/restic/v1/$gid" "$d/pw"
       rs "restic/$gid" "$d/pw" cat config >/dev/null 2>"$W/restic.err" || die 1 "cannot open the restic repository of artifact $i ($(head -c 160 "$W/restic.err" | tr '\n' ' '))"
       rs "restic/$gid" "$d/pw" restore "$snap" --target "$d/stage" >/dev/null 2>"$W/restic.err" || hard "artifact $i: restic restore/verification failed ($(head -c 160 "$W/restic.err" | tr '\n' ' '))"
-      local p; p="$(rs "restic/$gid" "$d/pw" snapshots --json "$snap" 2>/dev/null | jq -er '.[0].paths[0]')" || hard "artifact $i: cannot read the snapshot path"
-      [[ $p == /* ]] && [[ $p != *..* ]] && [ -d "$d/stage$p" ] || hard "artifact $i: unexpected snapshot layout"
-      printf '%s' "$d/stage$p" >"$d/content-root"
+      local p root; p="$(rs "restic/$gid" "$d/pw" snapshots --json "$snap" 2>/dev/null | jq -er '.[0].paths[0]')" || hard "artifact $i: cannot read the snapshot path"
+      [[ $p == /* ]] && [[ $p != *..* ]] || hard "artifact $i: unexpected snapshot layout"
+      # restic >= 0.17 restores a single-path snapshot's CONTENT at the target; older versions recreate the absolute path: accept both, never guess
+      local first="${p#/}"; first="${first%%/*}"; root="$d/stage"
+      if [ -d "$d/stage$p" ] && [ "$(find "$d/stage" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ] && [ -e "$d/stage/$first" ]; then root="$d/stage$p"; fi
+      printf '%s' "$root" >"$d/content-root"
       note "artifact $i ok (restic snapshot ${snap:0:12})"
       ;;
     *) hard "artifact $i: unknown archive kind";;
   esac
+}
+
+# a PostgreSQL archive holds exactly one dump: -Fc = one PGDMP file, -Fd = one inner .tar.gz (agent: backup.rs); sniffed, compared to the signed manifest, inner archive audited too
+check_pg_dump() {
+  local i=$1 d="$W/art/$1" f dk want
+  untar_into "$d/plain.tar.gz" "$d/dump"
+  f="$(find "$d/dump" -type f | head -2)"; [ -n "$f" ] && [ "$(printf '%s\n' "$f" | wc -l)" -eq 1 ] || hard "artifact $i: expected exactly one dump file inside the archive"
+  dk="$(dump_kind "$f")"; want="$(art "$i" dump_format)"
+  [ "$dk" != unknown ] || hard "artifact $i: the dump is neither PostgreSQL custom nor directory format"
+  [ -z "$want" ] || [ "$want" = "$dk" ] || hard "artifact $i: dump format ($dk) differs from the signed manifest ($want)"
+  if [ "$dk" = pg_directory ]; then
+    decrypt_archive --plain --audit-tar "$f" "$d/inner.tar.gz" >/dev/null 2>"$W/da.err" || hard "artifact $i: the inner -Fd archive failed verification: $(sed -e 's/^decrypt-archive: FAILED: //' "$W/da.err" | head -c 200)"
+    f="$d/inner.tar.gz"
+  fi
+  printf '%s' "$f" >"$d/dump-file"; printf '%s' "$dk" >"$d/dump-kind"
 }
 
 fetch_all() {
@@ -409,7 +428,7 @@ safe_root() {
   [[ $ROOT == /* ]] || die 2 "--root must be an absolute path"
   local r; r="$(realpath -m -- "$ROOT")"
   case "$r" in /|/bin|/boot|/dev|/etc|/home|/lib*|/proc|/root|/run|/sbin|/sys|/usr|/var|/opt|/srv|/tmp) die 2 "--root is too broad: $r";; esac
-  if [ -e "$r" ]; then [ -d "$r" ] && [ -z "$(ls -A -- "$r")" ] || die 1 "restore folder $r is not empty; choose an empty or new folder"; fi
+  if [ -e "$r" ]; then [ -d "$r" ] && [ -z "$(find "$r" -mindepth 1 -maxdepth 1 -print -quit)" ] || die 1 "restore folder $r is not empty; choose an empty or new folder"; fi
   # the unwrapped kit must never live inside the restore root (a compose file could read it)
   local k; for k in "$KIT_FILE" "$PAPER_FILE" "$PASS_FILE" "$RCLONE_CFG"; do
     [ -z "$k" ] || { case "$(realpath -m -- "$k")" in "$r"/*) die 1 "your kit/credential file is inside the restore folder: move it elsewhere first";; esac; }
@@ -563,7 +582,7 @@ dump_kind() {  # file -> pg_custom | pg_directory | unknown
 
 restore_databases() {
   step "$S_DBS"
-  local i n role eng label svc dk want f d="" any=0; n="$(jq '.artifacts|length' "$MANIFEST")"
+  local i n eng label svc dk f d="" any=0; n="$(jq '.artifacts|length' "$MANIFEST")"
   for ((i = 0; i < n; i++)); do
     [ "$(art_role "$i")" = db ] || continue; any=1
     eng="$(art "$i" engine)"; label="$(art_label "$i")"; svc="$label"
@@ -577,11 +596,7 @@ restore_databases() {
         warn "$eng dump '$svc' unpacked to $RESTORE_ROOT/databases/$svc: this tool only restores PostgreSQL automatically - import it with your engine's own tools"; continue;;
     esac
     jq -e --arg s "$svc" '.services[$s]' "$W/compose.json" >/dev/null 2>&1 || { warn "database '$svc' is not a service of the restored stack; dump kept in $RESTORE_ROOT/databases/$svc"; install -d -m 0755 -- "$RESTORE_ROOT/databases/$svc"; untar_into "$W/art/$i/plain.tar.gz" "$RESTORE_ROOT/databases/$svc"; continue; }
-    d="$W/art/$i/dump"; untar_into "$W/art/$i/plain.tar.gz" "$d"
-    f="$(find "$d" -type f | head -2)"; [ "$(printf '%s\n' "$f" | wc -l)" -eq 1 ] && [ -n "$f" ] || hard "artifact $i: expected exactly one dump file inside the archive"
-    dk="$(dump_kind "$f")"; want="$(art "$i" dump_format)"
-    [ "$dk" != unknown ] || hard "artifact $i: the dump is neither PostgreSQL custom nor directory format"
-    [ -z "$want" ] || [ "$want" = "$dk" ] || hard "artifact $i: dump format ($dk) differs from the signed manifest ($want)"
+    d="$W/art/$i"; f="$(cat "$d/dump-file")"; dk="$(cat "$d/dump-kind")"
     note "postgres dump '$svc': $dk"
     dc up -d --no-deps -- "$svc" >/dev/null 2>"$W/up.err" || die 1 "could not start database service $svc: $(head -c 200 "$W/up.err" | tr '\n' ' ')"
     local tries=0
@@ -592,8 +607,7 @@ restore_databases() {
     if [ "$dk" = pg_custom ]; then
       dc exec -T -- "$svc" sh -c "$rsql; pg_restore -U \"\$u\" -d \"\$db\" --no-owner --clean --if-exists" <"$f" >"$W/pgr.out" 2>"$W/pgr.err" || die 1 "pg_restore reported errors for $svc: $(head -c 300 "$W/pgr.err" | tr '\n' ' ')"
     else
-      decrypt_archive --plain --audit-tar "$f" "$d/inner.tar.gz" >/dev/null 2>"$W/da.err" || hard "artifact $i: the inner -Fd archive failed verification: $(sed -e 's/^decrypt-archive: FAILED: //' "$W/da.err" | head -c 200)"
-      dc exec -T -- "$svc" sh -c "$rsql; t=\$(mktemp -d) && tar -xzf - -C \"\$t\" && pg_restore -U \"\$u\" -d \"\$db\" --no-owner --clean --if-exists \"\$t\"; rc=\$?; rm -rf \"\$t\"; exit \$rc" <"$d/inner.tar.gz" >"$W/pgr.out" 2>"$W/pgr.err" || die 1 "pg_restore (-Fd) reported errors for $svc: $(head -c 300 "$W/pgr.err" | tr '\n' ' ')"
+      dc exec -T -- "$svc" sh -c "$rsql; t=\$(mktemp -d) && tar -xzf - -C \"\$t\" && pg_restore -U \"\$u\" -d \"\$db\" --no-owner --clean --if-exists \"\$t\"; rc=\$?; rm -rf \"\$t\"; exit \$rc" <"$f" >"$W/pgr.out" 2>"$W/pgr.err" || die 1 "pg_restore (-Fd) reported errors for $svc: $(head -c 300 "$W/pgr.err" | tr '\n' ' ')"
     fi
     note "database $svc restored ($dk)"
   done
