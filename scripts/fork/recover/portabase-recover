@@ -1,0 +1,654 @@
+#!/usr/bin/env bash
+# portabase-recover (W14b, D26) - restore a Portabase stack on a clean host from STORAGE + the verified RECOVERY KIT alone. No dashboard, no fork agent.
+#
+#   portabase-recover [plan]  ...   read-only: verify the signed manifest, show what a restore would do (add --deep to download + check every archive)
+#   portabase-recover verify-kit ...  prove the kit opens a repository and print the code to type into the dashboard (D41)
+#   portabase-recover list ...      stacks and recovery points found in storage (tags only: nothing is verified by `list`)
+#   portabase-recover restore --yes ...  full restore: verify -> download+check everything -> files -> volumes -> compose policy -> databases -> up
+#
+# Guide: docs/fork/my-server-died.md (linked from the kit). Hard stops (exit 3) are never overridable: bad signature, wrong checksum, failed
+# archive authentication, rolled-back manifest. Policy refusals (exit 4) can be overridden per service only. Exit: 0 ok, 1 error, 2 usage, 3 hard stop,
+# 4 policy refusal, 5 missing prerequisite.
+# Hardening: every manifest-derived string is validated against an allow-list, passed quoted in arrays after `--`, never to eval; secrets live in 0600
+# files inside a 0700 work dir (never on argv, never printed); nothing on the host changes before every download passed every check.
+set -Eeuo pipefail
+umask 077
+export LC_ALL=C
+
+readonly VERSION="1.0.0"
+readonly GUIDE_URL="docs/fork/my-server-died.md in the Portabase fork (https://github.com/kinan9011/portabase)"
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+HERE="$(dirname -- "$SELF")"
+readonly SELF HERE
+# helper scripts ship next to this one; run isolated (-I: ignore PYTHON* env and the script directory)
+decrypt_archive() { python3 -I "$HERE/decrypt-archive" "$@"; }
+kit_tool() { python3 -I "$HERE/kit-tool" "$@"; }
+
+# ---- plain-language step lines (kept in sync with src/fork/ui/labels.ts RECOVER_STEPS by a unit test) ----
+readonly S_SIG="Checking the signature on the recovery point"
+readonly S_SUMS="Checking every backup file against its recorded checksum"
+readonly S_FILES="Restoring files and folders"
+readonly S_VOLS="Restoring Docker volumes"
+readonly S_POLICY="Checking the stack's Compose file for risky settings"
+readonly S_DBS="Restoring databases"
+readonly S_UP="Starting the stack"
+readonly S_LIST="Looking for recovery points in storage"
+readonly S_KIT="Reading the recovery kit"
+
+die() { local code=$1; shift; printf 'portabase-recover: %s\n' "$*" >&2; exit "$code"; }
+hard() { printf 'portabase-recover: STOP (cannot be overridden): %s\n' "$*" >&2; exit 3; }
+step() { printf '\n== %s\n' "$*"; }
+note() { printf '   %s\n' "$*"; }
+warn() { printf '   WARNING: %s\n' "$*" >&2; }
+
+usage() {
+  cat <<EOF
+portabase-recover $VERSION - restore a stack from storage + the recovery kit (no dashboard needed)
+
+Usage:
+  portabase-recover [plan] [options]        show the recovery plan (read-only; --deep also downloads and checks every file)
+  portabase-recover verify-kit [options]    open the repository with the kit and print the code for the dashboard
+  portabase-recover list [options]          list stacks and recovery points found in storage
+  portabase-recover restore --yes [options] restore the stack
+  portabase-recover help
+
+Kit (one of):
+  --kit FILE               digital kit (.pbkit); passphrase from --passphrase-file FILE or typed (hidden)
+  --paper-file FILE        the key lines you retyped from the paper kit
+Storage (digital kits carry their own credentials; for a paper kit you must give them):
+  --channel NAME           storage channel to use from the kit (default: the only one with credentials)
+  --rclone-config FILE --storage-root REMOTE:PATH   use your own rclone config; PATH = the bucket (or folder) that holds the backup folder
+  --folder NAME            backup folder inside the storage (default: backups)
+What to recover:
+  --stack ID               stack id (default: the only stack in storage)
+  --rp ID                  recovery point id (default: the newest)
+  --min-sequence N         refuse a recovery point older than N (rollback guard; take N from the dashboard)
+Restore:
+  --root DIR               restore folder (must be empty or missing; default /srv/portabase-restore/<stack>)
+  --project-name NAME      compose project name for the restored stack (default: the original)
+  --allow-privileged=SVC   allow the risky Compose settings of this ONE service (or type ALLOW <svc> when asked)
+  --helper-image IMAGE     image used to unpack volumes (default: alpine, by digest)
+  --yes                    required for restore
+  --deep                   (plan) also download and verify every archive
+  --keep-work              keep the temporary work folder (it holds secrets: delete it yourself)
+
+Prerequisites (Debian/Ubuntu): see the guide - $GUIDE_URL
+EOF
+}
+
+# ------------------------------------------------------------------ option parsing
+CMD="plan"; KIT_FILE=""; PAPER_FILE=""; PASS_FILE=""; CHANNEL=""; RCLONE_CFG=""; STORAGE_ROOT=""; FOLDER="backups"
+STACK=""; RP=""; MIN_SEQ=""; ROOT=""; PROJECT=""; YES=0; DEEP=0; KEEP=0; NOSTORAGECHECK=0
+HELPER_IMAGE="${PORTABASE_RECOVER_HELPER_IMAGE:-docker.io/library/alpine@sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff4511df3ef88c}"
+ALLOW_SVCS=()
+CHANNEL_RE='^[A-Za-z0-9._ -]{1,128}$'
+ROOT_RE='^[A-Za-z0-9._-]+:[A-Za-z0-9._/@+=, -]*$'
+parse_args() {
+  if [ $# -gt 0 ]; then case "$1" in plan|verify-kit|list|restore) CMD=$1; shift;; help|-h|--help) usage; exit 0;; esac; fi
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --kit) KIT_FILE=${2:?}; shift 2;;
+      --paper-file) PAPER_FILE=${2:?}; shift 2;;
+      --passphrase-file) PASS_FILE=${2:?}; shift 2;;
+      --channel) CHANNEL=${2:?}; shift 2;;
+      --rclone-config) RCLONE_CFG=${2:?}; shift 2;;
+      --storage-root) STORAGE_ROOT=${2:?}; shift 2;;
+      --folder) FOLDER=${2:?}; shift 2;;
+      --stack) STACK=${2:?}; shift 2;;
+      --rp) RP=${2:?}; shift 2;;
+      --min-sequence) MIN_SEQ=${2:?}; shift 2;;
+      --root) ROOT=${2:?}; shift 2;;
+      --project-name) PROJECT=${2:?}; shift 2;;
+      --helper-image) HELPER_IMAGE=${2:?}; shift 2;;
+      --allow-privileged=*) ALLOW_SVCS+=("${1#*=}"); shift;;
+      --yes) YES=1; shift;;
+      --deep) DEEP=1; shift;;
+      --keep-work) KEEP=1; shift;;
+      --no-storage-check) NOSTORAGECHECK=1; shift;;
+      -h|--help|help) usage; exit 0;;
+      --) shift; break;;
+      *) usage >&2; die 2 "unknown option: $1";;
+    esac
+  done
+  [ -z "$KIT_FILE" ] || [ -z "$PAPER_FILE" ] || die 2 "use --kit OR --paper-file, not both"
+  [ -n "$KIT_FILE$PAPER_FILE" ] || die 2 "give the recovery kit: --kit FILE or --paper-file FILE (see: portabase-recover help)"
+  [ -z "$MIN_SEQ" ] || [[ $MIN_SEQ =~ ^[0-9]{1,12}$ ]] || die 2 "--min-sequence must be a number"
+  [ -z "$STACK" ] || [[ $STACK =~ ^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$ ]] || die 2 "--stack must be a stack id (uuid)"
+  [ -z "$RP" ] || [ "$RP" = latest ] || [[ $RP =~ ^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$ ]] || die 2 "--rp must be a recovery point id (uuid) or 'latest'"
+  [[ $FOLDER =~ ^[A-Za-z0-9._-]{1,128}$ ]] || die 2 "--folder has unexpected characters"
+  [ -z "$PROJECT" ] || [[ $PROJECT =~ ^[a-z0-9][a-z0-9_-]{0,127}$ ]] || die 2 "--project-name must be lowercase letters, digits, - or _"
+  [ -z "$CHANNEL" ] || [[ $CHANNEL =~ $CHANNEL_RE ]] || die 2 "--channel has unexpected characters"
+  local s; for s in "${ALLOW_SVCS[@]+"${ALLOW_SVCS[@]}"}"; do [[ $s =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]] || die 2 "--allow-privileged service name has unexpected characters"; done
+  if [ "$CMD" = restore ] && [ "$YES" != 1 ]; then die 2 "restore changes this machine: run plan first, then add --yes"; fi
+  return 0
+}
+
+# ------------------------------------------------------------------ prerequisites
+need() { command -v "$1" >/dev/null 2>&1 || die 5 "missing prerequisite: $1 (see the guide: $GUIDE_URL)"; }
+check_prereqs() {
+  [ "${BASH_VERSINFO[0]}" -ge 4 ] || die 5 "bash 4 or newer is required"
+  need openssl; need jq; need python3; need restic; need rclone; need sha256sum; need tar; need df
+  local v major
+  v="$(openssl version 2>/dev/null | awk '{print $2}')"; major="${v%%.*}"
+  [[ $major =~ ^[0-9]+$ ]] && [ "$major" -ge 3 ] || die 5 "OpenSSL 3.0 or newer is required (found: ${v:-unknown}); refusing to run"
+  python3 -I -c 'import cryptography.hazmat.primitives.ciphers.aead' 2>/dev/null || die 5 "python3 'cryptography' module missing: sudo apt install python3-cryptography"
+  if [ "$CMD" = restore ] || { [ "$CMD" = plan ] && [ "$DEEP" = 1 ]; }; then
+    python3 -I -c 'import yaml' 2>/dev/null || die 5 "python3 'yaml' module missing: sudo apt install python3-yaml"
+  fi
+  if [ "$CMD" = restore ]; then
+    need docker
+    docker compose version >/dev/null 2>&1 || die 5 "docker compose plugin missing (version 2.24 or newer)"
+    local cv; cv="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
+    [[ $cv =~ ^([0-9]+)\.([0-9]+) ]] || die 5 "cannot read the docker compose version"
+    { [ "${BASH_REMATCH[1]}" -gt 2 ] || { [ "${BASH_REMATCH[1]}" -eq 2 ] && [ "${BASH_REMATCH[2]}" -ge 24 ]; }; } || die 5 "docker compose 2.24 or newer is required (found $cv)"
+  fi
+}
+
+# ------------------------------------------------------------------ work dir and cleanup
+W=""
+cleanup() { local rc=$?; if [ -n "$W" ] && [ -d "$W" ]; then if [ "$KEEP" = 1 ]; then printf 'work folder kept (contains secrets): %s\n' "$W" >&2; else rm -rf -- "$W"; fi; fi; return $rc; }
+mkwork() { W="$(mktemp -d "${TMPDIR:-/tmp}/portabase-recover.XXXXXXXX")"; chmod 700 "$W"; mkdir -p "$W/man" "$W/art" "$W/cache"; trap cleanup EXIT; trap 'exit 130' INT TERM; }
+
+# ------------------------------------------------------------------ kit
+KIT_JSON=""; MASTER_B64=""; KIT_TYPE=""
+load_kit() {
+  step "$S_KIT"
+  KIT_JSON="$W/kit.json"; MASTER_B64="$W/master.b64"
+  if [ -n "$KIT_FILE" ]; then
+    [ -f "$KIT_FILE" ] && [ ! -L "$KIT_FILE" ] || die 1 "kit file not found: $KIT_FILE"
+    local pf="$PASS_FILE"
+    if [ -z "$pf" ]; then
+      [ -r /dev/tty ] || die 2 "no terminal to ask for the passphrase: use --passphrase-file FILE"
+      pf="$W/pass"; local p
+      read -r -s -p "Kit passphrase (typing is hidden): " p </dev/tty >/dev/tty 2>&1 || die 1 "no passphrase entered"
+      printf '\n' >/dev/tty; printf '%s\n' "$p" >"$pf"; unset p
+    fi
+    kit_tool unwrap --kit "$KIT_FILE" --passphrase-file "$pf" --out "$KIT_JSON" >/dev/null || die 1 "could not open the digital kit (wrong passphrase or damaged file)"
+    KIT_TYPE=digital
+  else
+    [ -f "$PAPER_FILE" ] && [ ! -L "$PAPER_FILE" ] || die 1 "paper lines file not found: $PAPER_FILE"
+    kit_tool paper --lines-file "$PAPER_FILE" --out "$KIT_JSON" || die 1 "the paper lines are not valid (see the message above)"
+    KIT_TYPE=paper
+  fi
+  kit_tool export-master --kit-json "$KIT_JSON" --out "$MASTER_B64"
+  note "kit type: $KIT_TYPE"
+}
+
+# ------------------------------------------------------------------ storage
+RC_CONF=""; ROOT_REMOTE=""   # ROOT_REMOTE = rclone path of the bucket/folder that CONTAINS the backup folder
+setup_storage() {
+  RC_CONF="$W/rclone.conf"
+  if [ -n "$RCLONE_CFG" ]; then
+    [ -f "$RCLONE_CFG" ] || die 1 "rclone config not found"; [ -n "$STORAGE_ROOT" ] || die 2 "--rclone-config needs --storage-root REMOTE:PATH"
+    [[ $STORAGE_ROOT =~ $ROOT_RE ]] || die 2 "--storage-root must look like REMOTE:PATH"
+    cp -- "$RCLONE_CFG" "$RC_CONF"; chmod 600 "$RC_CONF"; ROOT_REMOTE="${STORAGE_ROOT%/}"; return 0
+  fi
+  [ "$KIT_TYPE" = digital ] || return 1
+  local names pick="" n
+  mapfile -t names < <(kit_tool storage --kit-json "$KIT_JSON" | jq -r 'select(.wrapped) | .name')
+  if [ -n "$CHANNEL" ]; then pick="$CHANNEL"; elif [ "${#names[@]}" -eq 1 ]; then pick="${names[0]}"; else return 1; fi
+  for n in "${names[@]}"; do [ "$n" = "$pick" ] && break; n=""; done
+  [ -n "$n" ] || die 1 "the kit has no stored credentials for channel '$pick'"
+  kit_tool unwrap-creds --kit-json "$KIT_JSON" --channel "$pick" --out "$W/creds.json" >/dev/null || die 1 "could not unwrap the storage credentials"
+  local provider; provider="$(kit_tool storage --kit-json "$KIT_JSON" | jq -r --arg n "$pick" 'select(.name==$n) | .provider')"
+  case "$provider" in
+    s3)
+      # same mapping the dashboard uses (src/features/channel/components/storages/rclone/target.ts)
+      jq -er '"[pbrecover]\ntype = s3\nprovider = Other\naccess_key_id = \(.accessKey)\nsecret_access_key = \(.secretKey)\nendpoint = \(if (.ssl // true) then "https" else "http" end)://\(.endPointUrl)\(if .port then ":" + (.port|tostring) else "" end)\nregion = \((.region // "") | if . == "" then "us-east-1" else . end)\nforce_path_style = true\nno_check_bucket = true\n"' "$W/creds.json" >"$RC_CONF" || die 1 "storage credentials have an unexpected shape"
+      ROOT_REMOTE="pbrecover:$(jq -er '.bucketName' "$W/creds.json")";;
+    rclone)
+      jq -er '.configText' "$W/creds.json" >"$RC_CONF" || die 1 "storage credentials have an unexpected shape"
+      ROOT_REMOTE="$(jq -er '"\(.remoteName):\(.remotePath // "")"' "$W/creds.json")";;
+    *) die 1 "storage provider '$provider' is not built into this tool: give your own --rclone-config and --storage-root";;
+  esac
+  chmod 600 "$RC_CONF"; rm -f -- "$W/creds.json"
+}
+need_storage() { [ -n "$ROOT_REMOTE" ] || die 1 "no storage access: a paper kit holds no credentials - add --rclone-config FILE --storage-root REMOTE:PATH"; }
+
+rc() { rclone --config "$RC_CONF" "$@"; }
+# restic against a repo path (REL under $ROOT_REMOTE/$FOLDER), password file given. Read-only identity friendly (--no-lock).
+rs() { local repo=$1 pwf=$2; shift 2; RESTIC_PASSWORD_FILE="$pwf" RCLONE_CONFIG="$RC_CONF" restic -r "rclone:$ROOT_REMOTE/$FOLDER/$repo" --no-lock --cache-dir "$W/cache" "$@"; }
+derive_pw() { local info=$1 out=$2; [ -f "$out" ] || kit_tool derive --kit-json "$KIT_JSON" --info "$info" --out "$out"; }
+
+# ------------------------------------------------------------------ manifest repo (list, select, verify)
+UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+list_stacks() { rc lsf --dirs-only -- "$ROOT_REMOTE/$FOLDER/fork-manifest" 2>/dev/null | sed 's|/$||' | grep -E "$UUID_RE" || true; }
+manifest_pw() { derive_pw "portabase-fork/manifest/v1/$1" "$W/pw-manifest-$1"; printf '%s' "$W/pw-manifest-$1"; }
+# snapshots of a stack as lines: "<id> <rp> <seq>" (tags only; NOT verified)
+list_rps() {
+  local stack=$1 pw; pw="$(manifest_pw "$stack")"
+  rs "fork-manifest/$stack" "$pw" snapshots --json --tag fork-manifest 2>/dev/null \
+    | jq -r '.[] | . as $s | ([$s.tags[]? | select(startswith("rp:")) | .[3:]] | first) as $rp | ([$s.tags[]? | select(startswith("seq:")) | .[4:]] | first) as $q
+        | select($s.id|test("^[0-9a-f]{64}$")) | select($rp|type=="string" and test("^[0-9a-f-]{36}$")) | select($q|type=="string" and test("^[0-9]{1,12}$")) | "\($s.id) \($rp) \($q)"'
+}
+pick_stack() {
+  local s; local -a all; mapfile -t all < <(list_stacks)
+  if [ -n "$STACK" ]; then STACK="${STACK,,}"; printf '%s\n' "${all[@]+"${all[@]}"}" | grep -qx "$STACK" || die 1 "stack $STACK not found in storage"; return 0; fi
+  [ "${#all[@]}" -ge 1 ] || die 1 "no stack found in storage (check the storage root and folder)"
+  [ "${#all[@]}" -eq 1 ] || { printf 'Several stacks found; pass --stack:\n' >&2; for s in "${all[@]}"; do printf '  %s\n' "$s" >&2; done; exit 2; }
+  STACK="${all[0]}"
+}
+
+SNAP=""; MAN="$W/man"; MANIFEST=""; SEQ=""; RPID=""; MAXSEQ=""
+select_and_verify_manifest() {
+  step "$S_SIG"
+  local lines pwf; lines="$(list_rps "$STACK")"; pwf="$(manifest_pw "$STACK")"
+  [ -n "$lines" ] || die 1 "no recovery point found for stack $STACK"
+  MAXSEQ="$(printf '%s\n' "$lines" | awk '{print $3}' | sort -n | tail -1)"
+  local row
+  if [ -z "$RP" ] || [ "$RP" = latest ]; then row="$(printf '%s\n' "$lines" | sort -k3,3n | tail -1)"
+  else RP="${RP,,}"; row="$(printf '%s\n' "$lines" | awk -v r="$RP" '$2==r' | sort -k3,3n | tail -1)"; [ -n "$row" ] || die 1 "recovery point $RP not found for this stack"; fi
+  SNAP="${row%% *}"; local rest="${row#* }"; RPID="${rest%% *}"; SEQ="${rest##* }"
+  MAN="$W/man/x-$SNAP"; mkdir -p "$MAN"
+  rs "fork-manifest/$STACK" "$pwf" cat config >/dev/null 2>"$W/restic.err" || die 1 "could not open the manifest repository (wrong key or storage?): $(head -c 160 "$W/restic.err" | tr '\n' ' ')"
+  rs "fork-manifest/$STACK" "$pwf" restore "$SNAP" --target "$MAN" >/dev/null 2>"$W/restic.err" || die 1 "could not read the manifest from storage ($(head -c 200 "$W/restic.err" | tr '\n' ' '))"
+  local f found; for f in manifest.json manifest.json.sig signing-key.pub.pem; do
+    found="$(find "$MAN" -type f -name "$f" ! -type l)"
+    [ -n "$found" ] && [ "$(printf '%s\n' "$found" | wc -l)" -eq 1 ] || hard "manifest snapshot must hold exactly one $f"
+    cp -- "$found" "$W/man/$SNAP.$f"
+  done
+  MAN="$W/man"; local m="$W/man/$SNAP"
+  [ "$(stat -c %s "$m.manifest.json")" -le 2097152 ] || hard "manifest is larger than the 2 MiB limit"
+  MANIFEST="$m.manifest.json"
+  # 1) which key? kid from the manifest bytes, trust ONLY the kit (its PEM, or for paper the SHA-256 typed from paper + the key copy in storage)
+  local kid; kid="$(jq -er '.kid' "$MANIFEST" 2>/dev/null)" || hard "manifest has no key id"
+  [[ $kid =~ ^[0-9a-f]{12}$ ]] || hard "manifest key id is malformed"
+  mkdir -p "$W/anchors"
+  local akid fp state pem="" got_fp=""
+  # shellcheck disable=SC2034  # state is part of the kit-tool line format
+  while read -r akid fp state pem; do
+    [ "$akid" = "$kid" ] || continue
+    if [ "$pem" = "-" ]; then pem="$m.signing-key.pub.pem"; fi
+    got_fp="$(openssl pkey -pubin -in "$pem" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')"
+    [ -n "$got_fp" ] && [ "$got_fp" = "$fp" ] || hard "the signing key in storage does not match the fingerprint in your kit (key id $kid)"
+    break
+  done < <(kit_tool anchors --kit-json "$KIT_JSON" --dir "$W/anchors")
+  [ -n "$got_fp" ] || hard "the manifest is signed by key $kid, which is not in your recovery kit (unknown signer)"
+  # 2) the signature itself: plain openssl, exactly as documented (ADR-013 section 2)
+  openssl dgst -sha256 -verify "$pem" -signature "$m.manifest.json.sig" "$MANIFEST" >"$W/openssl.out" 2>&1 || hard "the signature on the recovery point is NOT valid (forged or damaged manifest)"
+  note "signature valid (key $kid)"
+  validate_manifest
+  # 3) bindings
+  [ "$(jq -r '.rp.stack_id' "$MANIFEST")" = "$STACK" ] || hard "the manifest belongs to a different stack"
+  [ "$(jq -r '.rp.id' "$MANIFEST")" = "$RPID" ] || hard "the manifest belongs to a different recovery point than its storage tag"
+  [ "$(jq -r '.rp.sequence' "$MANIFEST")" = "$SEQ" ] || hard "the manifest sequence differs from its storage tag"
+  if [ -n "$MIN_SEQ" ] && [ "$SEQ" -lt "$MIN_SEQ" ]; then hard "rolled-back recovery point: sequence $SEQ is older than the minimum you gave ($MIN_SEQ)"; fi
+  if [ "$SEQ" -lt "$MAXSEQ" ]; then warn "this is an OLDER recovery point (sequence $SEQ; storage also holds sequence $MAXSEQ). You asked for it explicitly."; fi
+  note "recovery point $RPID, sequence $SEQ, taken $(jq -r '.rp.verified_at' "$MANIFEST")"
+}
+
+# strict schema + allow-list validation of every manifest field the CLI will use (all strings are untrusted)
+validate_manifest() {
+  jq -e '
+    def hex64: type=="string" and test("^[0-9a-f]{64}$");
+    def uuid: type=="string" and test("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+    def src: type=="string" and test("^(bind|manual|compose|volume|db): [A-Za-z0-9._@+=,:/ -]{1,1000}$") and (test("\\.\\.") | not);
+    (keys - ["manifest_version","kid","signed_at","rp","artifacts","inventory"] | length==0) and .manifest_version==1
+    and (.rp | (.id|uuid) and (.stack_id|uuid) and (.sequence|type=="number" and .>=1 and .==floor) and (.stack_name|type=="string"))
+    and (.artifacts|type=="array" and length<=2000)
+    and all(.artifacts[]; (.source_name|src) and (.engine|type=="string" and test("^[a-z0-9-]{1,64}$"))
+        and (.archive_kind|IN("restic_snapshot","archive_enc","archive_plain"))
+        and (.dump_format|IN(null,"pg_custom","pg_directory"))
+        and (.location==null or (.location|type=="string" and test("^[A-Za-z0-9._@+=,:/-]{1,1024}$") and (test("\\.\\.")|not) and (startswith("/")|not)))
+        and (.generated_id==null or (.generated_id|type=="string" and test("^[A-Za-z0-9_-]{1,128}$")))
+        and (.ciphertext_sha256==null or (.ciphertext_sha256|hex64)) and (.plaintext_sha256==null or (.plaintext_sha256|hex64))
+        and (.plaintext_size==null or (.plaintext_size|type=="number" and .>=0 and .==floor)) and (.required|type=="boolean"))
+    and (.inventory==null or (.inventory.stack.compose_project|test("^[a-z0-9][a-z0-9_-]{0,127}$")))
+  ' "$MANIFEST" >/dev/null || hard "the signed manifest does not have the expected shape (refusing to use it)"
+}
+
+# ------------------------------------------------------------------ artifacts
+art() { jq -r ".artifacts[$1].$2 // empty" "$MANIFEST"; }   # $1 is always a loop integer
+art_role() { local sn; sn="$(art "$1" source_name)"; printf '%s' "${sn%%: *}"; }
+art_label() { local sn; sn="$(art "$1" source_name)"; printf '%s' "${sn#*: }"; }
+
+print_plan() {
+  local i n; n="$(jq '.artifacts|length' "$MANIFEST")"
+  printf '\n== Recovery plan for stack "%s" (sequence %s)\n' "$(jq -r '.rp.stack_name' "$MANIFEST" | tr -cd 'A-Za-z0-9._ -')" "$SEQ"
+  printf '   %-3s %-8s %-14s %-9s %s\n' "#" "kind" "engine" "required" "what"
+  for ((i = 0; i < n; i++)); do
+    printf '   %-3s %-8s %-14s %-9s %s\n' "$i" "$(art_role "$i")" "$(art "$i" engine)" "$(art "$i" required)" "$(art_label "$i")"
+  done
+  note "consistency: $(jq -r '.rp.consistency_level' "$MANIFEST")  - compose project: $(jq -r '.inventory.stack.compose_project // "unknown"' "$MANIFEST")"
+}
+
+fetch_artifact() {  # i -> prepared in $W/art/<i>: kind-specific; hard stops on any mismatch
+  local i=$1 kind loc d="$W/art/$1"; mkdir -p "$d"
+  kind="$(art "$i" archive_kind)"; loc="$(art "$i" location)"
+  case "$kind" in
+    archive_enc|archive_plain)
+      [ -n "$loc" ] || hard "artifact $i has no storage location"
+      rc copyto -- "$ROOT_REMOTE/$loc" "$d/object" 2>"$W/rc.err" || die 1 "could not download artifact $i ($(head -c 160 "$W/rc.err" | tr '\n' ' '))"
+      local want got; want="$(art "$i" ciphertext_sha256)"; got="$(sha256sum "$d/object" | awk '{print $1}')"
+      if [ "$kind" = archive_enc ]; then
+        [ -z "$want" ] || [ "$want" = "$got" ] || hard "checksum mismatch on artifact $i (the stored file is not what the recovery point recorded)"
+      fi
+      local top=() avail; avail="$(df -P -B1 "$W" | awk 'NR==2{print $4}')"
+      [ "$(art_role "$i")" = volume ] && top=(--expect-top vol)
+      local psha psize args=(--audit-tar "${top[@]+"${top[@]}"}" --max-inflated-bytes "$((avail * 9 / 10))")
+      psha="$(art "$i" plaintext_sha256)"; psize="$(art "$i" plaintext_size)"
+      [ -n "$psha" ] && [ -n "$psize" ] || hard "artifact $i has no plaintext checksum/size in the manifest (cannot be proven)"
+      args+=(--expect-sha256 "$psha" --expect-size "$psize")
+      if [ "$kind" = archive_enc ]; then
+        decrypt_archive --key-file "$MASTER_B64" "${args[@]}" "$d/object" "$d/plain.tar.gz" >"$W/da.out" 2>"$W/da.err" || hard "artifact $i failed verification: $(sed -e 's/^decrypt-archive: FAILED: //' "$W/da.err" | head -c 200)"
+      else
+        decrypt_archive --plain "${args[@]}" "$d/object" "$d/plain.tar.gz" >"$W/da.out" 2>"$W/da.err" || hard "artifact $i failed verification: $(sed -e 's/^decrypt-archive: FAILED: //' "$W/da.err" | head -c 200)"
+      fi
+      note "artifact $i ok ($(art_label "$i" | head -c 80)): $(cut -d' ' -f1,2 "$W/da.out")"; rm -f -- "$d/object"
+      ;;
+    restic_snapshot)
+      local gid snap; gid="$(art "$i" generated_id)"; snap="$loc"
+      [ -n "$gid" ] && [[ $snap =~ ^[0-9a-f]{64}$ ]] || hard "artifact $i: restic snapshot reference is malformed"
+      derive_pw "portabase/restic/v1/$gid" "$d/pw"
+      rs "restic/$gid" "$d/pw" cat config >/dev/null 2>"$W/restic.err" || die 1 "cannot open the restic repository of artifact $i ($(head -c 160 "$W/restic.err" | tr '\n' ' '))"
+      rs "restic/$gid" "$d/pw" restore "$snap" --target "$d/stage" >/dev/null 2>"$W/restic.err" || hard "artifact $i: restic restore/verification failed ($(head -c 160 "$W/restic.err" | tr '\n' ' '))"
+      local p; p="$(rs "restic/$gid" "$d/pw" snapshots --json "$snap" 2>/dev/null | jq -er '.[0].paths[0]')" || hard "artifact $i: cannot read the snapshot path"
+      [[ $p == /* ]] && [[ $p != *..* ]] && [ -d "$d/stage$p" ] || hard "artifact $i: unexpected snapshot layout"
+      printf '%s' "$d/stage$p" >"$d/content-root"
+      note "artifact $i ok (restic snapshot ${snap:0:12})"
+      ;;
+    *) hard "artifact $i: unknown archive kind";;
+  esac
+}
+
+fetch_all() {
+  step "$S_SUMS"
+  local i n; n="$(jq '.artifacts|length' "$MANIFEST")"
+  for ((i = 0; i < n; i++)); do fetch_artifact "$i"; done
+}
+
+# ------------------------------------------------------------------ commands
+cmd_list() {
+  step "$S_LIST"; need_storage
+  local s any=0
+  while read -r s; do
+    [ -n "$s" ] || continue; any=1; printf '   stack %s\n' "$s"
+    list_rps "$s" | sort -k3,3n | while read -r _ rp seq; do printf '     sequence %-4s recovery point %s (not verified by list)\n' "$seq" "$rp"; done
+  done < <(list_stacks)
+  [ "$any" = 1 ] || note "nothing found under $ROOT_REMOTE/$FOLDER/fork-manifest"
+}
+
+cmd_verify_kit() {
+  local code; code="$(kit_tool code --kit-json "$KIT_JSON")" || die 1 "the kit is not valid"
+  note "kit read: $(jq -r '[.kek.keys|length] | "\(.[0]) fork key(s)"' "$KIT_JSON" 2>/dev/null || echo "key lines read")"
+  if [ "$NOSTORAGECHECK" = 1 ]; then
+    warn "storage was NOT checked: this proves the kit is readable, not that it opens your backups. Run again with storage access before relying on it."
+    printf '\nVerification code (type it into the dashboard Recovery kit page): %s\n' "$code"; return 0
+  fi
+  need_storage
+  step "Opening a backup repository with the kit"
+  pick_stack
+  local pwf; pwf="$(manifest_pw "$STACK")"
+  rs "fork-manifest/$STACK" "$pwf" cat config >/dev/null 2>"$W/restic.err" || die 1 "the kit could NOT open the repository (wrong key, wrong storage, or damaged kit): $(head -c 200 "$W/restic.err" | tr '\n' ' ')"
+  note "repository opened (restic cat config succeeded) for stack $STACK"
+  # a typed signing fingerprint (paper) must match the key stored next to the manifests: catches a retyping mistake
+  local row snap; row="$(list_rps "$STACK" | sort -k3,3n | tail -1)"; snap="${row%% *}"
+  if [ -n "$snap" ]; then
+    mkdir -p "$W/vk"; rs "fork-manifest/$STACK" "$pwf" restore "$snap" --target "$W/vk" >/dev/null 2>&1 || true
+    local pem; pem="$(find "$W/vk" -name signing-key.pub.pem -type f | head -1)"
+    if [ -n "$pem" ]; then
+      local fp; fp="$(openssl pkey -pubin -in "$pem" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')"
+      if kit_tool anchors --kit-json "$KIT_JSON" --dir "$W/vk-anchors" | awk '{print $2}' | grep -qx "$fp"; then note "signing key in storage matches the kit"
+      else die 1 "the signing key stored with your backups is not in your kit: either a retyping mistake or the kit is out of date"; fi
+    fi
+  fi
+  printf '\nThe kit is good. Verification code (type it into the dashboard Recovery kit page): %s\n' "$code"
+}
+
+cmd_plan() {
+  need_storage; pick_stack; select_and_verify_manifest; print_plan
+  if [ "$DEEP" = 1 ]; then fetch_all; note "all archives verified (nothing was written outside the temporary work folder)"
+  else note "archives were not downloaded; add --deep to check every file now (restore always does)"; fi
+  printf '\nNothing on this machine was changed.\n'
+}
+
+# ---- restore ----
+RESTORE_ROOT=""; COMPOSE_PROJECT=""; COMPOSE_FILES=(); COMPOSE_DIR=""; FILES_MAP=()   # FILES_MAP entries "origPath|targetDir"
+safe_root() {
+  [ -n "$ROOT" ] || ROOT="/srv/portabase-restore/$STACK"
+  [[ $ROOT == /* ]] || die 2 "--root must be an absolute path"
+  local r; r="$(realpath -m -- "$ROOT")"
+  case "$r" in /|/bin|/boot|/dev|/etc|/home|/lib*|/proc|/root|/run|/sbin|/sys|/usr|/var|/opt|/srv|/tmp) die 2 "--root is too broad: $r";; esac
+  if [ -e "$r" ]; then [ -d "$r" ] && [ -z "$(ls -A -- "$r")" ] || die 1 "restore folder $r is not empty; choose an empty or new folder"; fi
+  # the unwrapped kit must never live inside the restore root (a compose file could read it)
+  local k; for k in "$KIT_FILE" "$PAPER_FILE" "$PASS_FILE" "$RCLONE_CFG"; do
+    [ -z "$k" ] || { case "$(realpath -m -- "$k")" in "$r"/*) die 1 "your kit/credential file is inside the restore folder: move it elsewhere first";; esac; }
+  done
+  install -d -m 0755 -- "$r"; RESTORE_ROOT="$r"
+}
+
+untar_into() {  # archive dest [strip]  (already audited; never as a different top)
+  local a=$1 d=$2 strip=${3:-0} own=(--no-same-owner); [ "$(id -u)" = 0 ] && own=(--same-owner)
+  mkdir -p -- "$d"; tar -xzf "$a" -C "$d" "${own[@]}" -p --no-overwrite-dir --strip-components="$strip" 2>"$W/tar.err" || die 1 "unpacking failed: $(head -c 160 "$W/tar.err" | tr '\n' ' ')"
+}
+
+restore_files() {
+  step "$S_FILES"
+  local i n role label target src; n="$(jq '.artifacts|length' "$MANIFEST")"
+  for ((i = 0; i < n; i++)); do
+    role="$(art_role "$i")"; label="$(art_label "$i")"
+    case "$role" in bind|manual|compose) ;; *) continue;; esac
+    [[ $label == /* ]] || hard "artifact $i: path is not absolute"
+    target="$RESTORE_ROOT/files$label"; install -d -m 0755 -- "$target"
+    if [ "$(art "$i" archive_kind)" = restic_snapshot ]; then src="$(cat "$W/art/$i/content-root")"; (cd "$src" && tar -cf - .) | tar -xf - -C "$target" --no-same-owner -p || die 1 "copy failed for $label"
+    else untar_into "$W/art/$i/plain.tar.gz" "$target"; fi
+    FILES_MAP+=("$label|$target"); [ "$role" = compose ] && COMPOSE_DIR="$target"
+    note "restored $label -> $target"
+  done
+}
+
+ORIG_PROJECT=""
+restore_volumes() {
+  step "$S_VOLS"
+  local i n role label name; n="$(jq '.artifacts|length' "$MANIFEST")"
+  for ((i = 0; i < n; i++)); do
+    [ "$(art_role "$i")" = volume ] || continue
+    label="$(art_label "$i")"; [[ $label =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$ ]] || hard "artifact $i: volume name is malformed"
+    name="$(target_volume_name "$label")"
+    docker volume inspect -- "$name" >/dev/null 2>&1 && die 1 "docker volume $name already exists on this machine; remove it or restore with --project-name"
+    local key="${name#"$COMPOSE_PROJECT"_}"
+    docker volume create --label "com.docker.compose.project=$COMPOSE_PROJECT" --label "com.docker.compose.volume=$key" -- "$name" >/dev/null
+    docker run --rm -i --network none --user 0 --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --security-opt no-new-privileges \
+      -v "$name:/restore" -- "$HELPER_IMAGE" tar -xzf - -C /restore --strip-components=1 -p <"$W/art/$i/plain.tar.gz" || die 1 "could not unpack volume $label"
+    note "restored volume $label -> docker volume $name"
+  done
+}
+target_volume_name() {  # original volume name -> name in the new project (project rename aware)
+  local o=$1
+  if [ -n "$ORIG_PROJECT" ] && [ "$ORIG_PROJECT" != "$COMPOSE_PROJECT" ] && [[ $o == "$ORIG_PROJECT"_* ]]; then printf '%s_%s' "$COMPOSE_PROJECT" "${o#"${ORIG_PROJECT}"_}"; else printf '%s' "$o"; fi
+}
+
+dc() { local a=(docker compose --project-name "$COMPOSE_PROJECT" --project-directory "$COMPOSE_DIR") f; for f in "${COMPOSE_FILES[@]}"; do a+=(-f "$f"); done; "${a[@]}" "$@"; }
+find_compose_files() {
+  local hints h base cand; COMPOSE_FILES=()
+  mapfile -t hints < <(jq -r '.inventory.stack.config_files_hint[]? ' "$MANIFEST" 2>/dev/null)
+  for h in "${hints[@]+"${hints[@]}"}"; do
+    base="${h##*/}"; cand="$COMPOSE_DIR/$base"
+    [[ $base =~ ^[A-Za-z0-9._-]+\.ya?ml$ ]] && [ -f "$cand" ] && [ ! -L "$cand" ] && COMPOSE_FILES+=("$cand")
+  done
+  if [ "${#COMPOSE_FILES[@]}" -eq 0 ]; then
+    for cand in compose.yaml compose.yml docker-compose.yml docker-compose.yaml; do [ -f "$COMPOSE_DIR/$cand" ] && { COMPOSE_FILES+=("$COMPOSE_DIR/$cand"); break; }; done
+    for cand in compose.override.yaml compose.override.yml docker-compose.override.yml; do [ -f "$COMPOSE_DIR/$cand" ] && { COMPOSE_FILES+=("$COMPOSE_DIR/$cand"); break; }; done
+  fi
+  [ "${#COMPOSE_FILES[@]}" -ge 1 ] || die 1 "no Compose file found in the restored project folder"
+}
+
+DENY=""
+find_rules() {
+  if [ -n "${PORTABASE_RECOVER_DENY_RULES:-}" ]; then DENY="$PORTABASE_RECOVER_DENY_RULES"
+  elif [ -f "$HERE/compose-deny.json" ]; then DENY="$HERE/compose-deny.json"
+  elif [ -f "$HERE/../../../src/fork/policy/compose-deny.json" ]; then DENY="$HERE/../../../src/fork/policy/compose-deny.json"
+  else die 5 "compose deny-list rules (compose-deny.json) not found next to this script"; fi
+  jq -e '.version==1 and (.rules|length>0)' "$DENY" >/dev/null || die 5 "compose deny-list rule file is invalid"
+}
+
+# evaluate the MERGED compose config (JSON on stdin) against the shared rules; prints findings as JSON lines {service,rule,detail}
+evaluate_deny() {
+  jq -c --slurpfile r "$DENY" --arg root "$RESTORE_ROOT" '
+    ($r[0]) as $R
+    | (.services // {}) | to_entries[] | .key as $svc | .value as $s
+    | (
+        (if $s.privileged == true then {rule:"privileged", detail:"privileged: true"} else empty end),
+        (if ($s.network_mode // "") == "host" then {rule:"network_mode_host", detail:"network_mode: host"} else empty end),
+        (if ($s.pid // "") == "host" then {rule:"pid_host", detail:"pid: host"} else empty end),
+        (if ($s.ipc // "") == "host" then {rule:"ipc_host", detail:"ipc: host"} else empty end),
+        (if (($s.devices // []) | length) > 0 then {rule:"devices", detail:"devices"} else empty end),
+        (($s.cap_add // [])[] | ascii_upcase | sub("^CAP_";"") | select(. as $c | ($R.cap_add_allowlist | index($c)) == null) | {rule:"cap_add", detail:("cap_add: " + .)}),
+        (($s.volumes // [])[] | select(.type == "bind") | .source as $p
+            | (if (($R.docker_socket_paths | index($p)) != null) or ($p | endswith("/" + $R.docker_socket_basename)) then {rule:"docker_sock", detail:("volumes: " + $p)} else empty end),
+              (if ($p == $root or ($p | startswith($root + "/"))) then empty else {rule:"bind_outside_root", detail:("volumes: " + $p)} end))
+      ) | {service:$svc, rule:.rule, detail:.detail}'
+}
+plain_of() { jq -r --arg id "$1" '.rules[] | select(.id==$id) | .plain' "$DENY"; }
+
+restore_compose_policy() {
+  step "$S_POLICY"
+  [ -n "$COMPOSE_DIR" ] || die 1 "this recovery point has no Compose project folder (nothing to start); restore the data and start your stack yourself"
+  find_rules; find_compose_files
+  ORIG_PROJECT="$(jq -r '.inventory.stack.compose_project // empty' "$MANIFEST")"
+  COMPOSE_PROJECT="${PROJECT:-${ORIG_PROJECT:-restored}}"
+  # 1) RAW YAML first: nothing is rendered (and so nothing outside the restore root is read) until this passes
+  local viol rcode=0; viol="$(kit_tool compose-scan --root "$RESTORE_ROOT" -- "${COMPOSE_FILES[@]}" 2>"$W/scan.err")" || rcode=$?
+  if [ "$rcode" -ne 0 ]; then
+    [ "$rcode" -ne 5 ] || die 5 "python3 'yaml' module missing: sudo apt install python3-yaml"
+    printf '%s\n' "$viol" | jq -r '"   refused: \(.kind) \(.target) (service: \(.service // "-")) points outside the restore folder"' >&2 || true
+    head -c 300 "$W/scan.err" >&2; die 4 "the Compose file reads files outside the restore folder; refusing before it is rendered (not overridable)"
+  fi
+  # 2) merged config, evaluated against the shared deny list
+  dc config --format json >"$W/compose.json" 2>"$W/compose.err" || die 4 "docker compose could not render the restored project: $(head -c 300 "$W/compose.err" | tr '\n' ' ')"
+  local svc; while IFS= read -r svc; do [[ $svc =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]] || die 4 "a service name in the Compose file has unexpected characters"; done < <(jq -r '.services|keys[]' "$W/compose.json")
+  remap_binds
+  local findings; findings="$(evaluate_deny <"$W/compose.json")"
+  if [ -n "$findings" ]; then
+    local ok=1 f s rule detail plain
+    local -A seen=()
+    while IFS= read -r f; do
+      s="$(jq -r .service <<<"$f")"; rule="$(jq -r .rule <<<"$f")"; detail="$(jq -r .detail <<<"$f")"; plain="$(plain_of "$rule")"
+      printf '   RISK: service "%s" %s (%s)\n' "$s" "$plain" "$detail" >&2
+      [ -n "${seen[$s]:-}" ] && continue
+      if allowed "$s"; then seen[$s]=1; note "service $s: risky settings allowed by you"; else ok=0; seen[$s]=0; fi
+    done <<<"$findings"
+    if [ "$ok" != 1 ]; then die 4 "the Compose file asks for powers a recovery should not grant. Refusing. To allow ONE service anyway: --allow-privileged=<service> (only if you trust it)"; fi
+  fi
+  note "Compose files restored from recovery point sequence $SEQ (sha256 $(cat -- "${COMPOSE_FILES[@]}" | sha256sum | cut -c1-16)); the manifest records no later compose hash"
+  note "policy check passed"
+}
+allowed() {  # service -> 0 when --allow-privileged=<svc> given, or typed ALLOW <svc> on a terminal
+  local s=$1 a; for a in "${ALLOW_SVCS[@]+"${ALLOW_SVCS[@]}"}"; do [ "$a" = "$s" ] && return 0; done
+  if [ -r /dev/tty ] && [ -t 0 ]; then local ans; read -r -p "   Type exactly ALLOW $s to allow it, or press Enter to refuse: " ans </dev/tty >&2 || return 1; [ "$ans" = "ALLOW $s" ] && return 0; fi
+  return 1
+}
+# binds that point at an ORIGINAL host path we restored are re-pointed into the restore folder (override file, `!override` needs compose >= 2.24)
+remap_binds() {
+  local map="" e orig tgt
+  for e in "${FILES_MAP[@]+"${FILES_MAP[@]}"}"; do orig="${e%%|*}"; tgt="${e#*|}"; map+="$(jq -cn --arg o "$orig" --arg t "$tgt" '{o:$o,t:$t}')"$'\n'; done
+  [ -n "$map" ] || return 0
+  local ov="$W/compose.restore.override.yml"
+  jq -r --slurpfile m <(printf '%s' "$map") --arg root "$RESTORE_ROOT" '
+    def remap($p): ($m | map(select($p == .o or ($p | startswith(.o + "/")))) | sort_by(.o|length) | last) as $hit
+      | if $hit == null then $p else ($hit.t + ($p | ltrimstr($hit.o))) end;
+    [ (.services // {}) | to_entries[] | .key as $k | .value.volumes // [] | map(select(.type=="bind" and (.source | startswith($root + "/") | not) and (remap(.source) != .source))) | select(length>0) | $k ] as $svcs
+    | if ($svcs|length)==0 then empty else
+      "services:\n" + ([ (.services // {}) | to_entries[] | select(.key as $k | $svcs | index($k)) | "  \(.key):\n    volumes: !override \((.value.volumes | map(if .type=="bind" then .source = remap(.source) else . end)) | tojson)"] | join("\n")) + "\n" end' "$W/compose.json" >"$ov"
+  if [ -s "$ov" ]; then
+    COMPOSE_FILES+=("$ov"); note "re-pointed absolute bind mounts into the restore folder"
+    dc config --format json >"$W/compose.json" 2>"$W/compose.err" || die 4 "docker compose could not render after re-pointing binds: $(head -c 300 "$W/compose.err" | tr '\n' ' ')"
+  fi
+}
+
+dump_kind() {  # file -> pg_custom | pg_directory | unknown
+  local m; m="$(head -c 5 -- "$1" | od -An -c | tr -d ' \n')"
+  case "$m" in PGDMP) echo pg_custom;; *) if [ "$(head -c 2 -- "$1" | od -An -tx1 | tr -d ' \n')" = 1f8b ]; then echo pg_directory; else echo unknown; fi;; esac
+}
+
+restore_databases() {
+  step "$S_DBS"
+  local i n role eng label svc dk want f d="" any=0; n="$(jq '.artifacts|length' "$MANIFEST")"
+  for ((i = 0; i < n; i++)); do
+    [ "$(art_role "$i")" = db ] || continue; any=1
+    eng="$(art "$i" engine)"; label="$(art_label "$i")"; svc="$label"
+    case "$eng" in
+      postgresql) ;;
+      sqlite)
+        install -d -m 0755 -- "$RESTORE_ROOT/databases/$svc"; untar_into "$W/art/$i/plain.tar.gz" "$RESTORE_ROOT/databases/$svc"
+        warn "sqlite backup '$svc' restored to $RESTORE_ROOT/databases/$svc - the manifest does not record where the file lived: copy it to the path your app uses"; continue;;
+      *)
+        install -d -m 0755 -- "$RESTORE_ROOT/databases/$svc"; untar_into "$W/art/$i/plain.tar.gz" "$RESTORE_ROOT/databases/$svc"
+        warn "$eng dump '$svc' unpacked to $RESTORE_ROOT/databases/$svc: this tool only restores PostgreSQL automatically - import it with your engine's own tools"; continue;;
+    esac
+    jq -e --arg s "$svc" '.services[$s]' "$W/compose.json" >/dev/null 2>&1 || { warn "database '$svc' is not a service of the restored stack; dump kept in $RESTORE_ROOT/databases/$svc"; install -d -m 0755 -- "$RESTORE_ROOT/databases/$svc"; untar_into "$W/art/$i/plain.tar.gz" "$RESTORE_ROOT/databases/$svc"; continue; }
+    d="$W/art/$i/dump"; untar_into "$W/art/$i/plain.tar.gz" "$d"
+    f="$(find "$d" -type f | head -2)"; [ "$(printf '%s\n' "$f" | wc -l)" -eq 1 ] && [ -n "$f" ] || hard "artifact $i: expected exactly one dump file inside the archive"
+    dk="$(dump_kind "$f")"; want="$(art "$i" dump_format)"
+    [ "$dk" != unknown ] || hard "artifact $i: the dump is neither PostgreSQL custom nor directory format"
+    [ -z "$want" ] || [ "$want" = "$dk" ] || hard "artifact $i: dump format ($dk) differs from the signed manifest ($want)"
+    note "postgres dump '$svc': $dk"
+    dc up -d --no-deps -- "$svc" >/dev/null 2>"$W/up.err" || die 1 "could not start database service $svc: $(head -c 200 "$W/up.err" | tr '\n' ' ')"
+    local tries=0
+    # shellcheck disable=SC2016  # the variables belong to the container's shell
+    until dc exec -T -- "$svc" sh -c 'pg_isready -q -U "${POSTGRES_USER:-postgres}"' >/dev/null 2>&1; do tries=$((tries + 1)); [ "$tries" -lt 60 ] || die 1 "database service $svc did not become ready in 120 s"; sleep 2; done
+    # shellcheck disable=SC2016  # evaluated inside the container
+    local rsql='u="${POSTGRES_USER:?POSTGRES_USER is not set in the container}"; db="${POSTGRES_DB:-$u}"'
+    if [ "$dk" = pg_custom ]; then
+      dc exec -T -- "$svc" sh -c "$rsql; pg_restore -U \"\$u\" -d \"\$db\" --no-owner --clean --if-exists" <"$f" >"$W/pgr.out" 2>"$W/pgr.err" || die 1 "pg_restore reported errors for $svc: $(head -c 300 "$W/pgr.err" | tr '\n' ' ')"
+    else
+      decrypt_archive --plain --audit-tar "$f" "$d/inner.tar.gz" >/dev/null 2>"$W/da.err" || hard "artifact $i: the inner -Fd archive failed verification: $(sed -e 's/^decrypt-archive: FAILED: //' "$W/da.err" | head -c 200)"
+      dc exec -T -- "$svc" sh -c "$rsql; t=\$(mktemp -d) && tar -xzf - -C \"\$t\" && pg_restore -U \"\$u\" -d \"\$db\" --no-owner --clean --if-exists \"\$t\"; rc=\$?; rm -rf \"\$t\"; exit \$rc" <"$d/inner.tar.gz" >"$W/pgr.out" 2>"$W/pgr.err" || die 1 "pg_restore (-Fd) reported errors for $svc: $(head -c 300 "$W/pgr.err" | tr '\n' ' ')"
+    fi
+    note "database $svc restored ($dk)"
+  done
+  [ "$any" = 1 ] || note "no database dumps in this recovery point"
+}
+
+finish_text() {
+  cat <<EOF
+
+== Done: the stack is starting
+   Restore folder: $RESTORE_ROOT        Compose project: $COMPOSE_PROJECT
+
+Checklist - things only you can do (this tool cannot know them):
+  [ ] DNS / IP: point your domain names at THIS machine's address.
+  [ ] Published ports and firewall: open only what the stack needs (see: docker compose -p $COMPOSE_PROJECT ps).
+  [ ] TLS certificates: reverse proxies may need to fetch new certificates once DNS points here.
+  [ ] Open the app and check your data.
+
+Re-attach backups (so this new machine is protected again):
+  1. Install a Portabase agent on THIS machine and add it in your (new or restored) dashboard.
+  2. Re-bind the sources (files, volumes, databases) to the new agent and run one backup now.
+  3. Confirm the first backup succeeds before you relax. Until then you have NO fresh backup of this machine.
+
+Revoke the old machine:
+  1. If the old server may still be reachable or was compromised: delete its agent in the dashboard and rotate the edge key.
+  2. Rotate storage credentials at your storage provider, and revoke dashboard sessions and API keys (guide: "If your dashboard also died").
+EOF
+}
+
+cmd_restore() {
+  need_storage; pick_stack; select_and_verify_manifest; print_plan
+  safe_root
+  fetch_all
+  printf '\nAll checks passed. Changing this machine now.\n'
+  restore_files; COMPOSE_PROJECT="${PROJECT:-$(jq -r '.inventory.stack.compose_project // "restored"' "$MANIFEST")}"; ORIG_PROJECT="$(jq -r '.inventory.stack.compose_project // empty' "$MANIFEST")"
+  restore_compose_policy
+  restore_volumes
+  restore_databases
+  step "$S_UP"
+  dc up -d >"$W/up.out" 2>"$W/up.err" || die 1 "docker compose up failed: $(head -c 300 "$W/up.err" | tr '\n' ' ')"
+  note "stack started"
+  finish_text
+}
+
+main() {
+  parse_args "$@"
+  check_prereqs
+  mkwork
+  load_kit
+  setup_storage || true
+  case "$CMD" in
+    list) cmd_list;;
+    verify-kit) cmd_verify_kit;;
+    plan) cmd_plan;;
+    restore) cmd_restore;;
+  esac
+}
+main "$@"

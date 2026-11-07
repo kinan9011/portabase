@@ -8,7 +8,7 @@ Format (agent 1.25.2, agent:src/utils/file.rs:61-170), documented, no AAD, key =
 There is NO final-chunk marker: a file cut exactly at a chunk boundary still decrypts. Pass --expect-sha256 / --expect-size
 (plaintext hash and size from the signed manifest, D24) to catch that; this tool cannot.
 
-Usage:  decrypt-archive (--key-file FILE | --key-stdin) [--expect-sha256 HEX] [--expect-size N] IN.tar.gz.enc OUT.tar.gz
+Usage:  decrypt-archive (--key-file FILE | --key-stdin | --plain) [--expect-sha256 HEX] [--expect-size N] IN.tar.gz.enc OUT.tar.gz
 The key (base64 of the 32-byte master key) is NEVER accepted on the command line. OUT must not exist. Output is written to a
 private temp file and renamed only after every chunk authenticated and every expectation matched; on any failure nothing is
 left behind. Exit: 0 ok, 1 integrity/format failure (fail closed), 2 usage. Prints `sha256=<hex> size=<n>` on success.
@@ -131,8 +131,8 @@ class GzipCheck:
         return self.total
 
 
-def decrypt(src, dst_fd, key, expect_sha, expect_size, gzip_check=True, max_inflated=DEFAULT_MAX_INFLATED, max_size=None):
-    aes = AESGCM(key)
+def decrypt(src, dst_fd, key, expect_sha, expect_size, gzip_check=True, max_inflated=DEFAULT_MAX_INFLATED, max_size=None, plain=False):
+    aes = AESGCM(key) if key is not None else None
     digest, size, idx = hashlib.sha256(), 0, 0
     gz = GzipCheck(max_inflated) if gzip_check else None
     try:
@@ -142,6 +142,20 @@ def decrypt(src, dst_fd, key, expect_sha, expect_size, gzip_check=True, max_infl
     with f:
         if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
             raise Fail("input is not a regular file")
+        if plain:  # already-plaintext archive (unencrypted agent setting / the inner -Fd tar.gz): same checks, no decryption
+            while True:
+                pt = f.read(1 << 20)
+                if not pt:
+                    break
+                size += len(pt)
+                if max_size is not None and size > max_size:
+                    raise Fail("plaintext size exceeds the limit")
+                if gz:
+                    gz.feed(pt)
+                write_all(dst_fd, pt)
+                digest.update(pt)
+                idx += 1
+            return _finish(digest, size, idx, expect_sha, expect_size, gz)
         base, chunk_size = read_header(f)
         while True:
             lb = f.read(4)
@@ -169,6 +183,10 @@ def decrypt(src, dst_fd, key, expect_sha, expect_size, gzip_check=True, max_infl
             write_all(dst_fd, pt)
             digest.update(pt)
             idx += 1
+    return _finish(digest, size, idx, expect_sha, expect_size, gz)
+
+
+def _finish(digest, size, idx, expect_sha, expect_size, gz):
     if idx == 0:
         raise Fail("no data chunks")
     hexd = digest.hexdigest()
@@ -283,11 +301,12 @@ def audit_tar(path, expect_top=None, max_inflated=DEFAULT_MAX_INFLATED, max_entr
 
 def main(argv):
     p = argparse.ArgumentParser(prog="decrypt-archive", allow_abbrev=False, description="Decrypt a Portabase agent .tar.gz.enc archive")
-    g = p.add_mutually_exclusive_group(required=True)
+    g = p.add_mutually_exclusive_group()
     g.add_argument("--key-file", metavar="FILE", help="file holding the base64 master key")
     g.add_argument("--key-stdin", action="store_true", help="read the base64 master key from stdin")
     p.add_argument("--expect-sha256", metavar="HEX", help="expected plaintext SHA-256 (from the signed manifest)")
     p.add_argument("--expect-size", metavar="N", type=int, help="expected plaintext size in bytes")
+    p.add_argument("--plain", action="store_true", help="IN is already plaintext (unencrypted archive / inner -Fd tar.gz): no key, same checks")
     p.add_argument("--no-gzip-check", action="store_true", help="plaintext is not a .tar.gz (raw data); skips the gzip -t equivalent")
     p.add_argument("--max-size", metavar="N", type=int, help="refuse plaintext larger than N bytes")
     p.add_argument("--max-inflated-bytes", metavar="N", type=int, default=DEFAULT_MAX_INFLATED, help="stop when the inflated size passes N (bomb guard)")
@@ -299,6 +318,8 @@ def main(argv):
     a = p.parse_args(argv)
     if a.expect_sha256 is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", a.expect_sha256):
         p.error("--expect-sha256 must be 64 hex characters")
+    if a.plain == bool(a.key_file or a.key_stdin):
+        p.error("give a key (--key-file / --key-stdin) for an encrypted archive, or --plain for a plaintext one")
     if a.audit_tar and a.no_gzip_check:
         p.error("--audit-tar needs the gzip check")
     if a.max_inflated_bytes < 1 or a.max_entries < 1 or (a.max_size is not None and a.max_size < 1):
@@ -307,11 +328,11 @@ def main(argv):
     tmp = f"{a.dst}.partial-{os.getpid()}"
     fd = None
     try:
-        key = read_key(a.key_file, a.key_stdin)
+        key = None if a.plain else read_key(a.key_file, a.key_stdin)
         if os.path.lexists(a.dst):
             raise Fail("output already exists; refusing to overwrite")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        hexd, size, inflated = decrypt(a.src, fd, key, a.expect_sha256, a.expect_size, not a.no_gzip_check, a.max_inflated_bytes, a.max_size)
+        hexd, size, inflated = decrypt(a.src, fd, key, a.expect_sha256, a.expect_size, not a.no_gzip_check, a.max_inflated_bytes, a.max_size, a.plain)
         os.fsync(fd)
         os.close(fd)
         fd = None

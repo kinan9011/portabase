@@ -1,0 +1,440 @@
+#!/usr/bin/env python3
+"""kit-tool (W14b) - the crypto and parsing that bash cannot do, for `portabase-recover`. Fork-only, single file.
+
+Reads the recovery kit (ADR-006 / ADR-013, kit_version 1): the digital file `PBKIT1` (scrypt + AES-256-GCM) or the retyped paper lines, computes the
+verification code the operator enters in the dashboard (D41), derives restic repository passwords (HKDF, so no key ever sits on a command line) and
+unwraps stored storage credentials. Also holds the raw compose scanner (`compose-scan`, REVISED-PLAN section 4.4).
+
+RULES: secrets are NEVER accepted on argv and NEVER printed. Inputs come from files (passphrase / key material) and secret outputs go to NEW files
+created O_EXCL with mode 0600. Stdout carries only non-secret facts (the verification code, key ids, counts). Errors are static strings.
+Exit: 0 ok, 1 refused / invalid (fail closed), 2 usage, 5 missing prerequisite (python module).
+Requires: python3, python3-cryptography; compose-scan also needs python3-yaml (PyYAML).
+"""
+import argparse
+import base64
+import binascii
+import hashlib
+import hmac
+import json
+import os
+import re
+import sys
+
+try:
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+except ImportError:  # pragma: no cover
+    sys.stderr.write("kit-tool: python3 'cryptography' module missing (apt install python3-cryptography)\n")
+    sys.exit(5)
+
+KIT_VERSION = 1
+CODE_PREFIX = b"portabase-fork-kit/v1"
+CRED_INFO = b"portabase-fork/kit/storage-credentials/v1"
+SCRYPT = {"N": 131072, "r": 8, "p": 1}
+MAXMEM = 256 * 1024 * 1024
+MAX_KIT_BYTES = 1024 * 1024
+B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+KID_RE = re.compile(r"^[0-9a-f]{12}$")
+KEKID_RE = re.compile(r"^k[0-9a-f]{12}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+class Fail(Exception):
+    """Refusal. Messages are static: never key material, passphrases or kit content."""
+
+
+# ------------------------------------------------------------------ small helpers
+def read_small(path, limit):
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError as e:
+        raise Fail(f"cannot read {os.path.basename(path)} ({e.strerror or 'I/O error'})")
+    with os.fdopen(fd, "rb") as f:
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise Fail(f"{os.path.basename(path)} is too large")
+    return data
+
+
+def write_secret(path, data):
+    """New file, mode 0600, never overwrites (O_EXCL)."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except OSError as e:
+        raise Fail(f"cannot create output ({e.strerror or 'I/O error'})")
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+
+
+def hkdf(master, info, length=32):
+    prk = hmac.new(b"\x00" * 32, master, hashlib.sha256).digest()  # RFC 5869, salt omitted = HashLen zero bytes (same as node hkdfSync with an empty salt)
+    out, t, i = b"", b"", 1
+    while len(out) < length:
+        t = hmac.new(prk, t + info + bytes([i]), hashlib.sha256).digest()
+        out += t
+        i += 1
+    return out[:length]
+
+
+def b32encode(raw):
+    bits, value, out = 0, 0, ""
+    for b in raw:
+        value = (value << 8) | b
+        bits += 8
+        while bits >= 5:
+            out += B32[(value >> (bits - 5)) & 31]
+            bits -= 5
+    if bits:
+        out += B32[(value << (5 - bits)) & 31]
+    return out
+
+
+def line_check(label, n, chars):
+    return b32encode(hashlib.sha256(f"pbkit1|{label}|{n}|{chars}".encode()).digest())[:2]
+
+
+def b64key(text, what):
+    try:
+        key = base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError, TypeError):
+        raise Fail(f"{what} is not valid base64")
+    if len(key) != 32:
+        raise Fail(f"{what} must be 32 bytes")
+    return key
+
+
+# ------------------------------------------------------------------ kit documents
+def validate_kit(kit):
+    """Structural validation of a kit.json (untrusted until the code is confirmed by the dashboard / the manifest signature verifies)."""
+    if not isinstance(kit, dict) or kit.get("kit_version") != KIT_VERSION or type(kit.get("kit_version")) is not int:
+        raise Fail("unsupported kit version")
+    master = b64key(kit.get("master_key_b64"), "master key")
+    kek = kit.get("kek")
+    if not isinstance(kek, dict) or not isinstance(kek.get("keys"), list) or not isinstance(kek.get("active"), str):
+        raise Fail("kit has no fork key ring")
+    keys = {}
+    for k in kek["keys"]:
+        if not isinstance(k, dict) or not isinstance(k.get("kid"), str) or not KEKID_RE.match(k["kid"]):
+            raise Fail("kit fork key id is invalid")
+        keys[k["kid"]] = b64key(k.get("key_b64"), "fork key")
+    if kek["active"] not in keys:
+        raise Fail("kit active fork key is missing")
+    anchors = kit.get("signing_public_keys")
+    if not isinstance(anchors, list) or not anchors:
+        raise Fail("kit has no signing public key")
+    cur = [a for a in anchors if isinstance(a, dict) and a.get("retired") is False]
+    if len(cur) != 1:
+        raise Fail("kit must name exactly one current signing key")
+    for a in anchors:
+        if not isinstance(a, dict) or not KID_RE.match(str(a.get("kid"))) or not HEX64.match(str(a.get("spki_sha256"))):
+            raise Fail("kit signing key entry is invalid")
+        if a["kid"] != a["spki_sha256"][:12]:
+            raise Fail("kit signing key id does not match its fingerprint")
+        pem = a.get("pem")
+        if pem is not None and (not isinstance(pem, str) or not pem.startswith("-----BEGIN PUBLIC KEY-----") or len(pem) > 4096):
+            raise Fail("kit signing key PEM is invalid")
+    if not isinstance(kit.get("storage"), list):
+        raise Fail("kit has no storage list")
+    return master, keys, cur[0]
+
+
+def verification_code(master, keys, current_spki_hex):
+    h = hashlib.sha256()
+    h.update(CODE_PREFIX + b"\x00" + master + b"\x00")
+    for kid in sorted(keys):
+        h.update(kid.encode() + b":" + keys[kid] + b"\x00")
+    h.update(bytes.fromhex(current_spki_hex))
+    hexd = h.hexdigest()[:20].upper()
+    return "-".join(hexd[i:i + 4] for i in range(0, 20, 4))
+
+
+def unwrap_digital(raw, passphrase):
+    text = raw.decode("utf-8", "strict").strip().split("\n")
+    if len(text) < 3 or text[0] != "PBKIT1":
+        raise Fail("not a PBKIT1 file")
+    header_line = text[1]
+    try:
+        h = json.loads(header_line)
+        salt, iv = base64.b64decode(h["salt"], validate=True), base64.b64decode(h["iv"], validate=True)
+    except (ValueError, KeyError, TypeError, binascii.Error):
+        raise Fail("kit file header is invalid")
+    if h.get("kdf") != "scrypt" or any(h.get(k) != v for k, v in SCRYPT.items()) or len(salt) != 16 or len(iv) != 12:
+        raise Fail("unsupported kit key-derivation parameters")  # exact parameters only: a hostile file cannot demand more memory
+    body = base64.b64decode("".join(text[2:]), validate=True) if text[2:] else b""
+    if len(body) < 17 or len(body) > MAX_KIT_BYTES:
+        raise Fail("kit file body is invalid")
+    key = hashlib.scrypt(passphrase, salt=salt, n=SCRYPT["N"], r=SCRYPT["r"], p=SCRYPT["p"], dklen=32, maxmem=MAXMEM)
+    try:
+        plain = AESGCM(key).decrypt(iv, body, header_line.encode())
+    except InvalidTag:
+        raise Fail("wrong passphrase or damaged kit file")
+    try:
+        return json.loads(plain)
+    except ValueError:
+        raise Fail("kit content is not JSON")
+
+
+PAPER_KEY = re.compile(r"^\s*(MASTER|KEK-k[0-9a-f]{12})\s+(\d+):\s*([A-Za-z2-7 ]+?)\s*[·.\-|]\s*([A-Za-z2-7]{2})\s*$")
+PAPER_SIGN = re.compile(r"^\s*([0-9a-f]{12})\s*\((current|retired)\)\s*[—\-–:]*\s*SHA-256\s+([0-9A-Fa-f ]+?)\s*$")
+
+
+def parse_paper(text):
+    """Retyped paper lines -> kit-like dict (keys + signing fingerprints; the PEM and credentials are NOT on paper). Every line checksum must match."""
+    keys, lines, signing = {}, {}, []
+    for ln, raw in enumerate(text.splitlines(), 1):
+        if not raw.strip():
+            continue
+        m = PAPER_KEY.match(raw)
+        if m:
+            label, n, chars, chk = m.group(1), int(m.group(2)), m.group(3).replace(" ", "").upper(), m.group(4).upper()
+            if line_check(label, n, chars) != chk:
+                raise Fail(f"{label} line {n}: the check letters do not match - retype that line")
+            if n in lines.setdefault(label, {}):
+                raise Fail(f"{label} line {n} appears twice")
+            lines[label][n] = chars
+            continue
+        s = PAPER_SIGN.match(raw)
+        if s:
+            fp = s.group(3).replace(" ", "").lower()
+            if not HEX64.match(fp) or s.group(1) != fp[:12]:
+                raise Fail("signing key line: fingerprint does not match its key id - retype it")
+            signing.append({"kid": s.group(1), "spki_sha256": fp, "retired": s.group(2) == "retired", "pem": None})
+            continue
+        raise Fail(f"line {ln} is not a key line or a signing-key line")
+    if "MASTER" not in lines:
+        raise Fail("no MASTER key lines found")
+    for label, byn in lines.items():
+        if sorted(byn) != list(range(1, len(byn) + 1)) or len(byn) != 4:
+            raise Fail(f"{label}: expected lines 1-4")
+        chars = "".join(byn[i] for i in range(1, 5))
+        if len(chars) != 52:
+            raise Fail(f"{label}: wrong length")
+        try:
+            raw = base64.b32decode(chars + "====")
+        except (binascii.Error, ValueError):
+            raise Fail(f"{label}: not valid base32")
+        if len(raw) != 32 or b32encode(raw) != chars:
+            raise Fail(f"{label}: not a canonical 32-byte key")
+        keys[label] = raw
+    kek = {k[4:]: v for k, v in keys.items() if k.startswith("KEK-")}
+    cur = [s for s in signing if not s["retired"]]
+    if len(cur) != 1:
+        raise Fail("paper input needs exactly one signing key marked (current)")
+    ks = sorted(kek)
+    return {
+        "kit_version": KIT_VERSION, "issued_at": None,
+        "master_key_b64": base64.b64encode(keys["MASTER"]).decode(),
+        "kek": {"active": ks[0] if ks else "", "keys": [{"kid": k, "key_b64": base64.b64encode(kek[k]).decode()} for k in ks]},
+        "signing_public_keys": signing, "storage": [], "recover": {}, "_source": "paper",
+    }
+
+
+# ------------------------------------------------------------------ commands
+def load_kit(path):
+    try:
+        kit = json.loads(read_small(path, MAX_KIT_BYTES))
+    except ValueError:
+        raise Fail("kit.json is not JSON")
+    if kit.get("_source") == "paper":
+        if not kit["kek"]["keys"]:
+            kit["kek"]["active"] = ""
+        master = b64key(kit["master_key_b64"], "master key")
+        keys = {k["kid"]: b64key(k["key_b64"], "fork key") for k in kit["kek"]["keys"]}
+        cur = [a for a in kit["signing_public_keys"] if not a["retired"]]
+        return kit, master, keys, cur[0]
+    master, keys, cur = validate_kit(kit)
+    return kit, master, keys, cur
+
+
+def cmd_unwrap(a):
+    pw = read_small(a.passphrase_file, 1024).rstrip(b"\r\n")
+    if not pw:
+        raise Fail("empty passphrase")
+    kit = unwrap_digital(read_small(a.kit, MAX_KIT_BYTES), pw)
+    validate_kit(kit)
+    write_secret(a.out, json.dumps(kit).encode())
+    print("kit unwrapped")
+
+
+def cmd_paper(a):
+    kit = parse_paper(read_small(a.lines_file, 64 * 1024).decode("utf-8", "strict"))
+    write_secret(a.out, json.dumps(kit).encode())
+    print(f"paper kit read: 1 master key, {len(kit['kek']['keys'])} fork key(s), {len(kit['signing_public_keys'])} signing key line(s)")
+
+
+def cmd_code(a):
+    _kit, master, keys, cur = load_kit(a.kit_json)
+    print(verification_code(master, keys, cur["spki_sha256"]))
+
+
+def cmd_export_master(a):
+    _kit, master, _k, _c = load_kit(a.kit_json)
+    write_secret(a.out, base64.b64encode(master) + b"\n")
+
+
+def cmd_derive(a):
+    _kit, master, _k, _c = load_kit(a.kit_json)
+    if not re.fullmatch(r"portabase(-fork)?/[a-z/]+/v1/[A-Za-z0-9_-]{1,128}", a.info):
+        raise Fail("unexpected derivation label")
+    write_secret(a.out, hkdf(master, a.info.encode()).hex().encode() + b"\n")  # restic password = hex of the HKDF output (ADR-013 K4)
+
+
+def cmd_unwrap_creds(a):
+    kit, master, _k, _c = load_kit(a.kit_json)
+    for ch in kit.get("storage", []):
+        if isinstance(ch, dict) and ch.get("name") == a.channel:
+            w = ch.get("credentials_wrapped")
+            if not isinstance(w, dict) or w.get("alg") != "AES-256-GCM":
+                raise Fail("this channel has no wrapped credentials in the kit")
+            try:
+                iv, ct, tag = (base64.b64decode(w[k], validate=True) for k in ("iv", "ct", "tag"))
+                plain = AESGCM(hkdf(master, CRED_INFO)).decrypt(iv, ct + tag, f"channel:{a.channel}".encode())
+            except (KeyError, ValueError, binascii.Error, InvalidTag):
+                raise Fail("storage credentials could not be unwrapped")
+            write_secret(a.out, plain)
+            print("credentials unwrapped")
+            return
+    raise Fail("channel not found in the kit")
+
+
+def cmd_anchor_hash(a):
+    """Anchor facts for the signature check: `<kid> <spki_sha256> <current|retired> [pem-file]` lines; PEMs are written to --dir (0600)."""
+    kit, _m, _k, _c = load_kit(a.kit_json)
+    os.makedirs(a.dir, mode=0o700, exist_ok=True)
+    for an in kit["signing_public_keys"]:
+        state = "retired" if an["retired"] else "current"
+        if an.get("pem"):
+            p = os.path.join(a.dir, f"{an['kid']}.pem")
+            write_secret(p, an["pem"].encode())
+            print(an["kid"], an["spki_sha256"], state, p)
+        else:
+            print(an["kid"], an["spki_sha256"], state, "-")
+
+
+def cmd_storage(a):
+    kit, _m, _k, _c = load_kit(a.kit_json)
+    for ch in kit.get("storage", []):
+        if isinstance(ch, dict):
+            print(json.dumps({"name": ch.get("name"), "provider": ch.get("provider"), "pointer": ch.get("pointer"), "wrapped": bool(ch.get("credentials_wrapped"))}))
+
+
+# ------------------------------------------------------------------ compose scan (raw YAML, BEFORE any rendering)
+MAX_YAML = 256 * 1024
+MAX_ALIASES = 100
+
+
+def _outside(root, base_dir, target):
+    """True when `target` (relative to the file's directory) does not provably stay inside root."""
+    if not isinstance(target, str) or not target or "\x00" in target:
+        return True
+    if "$" in target or target.startswith("~"):  # a variable or ~ cannot be proven inside the root: fail closed
+        return True
+    full = os.path.normpath(os.path.join(base_dir, target))
+    root = os.path.normpath(root)
+    return not (full == root or full.startswith(root + os.sep))
+
+
+def _targets(node, key):
+    v = node.get(key)
+    if v is None:
+        return []
+    items = v if isinstance(v, list) else [v]
+    out = []
+    for it in items:
+        if isinstance(it, str):
+            out.append(it)
+        elif isinstance(it, dict):
+            p = it.get("path")
+            out.extend(p if isinstance(p, list) else [p] if p is not None else [])
+    return out
+
+
+def compose_scan(root, files):
+    try:
+        import yaml
+    except ImportError:
+        raise SystemExit(_missing_yaml())
+    violations = []
+    for f in files:
+        raw = read_small(f, MAX_YAML)
+        if raw.count(b"*") > MAX_ALIASES * 20 and len(re.findall(rb"(?m)[:\-]\s+\*[A-Za-z0-9_-]+", raw)) > MAX_ALIASES:
+            raise Fail("compose file has too many YAML aliases")
+        try:
+            docs = list(yaml.safe_load_all(raw.decode("utf-8", "strict")))
+        except (yaml.YAMLError, UnicodeDecodeError):
+            raise Fail("compose file is not valid YAML (refused, fail closed)")
+        if len(docs) != 1 or not isinstance(docs[0], dict):
+            raise Fail("compose file must be exactly one YAML mapping")
+        doc, base = docs[0], os.path.dirname(os.path.abspath(f))
+        for t in _targets(doc, "include"):
+            if _outside(root, base, t):
+                violations.append({"kind": "include", "service": None, "target": t})
+        for sec in ("secrets", "configs"):
+            for name, spec in (doc.get(sec) or {}).items() if isinstance(doc.get(sec), dict) else []:
+                if isinstance(spec, dict) and "file" in spec and _outside(root, base, spec["file"]):
+                    violations.append({"kind": f"{sec[:-1]}_file", "service": str(name), "target": spec["file"]})
+        for svc, spec in (doc.get("services") or {}).items() if isinstance(doc.get("services"), dict) else []:
+            if not isinstance(spec, dict):
+                continue
+            for t in _targets(spec, "env_file"):
+                if _outside(root, base, t):
+                    violations.append({"kind": "env_file", "service": str(svc), "target": t})
+            ext = spec.get("extends")
+            if isinstance(ext, dict) and ext.get("file") is not None and _outside(root, base, ext["file"]):
+                violations.append({"kind": "extends", "service": str(svc), "target": ext["file"]})
+            elif isinstance(ext, dict) and "service" in ext and "file" not in ext:
+                pass  # same-file extends: nothing outside is read
+    return violations
+
+
+def _missing_yaml():
+    sys.stderr.write("kit-tool: python3 'yaml' module missing (apt install python3-yaml)\n")
+    return 5
+
+
+def cmd_compose_scan(a):
+    v = compose_scan(a.root, a.files)
+    for x in v:
+        print(json.dumps(x))
+    if v:
+        raise Fail("compose file reads files outside the restore root")
+
+
+def main(argv):
+    p = argparse.ArgumentParser(prog="kit-tool", allow_abbrev=False, description="portabase-recover crypto helper (no secret on argv, none printed)")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    def add(name, fn, *args):
+        sp = sub.add_parser(name, allow_abbrev=False)
+        for a in args:
+            sp.add_argument(a[0], **a[1])
+        sp.set_defaults(fn=fn)
+
+    f = lambda h: {"metavar": "FILE", "required": True, "help": h}
+    add("unwrap", cmd_unwrap, ("--kit", f("PBKIT1 file")), ("--passphrase-file", f("file holding the passphrase")), ("--out", f("new kit.json (0600)")))
+    add("paper", cmd_paper, ("--lines-file", f("retyped paper lines")), ("--out", f("new kit.json (0600)")))
+    add("code", cmd_code, ("--kit-json", f("kit.json")))
+    add("export-master", cmd_export_master, ("--kit-json", f("kit.json")), ("--out", f("new base64 master key file (0600)")))
+    add("derive", cmd_derive, ("--kit-json", f("kit.json")), ("--info", {"required": True, "help": "HKDF info label (not secret)"}), ("--out", f("new password file (0600)")))
+    add("unwrap-creds", cmd_unwrap_creds, ("--kit-json", f("kit.json")), ("--channel", {"required": True}), ("--out", f("new credentials JSON file (0600)")))
+    add("anchors", cmd_anchor_hash, ("--kit-json", f("kit.json")), ("--dir", {"required": True, "help": "directory for PEM files"}))
+    add("storage", cmd_storage, ("--kit-json", f("kit.json")))
+    sp = sub.add_parser("compose-scan", allow_abbrev=False)
+    sp.add_argument("--root", required=True)
+    sp.add_argument("files", nargs="+")
+    sp.set_defaults(fn=cmd_compose_scan)
+    a = p.parse_args(argv)
+    try:
+        a.fn(a)
+    except Fail as e:
+        sys.stderr.write(f"kit-tool: REFUSED: {e}\n")
+        return 1
+    except (UnicodeDecodeError, ValueError, OSError) as e:
+        sys.stderr.write(f"kit-tool: REFUSED: {type(e).__name__}\n")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
