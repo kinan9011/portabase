@@ -117,7 +117,7 @@ describe.skipIf(!LAB)("W15 live: real fork dashboard + two real fork agents (sig
 
     it("both real agents negotiate capabilities (no version gating) and the stock poll still works", async () => {
         const caps = await waitFor("both agents reported capabilities", async () => { const r = await q("select agent_id, capabilities from fork_agent_enrollment"); return r.length === 2 && r.every((x) => x.capabilities.length) ? r : null; });
-        for (const c of caps) expect(c.capabilities).toEqual(["channel.v1", "noop.v1", "plaintext-hash.v1"]);
+        for (const c of caps) expect(c.capabilities).toEqual(["channel-maint.v1", "channel.v1", "noop.v1", "plaintext-hash.v1"]); // W15b: the maintenance capability is reported too (stored sorted)
         expect(logs(B.name)).toMatch(/Fork task channel enabled for agent/);
         expect(logs(B.name)).toMatch(/INSECURE http transport allowed for a loopback lab host/);
     });

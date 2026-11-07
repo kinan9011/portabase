@@ -19,7 +19,6 @@ import {canonicalJson} from "@/fork/canonical";
 import type {ForkDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
 import {kidOfPublicKey} from "@/fork/manifest/sign";
-import {queueWaitingBackups} from "@/fork/upstream/backups";
 import {verifyRecoveryPoint, type VerifyDeps} from "@/fork/verify/service";
 import {freshForkDb, seedAgent, seedArtifact, seedProject, seedRp, seedStack, type W04Db} from "@/fork/__tests__/w04-helpers";
 import {ADMIN} from "@/fork/__tests__/e2e/helpers";
@@ -120,6 +119,8 @@ describe.skipIf(!LAB)("W15b live: fork agent image + real backups (D45) + signed
     const repos = localRepos();
 
     async function realBackup(): Promise<{backupId: string; storageId: string; path: string; fileSize: number; report: {sha256: string; size_bytes: number}}> {
+        // dynamic: the upstream db/env modules need PROJECT_URL/PROJECT_SECRET in THIS process (set in beforeAll), the pure-fork imports above do not
+        const {queueWaitingBackups} = await import("@/fork/upstream/backups");
         const r = await queueWaitingBackups(db, [databaseId]);
         const backupId = r.queued[0]?.backupId;
         if (!backupId) throw new Error(`not queued: ${JSON.stringify(r.skipped)}`);
@@ -139,6 +140,7 @@ describe.skipIf(!LAB)("W15b live: fork agent image + real backups (D45) + signed
     }
 
     beforeAll(async () => {
+        process.env.PROJECT_URL ??= "http://forklab-dashboard.localhost:1"; process.env.PROJECT_SECRET ??= `w15b-test-side-${rnd(24)}`;
         tmp = mkdtempSync(path.join(os.tmpdir(), "w15b-lab-")); priv = path.join(tmp, "private");
         for (const n of [AGENT_C, PG_C, MINIO_C]) { try { docker(["rm", "-f", n]); } catch { /* none */ } }
         try { docker(["volume", "rm", "-f", VOL]); } catch { /* none */ }
@@ -218,7 +220,7 @@ describe.skipIf(!LAB)("W15b live: fork agent image + real backups (D45) + signed
         const {rpId, artId} = await plantRp("w15b-d45", b, b.fileSize);
         const outcome = await verifyRecoveryPoint(verifyDeps(), rpId);
         RUN.push(`L1 verify outcome: ${JSON.stringify(outcome)}`);
-        expect(outcome).toMatchObject({outcome: "verified", manifestChannels: 1});
+        expect(outcome, JSON.stringify(outcome)).toMatchObject({outcome: "verified", manifestChannels: 1});
         const [rp] = await q("select status, downgrade_reason, verify_report from fork_recovery_point where id=$1", [rpId]);
         expect(rp).toMatchObject({status: "verified", downgrade_reason: null});
         expect(rp.verify_report.results[0]).toMatchObject({code: "ok", agent_hash: "match"});
@@ -241,9 +243,9 @@ describe.skipIf(!LAB)("W15b live: fork agent image + real backups (D45) + signed
         const {rpId} = await plantRp("w15b-d45-mismatch", b2, b1.size);
         const outcome = await verifyRecoveryPoint(verifyDeps(), rpId);
         RUN.push(`L2 verify outcome: ${JSON.stringify(outcome)}`);
-        expect(outcome).toMatchObject({outcome: "failed", reason: "plaintext_hash_mismatch", code: "agent_hash_mismatch"});
+        expect(outcome, JSON.stringify(outcome)).toMatchObject({outcome: "failed", reason: "plaintext_hash_mismatch", code: "agent_hash_mismatch"});
         const [rp] = await q("select status, downgrade_reason, manifest_refs from fork_recovery_point where id=$1", [rpId]);
-        expect(rp).toMatchObject({status: "failed", downgrade_reason: "plaintext_hash_mismatch", manifest_refs: null});
+        expect(rp).toMatchObject({status: "failed", downgrade_reason: "plaintext_hash_mismatch", manifest_refs: []});
         const audit = await q("select result from fork_audit_event where action='fork.recovery_point.verify' and resource_id=$1", [rpId]);
         expect(audit.map((a) => a.result)).toEqual(["failure"]);
         RUN.push(`L2 agent(B2) sha256=${b2.report.sha256} != swapped object plaintext (B1 ${b1.sha}) ⇒ RP failed:plaintext_hash_mismatch, audit failure`);
