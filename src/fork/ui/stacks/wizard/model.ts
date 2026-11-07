@@ -50,7 +50,7 @@ export function toSelection(st: WizardState, view: ConfigureView): Selection {
         } else if (f.mode === "sqlite" && d.mode === "sqlite") databases[d.service] = {kind: "sqlite", path: f.path.trim()};
     }
     return {
-        includeKeys: [...st.includedVolumes], excludeKeys: [...st.excluded], composeMethod: "snapshot", bindMethod: "archive", databases,
+        includeKeys: [...st.includedVolumes], excludeKeys: [...st.excluded], composeMethod: view.existing.selection.composeMethod, bindMethod: view.existing.selection.bindMethod, databases,
         manual: st.manual.map((m) => ({path: m.path.trim(), covers: m.covers})), stop: [],
     };
 }
