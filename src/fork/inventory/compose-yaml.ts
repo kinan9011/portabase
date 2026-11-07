@@ -14,6 +14,8 @@ import {ENV_KEY, SERVICE_NAME, safePathHint } from "@/fork/inventory/labels";
  */
 export const COMPOSE_YAML_LIMITS = {maxBytes: 256 * 1024, maxNodes: 20_000, maxDepth: 24, maxAliasCount: 10, maxIndent: 200} as const;
 
+export type YamlLimits = {maxBytes: number; maxNodes: number; maxDepth: number; maxAliasCount: number; maxIndent: number};
+
 export type ComposeService = {name: string; image?: string; hasBuild: boolean; envNames: string[]; envFiles: string[]; profiles: string[]; dependsOn: string[]};
 export type ParsedCompose = {services: ComposeService[]; externalNetworks: string[]; externalVolumes: string[]};
 export type ComposeRejection = "too_large" | "too_deep" | "too_many_nodes" | "alias_limit" | "syntax" | "unsupported" | "duplicate_key" | "not_a_mapping";
@@ -22,38 +24,39 @@ export type ComposeResult = {ok: true; compose: ParsedCompose} | {ok: false; rea
 const PROFILE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-function nestingTooDeep(text: string): boolean {
+function nestingTooDeep(text: string, limits: YamlLimits): boolean {
     let depth = 0;
     for (let i = 0, lineStart = true, indent = 0; i < text.length; i++) {
         const ch = text[i];
         if (ch === "\n") { lineStart = true; indent = 0; continue; }
-        if (lineStart && ch === " ") { if (++indent > COMPOSE_YAML_LIMITS.maxIndent) return true; continue; }
+        if (lineStart && ch === " ") { if (++indent > limits.maxIndent) return true; continue; }
         lineStart = false;
-        if (ch === "[" || ch === "{") { if (++depth > COMPOSE_YAML_LIMITS.maxDepth) return true; }
+        if (ch === "[" || ch === "{") { if (++depth > limits.maxDepth) return true; }
         else if (ch === "]" || ch === "}") depth = Math.max(0, depth - 1);
     }
     return false;
 }
 
-function jsDepth(v: unknown, d = 0): boolean {
-    if (d > COMPOSE_YAML_LIMITS.maxDepth) return true;
-    if (Array.isArray(v)) return v.some((x) => jsDepth(x, d + 1));
-    if (isObj(v)) return Object.values(v).some((x) => jsDepth(x, d + 1));
+function jsDepth(v: unknown, limits: YamlLimits, d = 0): boolean {
+    if (d > limits.maxDepth) return true;
+    if (Array.isArray(v)) return v.some((x) => jsDepth(x, limits, d + 1));
+    if (isObj(v)) return Object.values(v).some((x) => jsDepth(x, limits, d + 1));
     return false;
 }
 
-function parseOne(text: string): {ok: true; value: unknown} | {ok: false; reason: ComposeRejection} {
-    if (Buffer.byteLength(text, "utf8") > COMPOSE_YAML_LIMITS.maxBytes) return {ok: false, reason: "too_large"};
-    if (nestingTooDeep(text)) return {ok: false, reason: "too_deep"};
+/** One YAML document under explicit limits (W20a: the restore profile raises `maxAliasCount`; W07 tier-2 parsing keeps the defaults). */
+export function parseYamlLimited(text: string, limits: YamlLimits = COMPOSE_YAML_LIMITS): {ok: true; value: unknown} | {ok: false; reason: ComposeRejection} {
+    if (Buffer.byteLength(text, "utf8") > limits.maxBytes) return {ok: false, reason: "too_large"};
+    if (nestingTooDeep(text, limits)) return {ok: false, reason: "too_deep"};
     try {
         const doc = parseDocument(text, {uniqueKeys: true, merge: true, version: "1.2", schema: "core", prettyErrors: false});
         if (doc.errors.length) return {ok: false, reason: doc.errors.some((e) => e.code === "DUPLICATE_KEY") ? "duplicate_key" : "syntax"};
         if (doc.warnings.length) return {ok: false, reason: "unsupported"}; // unresolved/custom tag
         let nodes = 0;
-        visit(doc, () => (++nodes > COMPOSE_YAML_LIMITS.maxNodes ? visit.BREAK : undefined));
-        if (nodes > COMPOSE_YAML_LIMITS.maxNodes) return {ok: false, reason: "too_many_nodes"};
-        const value = doc.toJS({maxAliasCount: COMPOSE_YAML_LIMITS.maxAliasCount});
-        if (jsDepth(value)) return {ok: false, reason: "too_deep"};
+        visit(doc, () => (++nodes > limits.maxNodes ? visit.BREAK : undefined));
+        if (nodes > limits.maxNodes) return {ok: false, reason: "too_many_nodes"};
+        const value = doc.toJS({maxAliasCount: limits.maxAliasCount});
+        if (jsDepth(value, limits)) return {ok: false, reason: "too_deep"};
         return {ok: true, value};
     } catch (e) {
         if (e instanceof RangeError) return {ok: false, reason: "too_deep"};
@@ -112,7 +115,7 @@ export function parseComposeYaml(composeText: string, overrideText?: string | nu
     const extVols = new Set<string>();
     for (const [i, text] of [composeText, overrideText].entries()) {
         if (text === null || text === undefined || (i === 1 && text.trim() === "")) continue;
-        const r = parseOne(text);
+        const r = parseYamlLimited(text);
         if (!r.ok) return r;
         if (!extract(r.value, into, extNets, extVols)) return {ok: false, reason: "not_a_mapping"};
     }
