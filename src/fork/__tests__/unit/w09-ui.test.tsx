@@ -8,6 +8,7 @@ import {StackDetailSchema, type StackDetail} from "@/fork/stacks/dto";
 import {BLOCKERS_PANEL, CONFIG_TAB, FACET_COPY, ITEM_STATUS_LABELS, PRIMARY_STATE_LABELS, REASON_COPY, RP_STATUS_LABELS} from "@/fork/ui/labels";
 
 const refresh = vi.fn();
+vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: vi.fn(), cancelStackRunAction: vi.fn()}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh}), notFound: () => { throw new Error("NEXT_NOT_FOUND"); }}));
 
 import {StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";

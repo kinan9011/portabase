@@ -2,7 +2,8 @@ import {bigint, boolean, check, index, integer, jsonb, pgTable, text, timestamp,
 import {sql} from "drizzle-orm";
 import {backup} from "@/db/schema/07_database";
 import {backupStorage} from "@/db/schema/14_storage-backup";
-import {forkStack} from "@/fork/db/schema/stack";
+import {forkStack, forkStackSource} from "@/fork/db/schema/stack";
+import {forkStackRun} from "@/fork/db/schema/runs";
 import {
     ARCHIVE_KINDS, ARTIFACT_PRESENCE, CONSISTENCY_LEVELS, DUMP_FORMATS, inList, nullOrInList, RP_DOWNGRADE_REASONS, RP_STATUSES,
 } from "@/fork/db/enums";
@@ -18,7 +19,7 @@ export const forkRecoveryPoint = pgTable("fork_recovery_point", {
     id: uuid("id").primaryKey().defaultRandom(),
     stackId: uuid("stack_id").notNull().references(() => forkStack.id, {onDelete: "restrict"}),
     stackName: text("stack_name").notNull(),
-    runId: uuid("run_id"),
+    runId: uuid("run_id").references(() => forkStackRun.id, {onDelete: "set null"}),
     sequence: bigint("sequence", {mode: "number"}).notNull(),
     inventoryVersion: integer("inventory_version"),
     inventoryHash: text("inventory_hash"),
@@ -40,6 +41,8 @@ export const forkRecoveryPoint = pgTable("fork_recovery_point", {
     purgedAt: ts("purged_at"),
 }, (t) => [
     unique("fork_recovery_point_stack_seq_uq").on(t.stackId, t.sequence),
+    // W12: one RP per run (the finaliser is idempotent).
+    unique("fork_recovery_point_run_uq").on(t.runId),
     index("fork_recovery_point_stack_status_idx").on(t.stackId, t.status),
     check("fork_recovery_point_status_ck", inList("status", RP_STATUSES)),
     check("fork_recovery_point_reason_ck", nullOrInList("downgrade_reason", RP_DOWNGRADE_REASONS)),
@@ -58,7 +61,7 @@ export const forkRecoveryPoint = pgTable("fork_recovery_point", {
 export const forkRecoveryPointArtifact = pgTable("fork_recovery_point_artifact", {
     id: uuid("id").primaryKey().defaultRandom(),
     rpId: uuid("rp_id").notNull().references(() => forkRecoveryPoint.id, {onDelete: "cascade"}),
-    stackSourceId: uuid("stack_source_id"),
+    stackSourceId: uuid("stack_source_id").references(() => forkStackSource.id, {onDelete: "set null"}),
     backupId: uuid("backup_id").references(() => backup.id, {onDelete: "set null"}),
     backupStorageId: uuid("backup_storage_id").references(() => backupStorage.id, {onDelete: "set null"}),
     sourceName: text("source_name").notNull(),

@@ -1,4 +1,4 @@
-import {readFileSync} from "node:fs";
+import {readdirSync, readFileSync} from "node:fs";
 import path from "node:path";
 import {describe, expect, it} from "vitest";
 import {ARCHIVE_KINDS, AUDIT_RESULTS, CONSISTENCY_LEVELS, DUMP_FORMATS, HEALTH_STATUSES, HOST_ROLES, OUTBOX_STATES, PROTECTION_STATES, RUN_STATUSES, RUNTIME_STATES, SYNC_STATUSES} from "@/fork/db/enums";
@@ -44,10 +44,12 @@ describe("D32 downgrade rule", () => {
 });
 
 // Keeps TS value sets and the SQL CHECK constraints from drifting apart.
-describe("TS enums == SQL CHECK constraints in migration 0001", () => {
-    const sql = readFileSync(path.join(process.cwd(), "src/fork/db/migrations/0001_fork_schema_v1.sql"), "utf8");
+describe("TS enums == SQL CHECK constraints in the fork migrations (the LAST definition of a constraint wins: 0006 re-creates the RP reason check)", () => {
+    const dir = path.join(process.cwd(), "src/fork/db/migrations");
+    const sql = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort().map((f) => readFileSync(path.join(dir, f), "utf8")).join("\n");
     const checkValues = (name: string) => {
-        const m = sql.match(new RegExp(`CONSTRAINT "${name}" CHECK \\([^)]*IN \\(([^)]*)\\)`));
+        const all = [...sql.matchAll(new RegExp(`CONSTRAINT "${name}" CHECK \\([^)]*IN \\(([^)]*)\\)`, "g"))];
+        const m = all.at(-1);
         if (!m) throw new Error(`no CHECK ${name}`);
         return [...m[1].matchAll(/'([^']*)'/g)].map((x) => x[1]);
     };

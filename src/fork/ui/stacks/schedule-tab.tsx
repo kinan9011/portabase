@@ -5,13 +5,15 @@ import {SCHEDULE_PRESETS, type SchedulePreset} from "@/fork/schedule/schedule";
 import {CONFIGURE, SCHEDULE_TAB} from "@/fork/ui/labels";
 import {fmtUtc} from "@/fork/ui/stacks/format";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
+import type {RunView} from "@/fork/runs/view";
+import {RunPanel} from "@/fork/ui/stacks/run-panel";
 
 const T = SCHEDULE_TAB;
 const when = (iso: string, tz: string) => { try { return new Intl.DateTimeFormat("en-GB", {timeZone: tz, dateStyle: "medium", timeStyle: "short"}).format(new Date(iso)); } catch { return iso; } };
 const presetLabel = (p: SchedulePreset) => CONFIGURE.schedule.presets[SCHEDULE_PRESETS.includes(p) ? p : "cron"];
 
-/** Read-only view of the ACTIVATED policy (W11 placeholder; W13 replaces it with the real Schedule tab). Names and settings only. */
-export function ScheduleTab({policy, stackId, canConfigure, configureHref}: {policy: PolicyView | null; stackId: string; canConfigure: boolean; configureHref: string}) {
+/** The ACTIVATED policy + the latest run (W11 policy, W12 runs; W13 replaces it with the full Schedule/Backups/Activity tabs). Names, settings, states and plain reasons only. */
+export function ScheduleTab({policy, stackId, canConfigure, configureHref, runs = null, canRun = false}: {policy: PolicyView | null; stackId: string; canConfigure: boolean; configureHref: string; runs?: RunView | null; canRun?: boolean}) {
     if (!policy) {
         return (
             <section aria-labelledby="schedule-none" data-testid="schedule-tab" data-state="none" className="flex flex-col gap-3">
@@ -36,6 +38,7 @@ export function ScheduleTab({policy, stackId, canConfigure, configureHref}: {pol
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-[12rem_1fr]">
                 {rows.map(([k, v]) => <React.Fragment key={k}><dt className="text-muted-foreground text-sm">{k}</dt><dd className="text-sm">{v}</dd></React.Fragment>)}
             </dl>
+            <RunPanel runs={runs} canRun={canRun}/>
             <p className="text-muted-foreground text-sm">{T.note}</p>
             {canConfigure && <Link href={configureHref} className="w-fit text-sm font-medium underline underline-offset-4" data-stack={stackId}>{T.configure}</Link>}
         </section>

@@ -6,10 +6,11 @@ import {CANARY, richInventory} from "@/fork/__tests__/w08-fixtures";
 import {okState} from "@/fork/__tests__/w09-fixtures";
 import {DEFAULT_PARAMS, parseStackListParams} from "@/fork/stacks/params";
 import {StackDetailSchema, StackListSchema, type StackDetail, type StackList} from "@/fork/stacks/dto";
-import {PRIMARY_STATE_LABELS, PROTECTION_LABELS, RUNTIME_LABELS, STACK_DETAILS, STACKS_EMPTY, STACKS_PAGE, STALE_BANNER} from "@/fork/ui/labels";
+import {PRIMARY_STATE_LABELS, PROTECTION_LABELS, RUNS, RUNTIME_LABELS, STACK_DETAILS, STACKS_EMPTY, STACKS_PAGE, STALE_BANNER} from "@/fork/ui/labels";
 
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh}), notFound: () => { throw new Error("NEXT_NOT_FOUND"); }}));
+vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: vi.fn(), cancelStackRunAction: vi.fn()}));
 
 import {StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";
 import {StackListView} from "@/fork/ui/stacks/stack-list";
@@ -184,12 +185,12 @@ describe("W08 details: header, actions with visible reasons, tabs", () => {
         expect(screen.getByTestId("primary-state-badge").textContent).toContain(PRIMARY_STATE_LABELS.unprotected.description); // W09: derived §4.6 state
         expect(await axeViolations(container)).toEqual([]);
     });
-    it("the three unbuilt actions are aria-disabled, focusable, do nothing, and show a visible reason linked by aria-describedby", () => {
+    it("the not-yet-possible actions are aria-disabled, focusable, do nothing, and show a visible reason linked by aria-describedby", () => {
         mountDetail(detail(), {canConfigure: true});
         const a = STACK_DETAILS.actions;
         // W11: Configure is a real link for an administrator while configuration is open; the other three stay disabled with a visible reason
         expect(screen.getByRole("link", {name: a.configure.label}).getAttribute("href")).toBe(`/dashboard/stacks/${ID}/configure`);
-        const expected: [string, string][] = [[a.backupNow.label, a.backupNow.reason], [a.restore.label, a.restore.reason], [a.mirror.label, a.mirror.reason]];
+        const expected: [string, string][] = [[a.backupNow.label, RUNS.action.reasons.member], [a.restore.label, a.restore.reason], [a.mirror.label, a.mirror.reason]];
         for (const [label, reason] of expected) {
             const b = screen.getByRole("button", {name: label});
             expect(b.getAttribute("aria-disabled")).toBe("true");

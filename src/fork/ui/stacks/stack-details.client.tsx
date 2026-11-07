@@ -6,7 +6,7 @@ import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import type {ConfigurationView, ProtectionView} from "@/fork/completeness/view";
 import type {InventoryView, StackDetail} from "@/fork/stacks/dto";
 import {TABS, type StackTab} from "@/fork/ui/stacks/tabs";
-import {CONFIG_TAB, SCHEDULE_TAB, ENVIRONMENT_COPY, RP_STATUS_LABELS, STACK_DETAILS, STACKS_EMPTY, WARNING_COPY, WARNING_FALLBACK, WARNING_SEVERITY_LABELS} from "@/fork/ui/labels";
+import {CONFIG_TAB, RUNS, SCHEDULE_TAB, ENVIRONMENT_COPY, RP_STATUS_LABELS, STACK_DETAILS, STACKS_EMPTY, WARNING_COPY, WARNING_FALLBACK, WARNING_SEVERITY_LABELS} from "@/fork/ui/labels";
 import {BlockersPanel} from "@/fork/ui/stacks/config-tab/blockers-panel";
 import {ConfigTab} from "@/fork/ui/stacks/config-tab/config-tab";
 import {FacetsPanel, LastGoodBackupLine} from "@/fork/ui/stacks/config-tab/facets-panel";
@@ -14,6 +14,7 @@ import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {fmtPort, fmtUtc, STACKS_HREF} from "@/fork/ui/stacks/format";
 import {ResourcesTabs} from "@/fork/ui/stacks/resources-tabs";
 import {ScheduleTab} from "@/fork/ui/stacks/schedule-tab";
+import {RunNowButton, RunPoller} from "@/fork/ui/stacks/run-controls.client";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
 import {PrimaryStateBadge, ProtectionBadge, RpStatusBadge, RuntimeBadge, StaleBadge} from "@/fork/ui/stacks/stack-status-badges";
 import {SyncPoller} from "@/fork/ui/stacks/sync-poller";
@@ -21,14 +22,14 @@ import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge} from "@/fork/ui/tone-badge";
 
 const D = STACK_DETAILS;
-function Actions({canConfigure, configLocked, stackId}: {canConfigure: boolean; configLocked: boolean; stackId: string}) {
+function Actions({canConfigure, configLocked, stackId, runReason}: {canConfigure: boolean; configLocked: boolean; stackId: string; runReason: string | null}) {
     // Configure is a real link for an administrator while configuration is open (W11); every other action is visibly disabled with its reason (§8.2 rule 10).
     return (
         <div className="flex flex-wrap items-start gap-3" data-testid="actions">
             {canConfigure && !configLocked
                 ? <Link href={`${STACKS_HREF}/${stackId}/configure`} data-testid="configure-link" className="border-input bg-background hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium">{D.actions.configure.label}</Link>
                 : <ReasonButton type="button" variant="outline" reason={canConfigure ? D.actions.configure.admin : D.actions.configure.member}>{D.actions.configure.label}</ReasonButton>}
-            <ReasonButton type="button" variant="outline" reason={D.actions.backupNow.reason}>{D.actions.backupNow.label}</ReasonButton>
+            <RunNowButton stackId={stackId} label={D.actions.backupNow.label} reason={runReason}/>
             <ReasonButton type="button" variant="outline" reason={D.actions.restore.reason}>{D.actions.restore.label}</ReasonButton>
             <ReasonButton type="button" variant="outline" reason={D.actions.mirror.reason}>{D.actions.mirror.label}</ReasonButton>
         </div>
@@ -118,7 +119,7 @@ function Overview({v, p, c, onOpenConfiguration}: {v: InventoryView; p: Protecti
     );
 }
 
-export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean}) {
+export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean}) {
     const [tab, setTab] = React.useState<StackTab>(initialTab);
     const gone = detail.runtime === "absent";
     const stale = detail.staleSince !== null && !gone;
@@ -131,9 +132,12 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
     const protection = detail.inventory.state === "ok" ? detail.inventory.protection : null;
     const configuration = detail.inventory.state === "ok" ? detail.inventory.configuration : null;
     const warn = TONE_MAP.warning;
+    // "Back up now" is real only when a run can actually start; otherwise the reason is visible text (§8.2 rule 10), never a silent no-op.
+    const runReason = !canRun ? RUNS.action.reasons.member : !detail.policy ? RUNS.action.reasons.no_policy : detail.runs?.paused ? RUNS.action.reasons.paused : detail.runs?.active ? RUNS.action.reasons.active : null;
     return (
         <div className="flex flex-col gap-5">
             <SyncPoller active={detail.syncing}/>
+            <RunPoller active={detail.runs?.active != null}/>
             <nav aria-label="Breadcrumb"><Link href={STACKS_HREF} className="text-muted-foreground hover:text-foreground text-sm underline-offset-4 hover:underline">← {D.back}</Link></nav>
 
             <header className="flex flex-col gap-3">
@@ -146,7 +150,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                             <div className="flex gap-1.5"><dt>{D.lastSync}:</dt><dd className="text-foreground">{fmtUtc(detail.lastSyncAt, ENVIRONMENT_COPY.notSynced)}</dd></div>
                         </dl>
                     </div>
-                    <Actions canConfigure={canConfigure} configLocked={configLocked} stackId={detail.id}/>
+                    <Actions canConfigure={canConfigure} configLocked={configLocked} stackId={detail.id} runReason={runReason}/>
                 </div>
                 {protection && <LastGoodBackupLine p={protection}/>}
                 <div className="flex flex-wrap items-start gap-4"><RuntimeBadge state={detail.runtime} describe/>{protection ? <PrimaryStateBadge state={protection.primary} describe/> : <ProtectionBadge state={detail.protection} describe/>}{stale && <StaleBadge/>}</div>
@@ -170,7 +174,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                     <TabsContent value="overview">{protection && configuration && <Overview v={view} p={protection} c={configuration} onOpenConfiguration={() => onTab("configuration")}/>}</TabsContent>
                     <TabsContent value="resources"><ResourcesTabs view={view}/></TabsContent>
                     <TabsContent value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
-                    <TabsContent value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`}/></TabsContent>
+                    <TabsContent value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`} runs={detail.runs} canRun={canRun}/></TabsContent>
                 </Tabs>
             )}
         </div>

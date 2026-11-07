@@ -17,6 +17,15 @@ export const RP_DOWNGRADE_REASONS = [
     "stack_removed",
     "verify_failed",
     "plaintext_hash_mismatch",
+    // W12 finaliser (migration 0006):
+    "validator_blocked", // EU-04: the validator found gaps; everything readable was captured
+    "member_failed", // at least one required member did not produce its artifacts
+    "member_timeout", // stuck timeout: the agent never started / never progressed
+    "unencrypted", // D39: an archive artifact is not encrypted
+    "checksum_unavailable", // the dashboard could not compute the ciphertext checksum
+    "run_cancelled",
+    "run_not_started", // nothing could be queued
+    "run_error", // the run engine itself failed repeatedly (internal_error); partial artifacts are still listed
 ] as const;
 export type RpDowngradeReason = (typeof RP_DOWNGRADE_REASONS)[number];
 
