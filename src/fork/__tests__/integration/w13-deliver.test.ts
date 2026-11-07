@@ -29,7 +29,8 @@ const mk = (o: {channel?: typeof CH | null; send?: (m: Sent) => Promise<boolean>
     };
     return {deps, sent};
 };
-const enq = (kind: string, key: string, payload: Record<string, unknown> = {}) => enqueueForkNotification(t.db, {kind, dedupeKey: key, payload: {stackId: w.stackId, reason: "member_timeout", hours: 30, link: `/dashboard/stacks/${w.stackId}`, ...payload}});
+// rows are eligible at the injected clock T0: the DB default now() is the REAL clock and is later than a fixed T0 (failed from 2026-11-07 10:00Z)
+const enq = async (kind: string, key: string, payload: Record<string, unknown> = {}) => { const r = await enqueueForkNotification(t.db, {kind, dedupeKey: key, payload: {stackId: w.stackId, reason: "member_timeout", hours: 30, link: `/dashboard/stacks/${w.stackId}`, ...payload}}); await pool.query("update fork_notification_outbox set created_at = $1, next_attempt_at = $1 where dedupe_key = $2", [new Date(T0.getTime() - 1000), key]); return r; };
 
 describe("W13 delivery: every §4.7 kind → exactly one sanitised notification through the channel", () => {
     it.each(DELIVERABLE_KINDS)("%s: delivered once, body = fixed sentences + sanitised name + link (canary absent)", async (kind) => {
@@ -103,6 +104,7 @@ describe("W13 delivery: honest outcomes", () => {
 
     it("kinds that are not a §4.7 trigger are `suppressed`, never delivered", async () => {
         await enqueueForkNotification(t.db, {kind: "discovery.circuit_open", dedupeKey: "dc:1", payload: {state: "circuit_open"}});
+        await pool.query("update fork_notification_outbox set created_at = $1, next_attempt_at = $1", [new Date(T0.getTime() - 1000)]);
         const {deps, sent} = mk();
         expect(await deliverPending(deps)).toMatchObject({suppressed: 1, delivered: 0});
         expect(sent).toHaveLength(0);
