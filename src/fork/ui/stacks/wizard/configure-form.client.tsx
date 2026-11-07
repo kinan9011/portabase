@@ -77,9 +77,10 @@ export function ConfigureForm({view, locked}: {view: ConfigureView; locked: bool
     const extraReasons: string[] = [];
     for (const d of view.databases) {
         const f = st.databases[d.service];
-        if (f?.mode === "dump" && d.secret && !secretPresent[d.service] && !(view.existing.active && view.existing.selection.databases[d.service]?.kind === "dump")) extraReasons.push(T.review.secretNeeded(d.service));
+        const fieldsMissing = dbErrors.some((e) => e.service === d.service);
+        const secretMissing = f?.mode === "dump" && d.secret && !secretPresent[d.service] && !(view.existing.active && view.existing.selection.databases[d.service]?.kind === "dump");
+        if (fieldsMissing || secretMissing) extraReasons.push(T.review.dbIncomplete(d.service)); // one line per database, not one per field
     }
-    for (const e of dbErrors) extraReasons.push(T.review.fieldNeeded(e.service, T.consistency.fields[e.field === "path" ? "database" : e.field].toLowerCase()));
 
     const activate = useMutation({
         mutationFn: async (): Promise<UiResult<ActivateResult>> => {

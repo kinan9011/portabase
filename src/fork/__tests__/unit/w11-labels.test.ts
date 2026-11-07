@@ -1,6 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {SCHEDULE_PRESETS} from "@/fork/schedule/schedule";
 import {PLAN_VERDICTS} from "@/fork/stack-policy/preview";
+import {SKIP_REASONS} from "@/fork/materialize/types";
 import {SELECTION_ISSUE_CODES} from "@/fork/stack-policy/validate-selection";
 import type {ActivateReason} from "@/fork/stack-policy/activate";
 import {CONFIGURE, SCHEDULE_TAB} from "@/fork/ui/labels";
@@ -11,6 +12,9 @@ describe("W11 labels: every closed vocabulary has copy", () => {
         for (const v of PLAN_VERDICTS) expect(CONFIGURE.resources.plan[v], v).toMatch(/\S/);
         for (const p of SCHEDULE_PRESETS) expect(CONFIGURE.schedule.presets[p], p).toMatch(/\S/);
         for (const b of ["locked", "encryption_off", "no_channel_selected", "local_only_channels", "invalid_schedule", "invalid_retention", "selection_issues"] as const) expect(CONFIGURE.review.blockers[b], b).toMatch(/\S/);
+    });
+    it("every planner skip reason is explained in the success panel", () => {
+        for (const r of SKIP_REASONS) expect(CONFIGURE.review.success.skipReason[r], r).toMatch(/\S/);
     });
     it("every activation refusal reason the server can return has its own sentence", () => {
         const reasons: ActivateReason[] = ["no_agent", "agent_unavailable", "agent_version", "environment_disabled", "channels_unavailable", "secret_required", "project_name_taken", "method_change", "no_inventory", "stack_gone",

@@ -102,7 +102,7 @@ export function blockers(o: {view: ConfigureView; state: WizardState; preview: P
     if (!rule.ok) out.push(rule.reason);
     if (o.cronInvalid || !ScheduleSchema.safeParse(o.state.schedule).success) out.push("invalid_schedule");
     if (!RetentionPolicySchema.safeParse(o.state.retention).success) out.push("invalid_retention");
-    if (o.preview.issues.length > 0 || o.dbErrors.length > 0) out.push("selection_issues");
+    if (o.preview.issues.length > 0) out.push("selection_issues");
     return out;
 }
 

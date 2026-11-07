@@ -249,11 +249,13 @@ describe("W11 activation: honest outcomes, secrets", () => {
     });
 
     it("deferred docker volumes are reported next to the success, not hidden", async () => {
-        activateAction.mockResolvedValue({data: {...okActivate.data, deferred: [{key: "volume:app_data", reason: "docker_access_unconfirmed"}]}});
+        activateAction.mockResolvedValue({data: {...okActivate.data, deferred: [{key: "volume:app_data", reason: "docker_access_unconfirmed"}], skipped: [{key: "mount:m:0000000000000009", reason: "anonymous_volume"}]}});
         mount(w11View());
         pickChannel(/offsite/);
         await act(async () => { fireEvent.click(screen.getByTestId("activate")); });
-        expect((await screen.findByTestId("activate-success")).textContent).toContain(T.review.success.deferred(1));
+        const ok = await screen.findByTestId("activate-success");
+        expect(ok.textContent).toContain(T.review.success.deferred(1));
+        expect(screen.getByTestId("skipped-list").textContent).toContain(T.review.success.skipReason.anonymous_volume);
     });
 
     it("nothing is sent or stored while editing (UX-04): no activate call, no storage, no URL change", () => {

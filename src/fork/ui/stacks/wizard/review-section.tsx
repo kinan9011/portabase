@@ -69,7 +69,12 @@ export function ReviewSection({stackId, preview, blockerList, extraReasons, pend
                     <h3 id={`${id}-ok`} className="font-medium">{V.success.title}</h3>
                     <p>{V.success.body(outcome.result.sources.filter((s) => s.status !== "planned").length, outcome.result.nextRuns[0] ? run(outcome.result.nextRuns[0]) : "—")}</p>
                     {outcome.result.deferred.length > 0 && <p>{V.success.deferred(outcome.result.deferred.length)}</p>}
-                    {outcome.result.skipped.length > 0 && <p>{V.success.skipped(outcome.result.skipped.length)}</p>}
+                    {outcome.result.skipped.length > 0 && (
+                        <>
+                            <p>{V.success.skipped(outcome.result.skipped.length)}</p>
+                            <ul className="list-disc pl-5" data-testid="skipped-list">{outcome.result.skipped.map((k) => <li key={`${k.key}${k.reason}`}><span className="font-mono break-all">{k.key.replace(/^[a-z]+:/, "")}</span>: {V.success.skipReason[k.reason] ?? k.reason}</li>)}</ul>
+                        </>
+                    )}
                     <Link href={stackHref(stackId, "schedule")} className="mt-2 inline-block font-medium underline underline-offset-4">{V.success.view}</Link>
                 </section>
             )}
