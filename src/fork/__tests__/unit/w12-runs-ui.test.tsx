@@ -17,7 +17,7 @@ import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 
 const ID = "0b7e1c1e-7f3a-4b6e-9a40-111111111111";
 const view = (o: Partial<RunView> = {}): RunView => RunViewSchema.parse({limits: {waitMinutes: 10, stallMinutes: 30}, active: null, latest: null, paused: null, ...o});
-const latest = (o: Record<string, unknown> = {}) => ({state: "succeeded", trigger: "schedule", startedAt: "2026-11-07T02:00:00.000Z", finishedAt: "2026-11-07T02:03:00.000Z", reason: null, skipReason: null, validatorBlocked: false, inventoryRefresh: "ok", rp: {sequence: 3, status: "pending_verification", reason: null}, ...o});
+const latest = (o: Record<string, unknown> = {}) => ({state: "succeeded", trigger: "schedule", startedAt: "2026-11-07T02:00:00.000Z", finishedAt: "2026-11-07T02:03:00.000Z", reason: null, skipReason: null, validatorBlocked: false, inventoryRefresh: "ok", rp: {sequence: 3, status: "pending_verification", reason: null}, ...o}) as unknown as NonNullable<RunView["latest"]>;
 
 beforeEach(() => { refresh.mockReset(); start.mockReset(); cancel.mockReset(); });
 afterEach(cleanup);

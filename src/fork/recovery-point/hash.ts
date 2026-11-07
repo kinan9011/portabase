@@ -4,8 +4,9 @@ import {artifactDownloadUrl} from "@/fork/upstream";
 /**
  * Ciphertext hashing of ONE archive object (W12 finaliser). The agent's upload path reports no checksum (`backup/upload/status` writes
  * status/path/size only), so the dashboard reads the stored object back (presigned URL from the upstream download path) and hashes it while
- * streaming. Hard limits: size cap, wall-clock timeout, byte count must equal the size the agent reported. `null` = unreadable / over the cap /
- * size mismatch ⇒ the RP says `checksum_unavailable` (never a made-up checksum). The URL is never logged or stored.
+ * streaming. Hard limits: size cap, wall-clock timeout, the stored object must be AT LEAST as large as the size the agent reported (observed in the
+ * lab: the agent reports the size BEFORE encryption, the stored `.enc` object is larger by its header + tags, ≈ 122 bytes; a truncated object is smaller).
+ * `null` = unreadable / over the cap / truncated ⇒ the RP says `checksum_unavailable` (never a made-up checksum). The URL is never logged or stored.
  */
 export type HashRequest = {backupStorageId: string; expectedSize: number | null; maxBytes: number; timeoutMs: number};
 export type HashResult = {sha256: string; bytes: number} | null;
@@ -35,7 +36,7 @@ export async function hashUrl(url: string, r: Omit<HashRequest, "backupStorageId
             if (bytes > r.maxBytes) { await reader.cancel(); return null; }
             h.update(value);
         }
-        if (r.expectedSize !== null && bytes !== r.expectedSize) return null;
+        if (bytes === 0 || (r.expectedSize !== null && bytes < r.expectedSize)) return null; // truncated / empty: never a checksum
         return {sha256: h.digest("hex"), bytes};
     } catch {
         return null;

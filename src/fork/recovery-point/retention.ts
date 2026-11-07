@@ -55,7 +55,7 @@ export function selectRetention(rps: readonly RpFacts[], policy: RetentionPolicy
     const verified = newestFirst.filter((r) => r.status === "verified");
 
     // (a) + (b)
-    verified.slice(0, policy.keep_last).forEach((r) => keep.set(r.id, "keep_last"));
+    for (const r of verified.slice(0, policy.keep_last)) keep.set(r.id, "keep_last");
     // GFS over verified RPs: the NEWEST RP of each day / ISO week / month / year bucket, newest buckets first
     const take = (key: (p: ReturnType<typeof parts>) => string, n: number, why: string) => {
         if (n <= 0) return;

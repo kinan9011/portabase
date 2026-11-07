@@ -30,6 +30,8 @@ export type World = {
 export type WorldOpts = {
     dbms?: string[]; channels?: number; encryption?: boolean; schedule?: Record<string, unknown>; covers?: boolean; userRole?: string; orgRole?: string; cfg?: Partial<RunConfig>;
     deps?: Partial<RunDeps>; agentOrg?: boolean;
+    /** Use an organization / user that already exist (the e2e boots a real dashboard whose default org and admin were created by upstream). */
+    existing?: {orgId: string; userId: string};
 };
 
 export async function setEncryption(p: Pool, on: boolean) {
@@ -40,11 +42,15 @@ export async function setEncryption(p: Pool, on: boolean) {
 export async function mkWorld(t: W04Db, o: WorldOpts = {}): Promise<World> {
     const p = t.pool;
     const tag = randomUUID().slice(0, 8);
-    const org = await seedOrg(p, `org-${tag}`);
-    const userId = randomUUID();
-    await p.query(`insert into "user" (id, name, email, email_verified, role) values ($1,'admin',$2,true,$3)`, [userId, `${userId}@t.test`, o.userRole ?? "admin"]);
-    await p.query("insert into member (organization_id, user_id, role) values ($1,$2,$3)", [org, userId, o.orgRole ?? "owner"]);
-    await setEncryption(p, o.encryption ?? true);
+    const org = o.existing?.orgId ?? (await seedOrg(p, `org-${tag}`));
+    const userId = o.existing?.userId ?? randomUUID();
+    if (!o.existing) {
+        await p.query(`insert into "user" (id, name, email, email_verified, role) values ($1,'admin',$2,true,$3)`, [userId, `${userId}@t.test`, o.userRole ?? "admin"]);
+        await p.query("insert into member (organization_id, user_id, role) values ($1,$2,$3)", [org, userId, o.orgRole ?? "owner"]);
+        await setEncryption(p, o.encryption ?? true);
+    } else {
+        await p.query("update settings set encryption=$1", [o.encryption ?? true]);
+    }
     const agent = await seedAgent(p, o.agentOrg === false ? null : org, `agent-${tag}`);
     await p.query("update agents set version='1.25.2', last_contact=$2 where id=$1", [agent, naive(T0)]);
     const env = await seedEnvironment(p, await seedConnection(p, org, `c-${tag}`), agent, `agent-${tag}`, tag);

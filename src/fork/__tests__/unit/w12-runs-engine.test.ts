@@ -5,7 +5,7 @@ import {RUN_STEPS} from "@/fork/runs/vocab";
 const T0 = new Date("2026-11-07T10:00:00Z");
 type N = "a" | "b" | "c";
 const names: N[] = ["a", "b", "c"];
-const clock = () => { let t = T0.getTime(); return {now: () => new Date((t += 1000)), tick: (ms: number) => { t += ms; }}; };
+const clock = () => { let t = T0.getTime(); return {now: () => { t += 1000; return new Date(t); }, tick: (ms: number) => { t += ms; }}; };
 const store = () => { const saved: StepRecord<N>[][] = []; return {saved, persist: async (s: StepRecord<N>[]) => { saved.push(s.map((x) => ({...x}))); }}; };
 
 describe("runs: durable step engine (ARCH-13, fake clock)", () => {
