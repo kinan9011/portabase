@@ -226,7 +226,7 @@ export const STACK_DETAILS = {
     notInRelease: "Not in this release",
     actions: {
         configure: {label: "Configure backup", admin: "Backup configuration is locked while Fork configuration is locked.", member: "Only a system administrator configures backups."},
-        backupNow: {label: "Back up now", reason: "A backup has to be configured first, and nothing can be configured yet."},
+        backupNow: {label: "Back up now", reason: "Running a backup is not built yet. It arrives in a later step of this release."},
         restore: {label: "Restore", reason: "Restoring from the dashboard is planned for release R2."},
         mirror: {label: "Create test mirror", reason: "Test mirrors are not part of this release."},
     },

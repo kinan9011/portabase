@@ -60,7 +60,7 @@ export function ReviewSection({stackId, preview, blockerList, extraReasons, pend
             {active && <p className="text-muted-foreground text-sm">{V.activeNote}</p>}
 
             <div className="flex flex-wrap items-start gap-3">
-                <ReasonButton type="button" onClick={onActivate} reason={reason} data-testid="activate">{active ? V.edit : V.activate}</ReasonButton>
+                <ReasonButton type="button" onClick={onActivate} reason={reason} data-testid="activate" className="bg-[color-mix(in_oklab,var(--primary),black_25%)] text-white hover:bg-[color-mix(in_oklab,var(--primary),black_35%)]">{active ? V.edit : V.activate}</ReasonButton>
                 <ReasonButton type="button" variant="outline" reason={V.runFirstReason} data-testid="run-first">{V.runFirst}</ReasonButton>
             </div>
 
