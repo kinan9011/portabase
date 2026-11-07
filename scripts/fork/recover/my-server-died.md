@@ -108,13 +108,13 @@ scripts/fork/recover/portabase-recover restore --yes --kit KIT --stack STACKID -
 
 The tool does it in this order and says each step in plain words: checks the signature → checks all files → restores files → restores Docker volumes → checks your Compose file for risky settings → restores databases → starts the stack. **Nothing on your machine changes until every check has passed.**
 
-**Risky settings.** If your Compose file asks for powers a recovery should not grant — full control of the machine, the Docker socket (a reverse proxy like Traefik does this), host networking, hardware devices, or files outside the restore folder — the tool refuses and says in plain words what the service wants. If you wrote that file and trust it, allow **that one service** and run the same command again:
+**Risky settings.** If your Compose file asks for powers a recovery should not grant — full control of the machine, the Docker socket (a reverse proxy like Traefik does this), host networking, hardware devices, files outside the restore folder, or a setting the tool cannot check for safety — the tool refuses and says in plain words what the service wants. If you wrote that file and trust it, allow **that one service** and run the same command again:
 
 ```bash
 scripts/fork/recover/portabase-recover restore --yes --kit KIT --stack STACKID --root /srv/portabase-restore/mystack2 --allow-privileged=SERVICENAME
 ```
 
-(Use a fresh empty restore folder each time.) Never allow something you do not recognise. A Compose file that tries to read files **outside** the restore folder is always refused, with no way around it.
+(Use a fresh empty restore folder each time.) Never allow something you do not recognise. A Compose file that **reads** files outside the restore folder — also through an `include`d or `extends`ed file, an `env_file`, a `label_file` or a secret — is always refused, with no way around it. So is one whose paths the tool cannot prove safe (a variable such as `${HOME}`, `~`, or `..`).
 
 **Your own project name.** To start the restored stack next to something else, add `--project-name newname`.
 

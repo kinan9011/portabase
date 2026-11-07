@@ -53,9 +53,11 @@ describe("restore plan schemas", () => {
         expect(list("outcome")).toEqual([...PLAN_OUTCOMES]);
         expect(APPROVAL_KINDS).toEqual(["production_target", "destructive_replace"]);
     });
-    it("DENY_RULE_IDS equal the rule ids of policy/compose-deny.json", () => {
+    it("every DENY_RULE_IDS id exists in policy/compose-deny.json (plan vocabulary v1 is a subset of rule file v2, W20a D-9)", () => {
         const j = JSON.parse(readFileSync(path.join(process.cwd(), "src/fork/policy/compose-deny.json"), "utf8")) as {rules: {id: string}[]};
-        expect(j.rules.map((r) => r.id)).toEqual([...DENY_RULE_IDS]);
+        const ids = j.rules.map((r) => r.id);
+        for (const id of DENY_RULE_IDS) expect(ids).toContain(id);
+        expect(ids.slice(0, DENY_RULE_IDS.length)).toEqual([...DENY_RULE_IDS]);
     });
     it("MappingsV1 bounds: ≤500 volume mappings, ≤2000 select keys, project name grammar", () => {
         const base = {target_project: null, restore_root: null, volumes: null, select: null, sqlite: null};

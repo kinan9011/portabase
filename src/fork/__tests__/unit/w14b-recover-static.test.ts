@@ -16,14 +16,19 @@ describe("portabase-recover static contract", () => {
             expect(m?.[1], c).toBe(RECOVER_STEPS[k as keyof typeof RECOVER_STEPS]);
         }
     });
-    it("compose-deny.json: version 1, the D27 rule set, unique ids, plain-words text for each directive", () => {
+    it("compose-deny.json: version 2, the D27 rule set (+W20a additions), hard refusals, unique ids, plain-words text", () => {
         const j = JSON.parse(R("src/fork/policy/compose-deny.json"));
-        expect(j.version).toBe(1);
-        expect(j.rules.map((r: {id: string}) => r.id)).toEqual(["privileged", "network_mode_host", "pid_host", "ipc_host", "devices", "cap_add", "docker_sock", "bind_outside_root"]);
+        expect(j.version).toBe(2);
+        expect(j.rules.map((r: {id: string}) => r.id)).toEqual(["privileged", "network_mode_host", "pid_host", "ipc_host", "devices", "cap_add", "docker_sock", "bind_outside_root", "shared_namespace", "unknown_directive"]);
+        expect(j.hard_refusals.map((r: {id: string}) => r.id)).toEqual(["read_outside_root", "path_ambiguous", "yaml_invalid", "limits", "raw_incomplete", "service_name", "top_level_unknown", "shape_invalid"]);
+        const ids = [...j.rules, ...j.hard_refusals].map((r: {id: string}) => r.id);
+        expect(new Set(ids).size).toBe(ids.length);
         for (const r of j.rules) { expect(r.plain.length).toBeGreaterThan(20); expect(r.directive.length).toBeGreaterThan(3); }
+        for (const r of j.hard_refusals) expect(r.plain.length).toBeGreaterThan(20);
         expect(j.cap_add_allowlist).not.toContain("SYS_ADMIN");
         expect(j.cap_add_allowlist).not.toContain("ALL");
         expect(j.docker_socket_paths).toContain("/var/run/docker.sock");
+        for (const k of ["build", "cgroup", "cgroup_parent", "credential_spec", "device_cgroup_rules", "extends", "gpus", "isolation", "label_file", "models", "oom_kill_disable", "oom_score_adj", "post_start", "pre_stop", "provider", "runtime", "storage_opt", "userns_mode", "uts", "volumes_from", "cpu_rt_runtime", "cpu_rt_period"]) expect(j.service_keys_known, k).not.toContain(k);
         expect(j.raw_read_scope.keys).toEqual(expect.arrayContaining(["env_file", "include", "extends.file"]));
     });
     it("the CLI reads its rules from that one file (never an inline copy of the rule list)", () => {

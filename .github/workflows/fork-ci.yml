@@ -100,6 +100,11 @@ jobs:
         run: |
           command -v restic >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends restic; }
           restic version
+      - name: jq + python3-yaml (W20a compose-policy parity tests run the CLI's jq program and kit-tool on the shared corpus)
+        run: |
+          python3 -c "import yaml" 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends python3-yaml; }
+          command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends jq; }
+          python3 -c "import yaml; print('PyYAML', yaml.__version__)"; jq --version
       - run: pnpm test:fork:unit
       - run: pnpm test:fork:integration
 

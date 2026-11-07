@@ -34,9 +34,12 @@ POISON = {
     "env-file-outside": ("app", "    env_file: ['../../../../../../../../../../outside.env']\n"),
     "env-file-var": ("app", "    env_file: ['${HOME}/secrets.env']\n"),
     "dup-key": ("app", "    env_file: ['../../../../../../../../../../outside.env']\n"),
+    "unknown-key": ("app", "    security_opt: ['seccomp=unconfined']\n"),
+    "api-socket": ("app", "    use_api_socket: true\n"),
+    "label-file-outside": ("app", "    label_file: ['../../../../../../../../../../outside.labels']\n"),
     "extends-outside": ("app", "    extends: {file: '../../../../../../../../../../other.yml', service: base}\n"),
 }
-SPECIAL = {"include-outside", "secret-file-outside", "allow-override-ok"}
+SPECIAL = {"include-outside", "secret-file-outside", "allow-override-ok", "vol-driver-bind", "net-host-external", "include-inside-env-outside"}
 
 
 def sh(args, **kw):
@@ -154,6 +157,14 @@ def main():
         compose = COMPOSE_OK.replace("    command: [\"sleep\", \"3600\"]\n", "    command: [\"sleep\", \"3600\"]\n" + extra) if "volumes" not in extra else COMPOSE_OK.replace("    volumes:\n      - ./data:/data\n      - appdata:/appdata\n", extra)
         if case in ("extends-outside", "env-file-outside", "env-file-var"):
             compose = compose.replace("    env_file: stack.env\n", "")
+    extra_files = []
+    if case == "vol-driver-bind":  # a NAMED volume that is really a bind of /etc (the bind-mount rule alone does not see it)
+        compose = COMPOSE_OK.replace("volumes:\n  appdata:\n", "volumes:\n  appdata:\n    driver: local\n    driver_opts: {type: none, o: bind, device: /etc}\n")
+    if case == "net-host-external":  # an external network literally named `host` = host networking
+        compose = COMPOSE_OK.replace("    command:", "    networks: [h]\n    command:").replace("volumes:\n  appdata:\n", "volumes:\n  appdata:\nnetworks:\n  h:\n    external: true\n    name: host\n")
+    if case == "include-inside-env-outside":  # the include target is INSIDE the root, the poison is one level down
+        compose = "include:\n  - ./sub.yml\n" + COMPOSE_OK
+        extra_files = [("sub.yml", b"services:\n  extra:\n    image: busybox:latest\n    env_file: ['../../../../../../../../../../outside.env']\n")]
     if case == "include-outside":
         compose = "include:\n  - ../../../../../../../../../../elsewhere.yml\n" + COMPOSE_OK
     if case == "secret-file-outside":
@@ -165,7 +176,7 @@ def main():
     stack_env = b"A=1\n"
     if case.startswith("pg-real-"):
         compose, stack_env = COMPOSE_PG, b"POSTGRES_USER=app\nPOSTGRES_PASSWORD=x\nPOSTGRES_DB=app\n"
-    compose_tgz = tgz([("compose.yml", compose.encode()), ("stack.env", stack_env)])
+    compose_tgz = tgz([("compose.yml", compose.encode()), ("stack.env", stack_env)] + extra_files)
     data_files = [("hello.txt", b"hello from the bind path\n"), ("dir/more.txt", b"more\n")]
     vol_tgz = tgz([("vol/file-1.txt", b"volume data one\n"), ("vol/sub/file-2.txt", b"two\n")])
     dump = b"PGDMP\x01\x0e\x00" + secrets.token_bytes(300)
