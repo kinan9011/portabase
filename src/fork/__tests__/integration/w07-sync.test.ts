@@ -152,6 +152,31 @@ describe("stale, absent, partial, reconcile", () => {
         expect(ran(await syncConnection(deps(), conn, "manual")).status).toBe("ok");
         expect((await stacks())[0].stale_since).toBeNull();
     });
+    it("a gone environment next to a failing one: the connection error is the failing one's class, not `not_found`", async () => {
+        fake.state.environments.push({id: "e4", name: "remote", status: "online", apiUrl: "http://x.invalid"});
+        fake.state.grants.push(...MIN_PERMS("e4"));
+        await q("insert into fork_arcane_environment (connection_id, external_id, name, enabled) values ($1,'e4','remote',true)", [conn]);
+        await q("insert into fork_arcane_environment (connection_id, external_id, name, enabled) values ($1,'gone','gone-env',true)", [conn]);
+        fake.state.listStatus["0:containers"] = 503;
+        fake.state.listStatus["e4:containers"] = 503;
+        const run = ran(await syncConnection(deps(), conn, "manual"));
+        expect(run).toMatchObject({status: "failed", connectionError: "unreachable", reconcile: {gone: 1}});
+    });
+    it("a lease stolen mid-run stops the run (no writes without the lease), reports partial and does NOT count towards the breaker", async () => {
+        fake.state.grants.push(...MIN_PERMS("e5"));
+        fake.state.environments.push({id: "e5", name: "second", status: "online", apiUrl: "http://x.invalid"});
+        fake.state.lists["e5"] = lists();
+        await q("insert into fork_arcane_environment (connection_id, external_id, name, enabled) values ($1,'e5','second',true)", [conn]);
+        fake.state.delayMs = 60;
+        const p = syncConnection(deps({owner: "victim"}), conn, "manual");
+        await new Promise((r) => setTimeout(r, 100));
+        await q("update fork_lock set owner='thief', expires_at = now() + interval '10 days' where name=$1", [leaseName(conn)]);
+        const run = ran(await p);
+        expect(run.status).toBe("partial");
+        expect(run.environments).toHaveLength(1); // the second environment was never touched
+        expect(run.circuit.streak).toBe(0);
+        expect((await q("select owner from fork_lock where name=$1", [leaseName(conn)])).rows[0].owner).toBe("thief"); // the thief's lease was not released by the victim
+    });
     it("a project label that cannot be a stack identity rejects only that stack (partial), never echoed", async () => {
         const bad = clone(RAW.containers.data[0]);
         bad.id = "f".repeat(64); bad.labels["com.docker.compose.project"] = "../../etc; drop table";

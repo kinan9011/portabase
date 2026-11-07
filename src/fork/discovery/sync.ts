@@ -164,6 +164,7 @@ async function runLocked(d: SyncDeps, conn: ConnectionDto, enabledEnvs: {id: str
     let reconcile = {gone: 0, added: 0};
     let connectionError: string | null = null;
     let partialKey = false;
+    let leaseLost = false;
 
     try {
         const apiKey = await readConnectionApiKey(d.db, conn.organizationId, conn.id, d.kekDir);
@@ -182,7 +183,7 @@ async function runLocked(d: SyncDeps, conn: ConnectionDto, enabledEnvs: {id: str
         const live = new Set(covered.map((c) => c.id));
         for (const env of enabledEnvs) {
             if (!live.has(env.externalId)) { envResults.push({environmentId: env.id, status: "error", errorCode: "not_found"}); continue; } // reconcile already marked it + its stacks
-            if (!(await acquireLease(d.db, lease, owner, SYNC_LEASE_TTL_MS, d.now?.() ?? new Date()))) { connectionError = "internal"; break; } // lease lost (stolen after expiry): stop, never write on without it
+            if (!(await acquireLease(d.db, lease, owner, SYNC_LEASE_TTL_MS, d.now?.() ?? new Date()))) { leaseLost = true; break; } // lease lost (stolen after expiry): stop, never write on without it
             const r = await syncEnvironment(d, {client, conn, arcaneVersion: version, trigger}, env, now);
             envResults.push({environmentId: r.environmentId, status: r.status, errorCode: r.errorCode});
             if (r.counts) for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += k === "created" ? r.counts.created : (r.counts as Record<string, number>)[k] ?? 0;
@@ -198,11 +199,11 @@ async function runLocked(d: SyncDeps, conn: ConnectionDto, enabledEnvs: {id: str
 
     const attempted = envResults.length;
     const failedEnvs = envResults.filter((r) => r.status === "error").length;
-    if (!connectionError && attempted > 0 && failedEnvs === attempted && reconcile.gone < attempted) connectionError = envResults[0].errorCode; // every environment failed ⇒ the connection is the problem
-    const status: SyncRun["status"] = connectionError ? "failed" : failedEnvs > 0 || envResults.some((r) => r.status === "partial") || partialKey || reconcile.gone > 0 ? "partial" : "ok";
+    if (!connectionError && attempted > 0 && failedEnvs === attempted && reconcile.gone < attempted) connectionError = envResults.find((r) => r.errorCode !== "not_found")?.errorCode ?? null; // every environment failed ⇒ the connection is the problem (a "gone" environment is not a connection problem)
+    const status: SyncRun["status"] = connectionError ? "failed" : leaseLost ? "partial" : failedEnvs > 0 || envResults.some((r) => r.status === "partial") || partialKey || reconcile.gone > 0 ? "partial" : "ok";
 
     const prevStreak = conn.syncFailureStreak;
-    const streak = status === "failed" ? prevStreak + 1 : 0;
+    const streak = status === "failed" ? prevStreak + 1 : leaseLost ? prevStreak : 0; // a lost lease says nothing about Arcane: never counts towards the breaker
     const openMs = status === "failed" ? circuitOpenMs(streak) : 0;
     const until = openMs ? new Date(now.getTime() + openMs) : null;
     const opened = status === "failed" && prevStreak < BREAKER.threshold && streak >= BREAKER.threshold;
@@ -235,7 +236,7 @@ async function runLocked(d: SyncDeps, conn: ConnectionDto, enabledEnvs: {id: str
 // ---- manual "Sync now" (server action target) -------------------------------------------------------------------------------------
 export const SyncInputSchema = z.strictObject({connectionId: z.uuid()});
 export const SYNC_RATE_LIMIT = {limit: 6, windowMs: 60_000} as const;
-export type SyncNowRefusalCode = RefusalCode | "already_running" | "circuit_open" | "no_enabled_environment";
+export type SyncNowRefusalCode = RefusalCode | "already_running" | "no_enabled_environment";
 export type SyncNowOutcome = {ok: true; run: SyncRun} | {ok: false; code: SyncNowRefusalCode; message: string; retryAfterSeconds?: number};
 const refuse = (code: SyncNowRefusalCode, message: string, extra: {retryAfterSeconds?: number} = {}): SyncNowOutcome => ({ok: false, code, message, ...extra});
 
