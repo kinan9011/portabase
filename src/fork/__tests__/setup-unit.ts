@@ -11,6 +11,12 @@ if (typeof window !== "undefined" && !window.matchMedia) {
     })) as unknown as typeof window.matchMedia;
 }
 
+// jsdom polyfills Radix needs (Switch/Select/Dialog) — W06 UI tests.
+if (typeof window !== "undefined") {
+    Object.assign(window.HTMLElement.prototype, {scrollIntoView: () => {}, hasPointerCapture: () => false, releasePointerCapture: () => {}, setPointerCapture: () => {}});
+    (globalThis as {ResizeObserver?: unknown}).ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+}
+
 afterEach(() => {
     if (typeof document !== "undefined") cleanup();
     resetForkState();
