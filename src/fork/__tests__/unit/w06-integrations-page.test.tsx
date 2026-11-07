@@ -41,7 +41,6 @@ describe("Integrations page (D35): mode × role matrix", () => {
             const {container, unmount} = await mount();
             expect(container.textContent).toContain("Integrations are managed by a system administrator");
             expect(container.querySelector("form")).toBeNull();
-            expect(container.querySelector('[data-testid="kit-link"]')).toBeNull();
             expect(container.querySelector('input[type="password"]')).toBeNull();
             expect(h.load).not.toHaveBeenCalled();
             expect(await axeViolations(container)).toEqual([]);
@@ -56,7 +55,6 @@ describe("Integrations page (D35): mode × role matrix", () => {
             expect(container.textContent).toContain("Connect your Arcane Manager");
             expect(container.querySelector('input[name="arcane-discovery-key"]')?.getAttribute("type")).toBe("password");
             expect(container.textContent).not.toContain("Fork configuration locked");
-            expect(container.querySelector('[data-testid="kit-link"]')?.getAttribute("href")).toBe("/dashboard/integrations/recovery-kit");
             expect(await axeViolations(container)).toEqual([]);
             unmount();
         }

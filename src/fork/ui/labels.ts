@@ -998,7 +998,6 @@ export const KIT = {
     },
     page: {
         title: "Recovery kit",
-        entryLink: "Recovery kit: create and verify",
         intro: "The recovery kit lets you restore your backups on a new server even if this dashboard is lost. It holds the keys that read your backups: anyone with it can read them. Keep it offline.",
         notAdmin: "Only a system administrator can create or verify the recovery kit.",
         locked: "Configuration is locked until the single-organization check passes.",
