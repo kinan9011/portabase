@@ -92,6 +92,14 @@ const schema = z.object({
     FORK_NOTIFY_TICK_SECONDS: intRange(5, 3600, 60),
     FORK_NOTIFY_EVAL_MINUTES: intRange(1, 1440, 5),
     FORK_DEADMAN_MIN_HOURS: intRange(1, 720, 12),
+    /** W14 verify job (operator-only): tick period; plaintext cap per archive (MiB, the decompressed cap is 4×); per-object download timeout (minutes); attempts before an unreadable RP is `failed`. */
+    FORK_VERIFY_TICK_SECONDS: intRange(5, 3600, 60),
+    FORK_VERIFY_MAX_MIB: intRange(1, 1_048_576, 20_480),
+    FORK_VERIFY_DOWNLOAD_TIMEOUT_MINUTES: intRange(1, 1440, 120),
+    FORK_VERIFY_MAX_ATTEMPTS: intRange(1, 20, 5),
+    /** W14 kit: hours an active-policy stack may run with an unverified kit before the §4.7 `kit.unverified` notification; how often the kit watch recomputes the live key fingerprint (minutes). */
+    FORK_KIT_UNVERIFIED_HOURS: intRange(1, 720, 24),
+    FORK_KIT_WATCH_MINUTES: intRange(1, 1440, 60),
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -120,6 +128,12 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_NOTIFY_TICK_SECONDS: source.FORK_NOTIFY_TICK_SECONDS,
         FORK_NOTIFY_EVAL_MINUTES: source.FORK_NOTIFY_EVAL_MINUTES,
         FORK_DEADMAN_MIN_HOURS: source.FORK_DEADMAN_MIN_HOURS,
+        FORK_VERIFY_TICK_SECONDS: source.FORK_VERIFY_TICK_SECONDS,
+        FORK_VERIFY_MAX_MIB: source.FORK_VERIFY_MAX_MIB,
+        FORK_VERIFY_DOWNLOAD_TIMEOUT_MINUTES: source.FORK_VERIFY_DOWNLOAD_TIMEOUT_MINUTES,
+        FORK_VERIFY_MAX_ATTEMPTS: source.FORK_VERIFY_MAX_ATTEMPTS,
+        FORK_KIT_UNVERIFIED_HOURS: source.FORK_KIT_UNVERIFIED_HOURS,
+        FORK_KIT_WATCH_MINUTES: source.FORK_KIT_WATCH_MINUTES,
     });
 }
 
