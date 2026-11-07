@@ -37,7 +37,7 @@ describe("portabase-recover static contract", () => {
         expect(CLI).toMatch(/die 4 /);
     });
     it("the guide exists, is linked from --help, and carries the Debian/Ubuntu install block incl. python3-cryptography", () => {
-        const guide = R("docs/fork/my-server-died.md");
+        const guide = R("scripts/fork/recover/my-server-died.md");
         expect(CLI).toContain("my-server-died.md");
         for (const p of ["openssl", "restic", "rclone", "jq", "python3-cryptography", "python3-yaml", "docker"]) expect(guide).toContain(p);
         expect(guide).toMatch(/apt(-get)? install/);

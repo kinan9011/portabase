@@ -6,7 +6,7 @@
 #   portabase-recover list ...      stacks and recovery points found in storage (tags only: nothing is verified by `list`)
 #   portabase-recover restore --yes ...  full restore: verify -> download+check everything -> files -> volumes -> compose policy -> databases -> up
 #
-# Guide: docs/fork/my-server-died.md (linked from the kit). Hard stops (exit 3) are never overridable: bad signature, wrong checksum, failed
+# Guide: scripts/fork/recover/my-server-died.md (linked from the kit). Hard stops (exit 3) are never overridable: bad signature, wrong checksum, failed
 # archive authentication, rolled-back manifest. Policy refusals (exit 4) can be overridden per service only. Exit: 0 ok, 1 error, 2 usage, 3 hard stop,
 # 4 policy refusal, 5 missing prerequisite.
 # Hardening: every manifest-derived string is validated against an allow-list, passed quoted in arrays after `--`, never to eval; secrets live in 0600
@@ -16,7 +16,7 @@ umask 077
 export LC_ALL=C
 
 readonly VERSION="1.0.0"
-readonly GUIDE_URL="docs/fork/my-server-died.md in the Portabase fork (https://github.com/kinan9011/portabase)"
+readonly GUIDE_URL="scripts/fork/recover/my-server-died.md in the Portabase fork (https://github.com/kinan9011/portabase)"
 SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
 HERE="$(dirname -- "$SELF")"
 readonly SELF HERE

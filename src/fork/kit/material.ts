@@ -11,7 +11,7 @@ export const KIT_VERSION = 1 as const;
  * when the owner releases one: until then the kit says so instead of naming a tag (the plan forbids tags, §4.3).
  */
 export const RECOVER_CLI_VERSION = "1.0.0 (git tag fork/w14b-done)";
-export const RECOVER_GUIDE = "docs/fork/my-server-died.md in https://github.com/kinan9011/portabase";
+export const RECOVER_GUIDE = "scripts/fork/recover/my-server-died.md in https://github.com/kinan9011/portabase";
 export const RECOVER_IMAGE_UNPUBLISHED = "not published (use the script from the guide)";
 
 export type KitChannel = {name: string; provider: string; config: unknown};
