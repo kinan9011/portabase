@@ -43,6 +43,8 @@ describe("W09 Configuration tab (real build)", () => {
         t2.stack.compose_project = "tier2-app"; t2.services[0]!.env_keys = ["DATABASE_URL", "SESSION_KEY"];
         t2.services[0]!.container_id = "abcdef123456";
         const tier2 = await add("tier2-app", t2);
+        // W10: one materialized member (drifted) so the "managed by this stack" table is rendered by the real build
+        await q("insert into fork_stack_source (stack_id, role, resource_key, status, dbms, engine, member_name, covers_keys, desired_hash, drift_reason, last_probe) values ($1,'compose','dir:/srv/app','drifted','files','restic','compose: /srv/app','{}',$2,'config_changed','readable')", [tier2, "e".repeat(64)]);
         const shared = first.db;
         await first.stop();
 
@@ -72,6 +74,10 @@ describe("W09 Configuration tab (real build)", () => {
         const h2 = await (await get(base, `/dashboard/stacks/${tier2}?tab=configuration`, member)).text();
         for (const s of ["DATABASE_URL", "SESSION_KEY", "Hidden: values are never read or stored", "/srv/app/stack.env"]) expect(h2, s).toContain(s);
         for (const s of ["container_id", "abcdef123456", "provenance"]) expect(h2).not.toContain(s);
+        // W10: managed sources are listed by name/status/reason only (never the config, the hash or the key)
+        for (const s of ["Backup sources managed by this stack", "compose: /srv/app", "Changed outside", "The path or volume of the source was changed.", "Agent can read it"]) expect(h2, s).toContain(s);
+        expect(h2).not.toContain("e".repeat(64));
+        expect(h2).not.toContain('"resourceKey"'); // the source view has no key field (item keys are path hints like every W09 item)
 
         // ---- the list page is unchanged by W09 (policy badge), and still leaks nothing
         const list = await (await get(base, "/dashboard/stacks", member)).text();

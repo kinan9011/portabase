@@ -19,16 +19,15 @@ export function SourcesTable({sources}: {sources: readonly SourceView[]}) {
                         <caption className="sr-only">{S.caption}</caption>
                         <TableHeader><TableRow>{Object.values(S.columns).map((h) => <TableHead key={h} scope="col">{h}</TableHead>)}</TableRow></TableHeader>
                         <TableBody>
-                            {sources.map((x, i) => {
+                            {sources.map((x) => {
                                 const st = S.status[x.status];
-                                const id = `src-why-${i}`;
                                 return (
-                                    <TableRow key={`${x.name}-${i}`} data-testid="source-row">
+                                    <TableRow key={`${x.role}|${x.origin}|${x.name}`} data-testid="source-row">
                                         <TableCell className="max-w-[24rem] whitespace-normal font-mono text-xs font-semibold break-all">{x.name}</TableCell>
                                         <TableCell>{S.role[x.role]}{S.origin[x.origin]}</TableCell>
                                         <TableCell className="whitespace-normal">
                                             <ToneBadge tone={st.tone}>{st.label}</ToneBadge>
-                                            <p id={id} className="text-muted-foreground mt-1 max-w-xs text-xs">{x.reason ? S.reason[x.reason] : st.description}</p>
+                                            <p className="text-muted-foreground mt-1 max-w-xs text-xs">{x.reason ? S.reason[x.reason] : st.description}</p>
                                         </TableCell>
                                         <TableCell className="text-xs">{S.probe[x.probe ?? "none"]}</TableCell>
                                     </TableRow>

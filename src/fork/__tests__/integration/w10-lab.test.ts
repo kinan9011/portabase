@@ -55,8 +55,8 @@ const detail = async () => {
     return d.inventory;
 };
 const docker = (...a: string[]) => execFileSync("docker", a, {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim();
-// eslint-disable-next-line no-control-regex
-const agentLog = (since: string) => execFileSync("docker", ["logs", "forklab-agent", "--since", since], {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024}).replace(/\x1b\[[0-9;]*m/g, "");
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+const agentLog = (since: string) => execFileSync("docker", ["logs", "forklab-agent", "--since", since], {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024}).replace(ANSI, "");
 const waitLog = async (since: string, needle: RegExp, ms = 45_000) => {
     const end = Date.now() + ms;
     while (Date.now() < end) { const l = agentLog(since).split("\n").filter((x) => needle.test(x)); if (l.length) return l; await sleep(3000); }
