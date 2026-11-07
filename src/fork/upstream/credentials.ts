@@ -38,11 +38,14 @@ export function stripSecrets(dbms: string, config: Record<string, unknown> | nul
 }
 
 /** Encrypts the supplied secrets into `config` (new row) or keeps the previous envelope when none is supplied (update). */
-export function withEncryptedSecrets(dbms: string, config: Record<string, unknown>, secrets: Readonly<Record<string, string>>, previous: Record<string, unknown> | null, masterKey: Buffer): Record<string, unknown> {
+export function withEncryptedSecrets(dbms: string, config: Record<string, unknown>, secrets: Readonly<Record<string, string>>, previous: Record<string, unknown> | null, masterKey?: Buffer): Record<string, unknown> {
     const out: Record<string, unknown> = {...config};
     for (const f of SECRET_FIELDS[dbms] ?? []) {
         const plain = secrets[f];
-        if (plain !== undefined && plain !== "") out[f] = encryptSecret(plain, masterKey);
+        if (plain !== undefined && plain !== "") {
+            if (!masterKey) throw new Error("master key required to store a credential");
+            out[f] = encryptSecret(plain, masterKey);
+        }
         else if (previous && previous[f] !== undefined) out[f] = previous[f];
     }
     return out;

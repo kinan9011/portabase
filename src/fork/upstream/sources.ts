@@ -20,7 +20,7 @@ export type MemberRow = {
 
 export type CreateMember = {
     agentId: string; projectId: string; name: string; dbms: string; engine: "archive" | "restic";
-    config: Record<string, unknown>; secrets: Readonly<Record<string, string>>; masterKey: Buffer;
+    config: Record<string, unknown>; secrets: Readonly<Record<string, string>>; masterKey?: Buffer;
 };
 
 export async function createMemberSource(db: ForkDb, i: CreateMember): Promise<{id: string; agentDatabaseId: string | null}> {
@@ -30,7 +30,7 @@ export async function createMemberSource(db: ForkDb, i: CreateMember): Promise<{
 }
 
 /** Name/config only. dbms and engine are never changed (upstream: "The backup method cannot be changed after creation"). */
-export async function updateMemberSource(db: ForkDb, i: {id: string; name: string; config: Record<string, unknown>; secrets: Readonly<Record<string, string>>; masterKey: Buffer}): Promise<boolean> {
+export async function updateMemberSource(db: ForkDb, i: {id: string; name: string; config: Record<string, unknown>; secrets: Readonly<Record<string, string>>; masterKey?: Buffer}): Promise<boolean> {
     const [cur] = await db.select({dbms: database.dbms, config: database.config}).from(database).where(and(eq(database.id, i.id), isNull(database.deletedAt)));
     if (!cur) return false;
     const config = withEncryptedSecrets(cur.dbms, i.config, i.secrets, (cur.config as Record<string, unknown> | null) ?? null, i.masterKey);
@@ -50,11 +50,11 @@ export async function readMembers(db: ForkDb, ids: readonly string[]): Promise<M
 /** The non-secret part of a stored config (what drift compares against the plan). */
 export const nonSecretConfig = (m: Pick<MemberRow, "dbms" | "config">) => stripSecrets(m.dbms, m.config);
 
-/** Member-level policy rows that must not exist (D30/D33): per-source storage policies are a channel edit the plan did not make. */
-export async function memberStoragePolicyCount(db: ForkDb, ids: readonly string[]): Promise<number> {
-    if (ids.length === 0) return 0;
-    const [r] = await db.select({n: count()}).from(storagePolicy).where(inArray(storagePolicy.databaseId, [...ids]));
-    return Number(r?.n ?? 0);
+/** Members that carry their OWN storage policy (a channel edit made outside the stack's configuration). */
+export async function membersWithStoragePolicy(db: ForkDb, ids: readonly string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await db.selectDistinct({id: storagePolicy.databaseId}).from(storagePolicy).where(inArray(storagePolicy.databaseId, [...ids]));
+    return new Set(rows.flatMap((r) => (r.id ? [r.id] : [])));
 }
 
 export async function backupCount(db: ForkDb, databaseId: string): Promise<number> {

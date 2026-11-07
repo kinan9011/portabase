@@ -4,6 +4,7 @@ import {currentForkMode, invalidateForkModeCache, registerActivePolicyProbe, reg
 import {registerRealChecks} from "@/fork/self-check";
 import {registerAuditRetentionTask} from "@/fork/audit-task";
 import {registerDiscoveryCron} from "@/fork/cron";
+import {registerMaterializeDriftJob} from "@/fork/materialize/job";
 import {startForkRuntime} from "@/fork/runtime";
 
 const log = logger.child({module: "fork/init"});
@@ -22,6 +23,7 @@ export async function initFork(): Promise<ForkModeResult> {
         await registerRealChecks({registerActivePolicyProbe, registerSelfCheck}, {log});
         registerAuditRetentionTask();
         registerDiscoveryCron();
+        registerMaterializeDriftJob();
         invalidateForkModeCache();
         const mode = await currentForkMode();
         const {started, failed} = await startForkRuntime(mode.mode);

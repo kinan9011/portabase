@@ -150,6 +150,11 @@ export function validateCompleteness(inv: Inv, ctx: CompletenessContext = EMPTY_
         if (d.kind === "remote_service" || d.kind === "other") add({key: `dep:${d.kind}:${d.name}`, kind: "dependency", name: d.name, external: "external_dependency"});
     }
 
+    // ---- materializer findings (W10): the stack's own sources / agent / policy ------------------------------------------------
+    for (const i of ctx.sourceIssues ?? []) {
+        items.push({key: i.key, kind: i.kind, name: i.name, status: i.status, reason: i.reason, severity: i.severity, gap: GAP_STATUSES.includes(i.status), resolvable: false, consumers: i.consumers ?? [], placement: null, consistency: null});
+    }
+
     // ---- verdict ------------------------------------------------------------------------------------------------------
     const gaps = items.filter((i) => i.gap);
     const count = (s: ItemStatus) => items.filter((i) => i.status === s).length;

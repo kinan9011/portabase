@@ -5,6 +5,8 @@ import {setting} from "@/db/schema/01_setting";
 import {database} from "@/db/schema/07_database";
 import type {ForkPrincipal} from "@/fork/acl";
 
+export {isAgentVersionAtLeast} from "@/utils/status-crypto";
+
 /**
  * CONTROLLED COPY (D31) of the upstream agent ACL (`database-acl.ts#assertCanManageAgentDatabases`, :75-100) as a PURE decision plus
  * the reads the materializer needs (agent row, Docker-source evidence, channel availability, `setting.encryption`). Session-free.

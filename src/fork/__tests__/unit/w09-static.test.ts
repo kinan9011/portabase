@@ -11,7 +11,7 @@ const completeness = walk(path.join(ROOT, "fork/completeness"));
 const cfg = walk(path.join(ROOT, "fork/ui/stacks/config-tab"));
 
 describe("W09 static guards", () => {
-    it("finds the files", () => { expect(completeness.length).toBe(7); expect(cfg.length).toBe(4); });
+    it("finds the files", () => { expect(completeness.length).toBe(7); expect(cfg.length).toBe(5); });
     it("src/fork/completeness is pure: no db, no react, no fs/network, no clock, no randomness", () => {
         for (const f of completeness) {
             expect(code(f), f).not.toMatch(/from "(react|next|node:|drizzle-orm|@\/db|@\/fork\/db)|require\(|\bfetch\(|Date\.now|new Date\(\)|Math\.random|process\.env/);

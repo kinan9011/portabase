@@ -2,6 +2,7 @@ import {ARCANE_PINNED_VERSION} from "@/fork/arcane/endpoints";
 import type {ArcaneErrorClass} from "@/fork/arcane/errors";
 import type {ConsistencyFacet, Deletable, DirectiveCode, ItemKind, ItemStatus, PrimaryState, ReasonCode} from "@/fork/completeness/types";
 import type {HostRole} from "@/fork/db/enums";
+import type {SourceView} from "@/fork/completeness/view";
 import type {Tone} from "@/fork/ui/tone";
 
 /**
@@ -346,6 +347,7 @@ export const ITEM_STATUS_LABELS = {
 export const ITEM_KIND_LABELS = {
     compose_file: "Compose file", env_file: "Environment file", bind: "Bind mount", volume: "Named volume", anonymous_volume: "Anonymous volume",
     database: "Database", image: "Image", network: "Network", dependency: "Dependency",
+    member_source: "Backup source", agent: "Agent", policy: "Backup policy",
 } as const satisfies Record<ItemKind, string>;
 
 /** One sentence per reason: what is true and what to do. Shown inline next to the item. */
@@ -370,6 +372,12 @@ export const REASON_COPY = {
     external_dependency: "This service runs outside the stack. Its data is not backed up here.",
     excluded_by_label: "Left out because of a backup label.",
     accepted: "Accepted by an operator.",
+    // W10: findings about the stack's own sources / agent / policy.
+    agent_poll_failing: "Agent poll failing: the agent has stopped reporting since these sources were added. One source the agent cannot reach, for example a Docker volume without Docker socket access, stops every backup on that agent. Check the agent first; Portabase cannot tell this apart from an agent that is simply down.",
+    agent_unavailable: "The agent that should back up this stack is not mapped, archived or not allowed for this environment. Fix the environment settings.",
+    source_drifted: "A backup source was changed or removed outside this stack's configuration. It is not trusted until you apply the stack configuration again.",
+    encryption_off: "Backup encryption is switched off for this instance. A stack backup contains compose files and secrets, so it must not run unencrypted. Turn encryption on in the instance settings.",
+    inventory_changed: "The stack changed on the host since its backup sources were set up. Apply the stack configuration again so new resources are covered.",
 } as const satisfies Record<ReasonCode, string>;
 
 export const DIRECTIVE_COPY = {
@@ -422,6 +430,41 @@ export const BLOCKERS_PANEL = {
     viewAll: "Open Configuration",
     unreadable: "Blockers cannot be shown because the inventory could not be read.",
 } as const;
+
+/** Managed backup sources (W10, D30 "Managed by stack X"). Copy for every source status / drift reason / probe; closed vocabularies, labels coverage test enforces them. */
+export const SOURCES_COPY = {
+    heading: "Backup sources managed by this stack",
+    caption: "Backup sources created and managed for this stack, with status and last agent check",
+    note: "Portabase created these as ordinary sources in a project managed by this stack. Do not give them a schedule or retention of their own: that is reset automatically, because the stack schedule controls them.",
+    none: "No backup sources have been created for this stack yet.",
+    columns: {name: "Source", role: "Covers", status: "Status", probe: "Agent check"},
+    role: {compose: "Compose files", env: "Environment files", bind: "Folder on the host", volume: "Docker volume", db: "Database"},
+    origin: {discovered: "", manual: " (added by hand)"},
+    status: {
+        planned: {label: "Waiting", tone: "warning", description: "Not created yet: Portabase first needs proof that the agent can use Docker."},
+        canary: {label: "Checking", tone: "warning", description: "Created first to prove the agent can use Docker. It is removed again if the agent stops reporting."},
+        active: {label: "Active", tone: "success", description: "A normal backup source on the agent."},
+        drifted: {label: "Changed outside", tone: "danger", description: "Changed or removed outside this stack's configuration. It is not trusted until the configuration is applied again."},
+        orphaned: {label: "No longer needed", tone: "neutral", description: "The stack no longer has this resource. Nothing was deleted; remove it when you are sure."},
+        blocked: {label: "Blocked", tone: "danger", description: "Removed again because the agent stopped reporting right after it was added."},
+    },
+    probe: {readable: "Agent can read it", unreadable: "Agent cannot read it", none: "Not checked yet"},
+    reason: {
+        source_removed: "The source was deleted or detached.",
+        source_moved: "The source was moved to another project.",
+        agent_changed: "The source was moved to another agent.",
+        type_changed: "The source type was changed.",
+        method_changed: "The backup method was changed.",
+        unsafe_volume: "The volume name is not allowed (it must be a plain Docker volume name) or a container is attached.",
+        config_changed: "The path or volume of the source was changed.",
+        channel_changed: "The source got a storage channel of its own.",
+        not_in_plan: "The stack no longer has this resource.",
+        agent_poll_failing: "The agent stopped reporting after this source was added.",
+    },
+} as const satisfies {
+    heading: string; caption: string; note: string; none: string; columns: Record<string, string>; role: Record<SourceView["role"], string>; origin: Record<SourceView["origin"], string>;
+    status: Record<SourceView["status"], {label: string; tone: Tone; description: string}>; probe: Record<NonNullable<SourceView["probe"]> | "none", string>; reason: Record<NonNullable<SourceView["reason"]>, string>;
+};
 
 export const CONFIG_TAB = {
     tab: "Configuration",

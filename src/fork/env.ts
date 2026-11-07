@@ -36,6 +36,14 @@ const discoveryMinutes = z
         return Number.isInteger(n) && n >= 5 && n <= 1440 ? n : 15; // ADR-004 §7: 15 min default, min 5
     });
 
+const tickSeconds = z
+    .string()
+    .optional()
+    .transform((v) => {
+        const n = Number(v?.trim());
+        return Number.isInteger(n) && n >= 5 && n <= 3600 ? n : 60; // W10 drift/probe job period; D30 "within one tick"
+    });
+
 const schema = z.object({
     FORK_STACKS_ENABLED: flag,
     FORK_ARCANE_ENABLED: flag,
@@ -57,6 +65,8 @@ const schema = z.object({
     FORK_ARCANE_NET_ALLOWLIST: z.string().optional().transform((v) => v?.trim() ?? ""),
     /** W07: how often the discovery cron syncs a connection (minutes, 5–1440, default 15; ±20 % jitter). Operator-only, like the allow-list. */
     FORK_DISCOVERY_INTERVAL_MINUTES: discoveryMinutes,
+    /** W10: period of the materializer drift/probe job in seconds (5–3600, default 60). Operator-only. */
+    FORK_MATERIALIZE_TICK_SECONDS: tickSeconds,
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -72,6 +82,7 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_MIGRATIONS_DIR: source.FORK_MIGRATIONS_DIR,
         FORK_ARCANE_NET_ALLOWLIST: source.FORK_ARCANE_NET_ALLOWLIST,
         FORK_DISCOVERY_INTERVAL_MINUTES: source.FORK_DISCOVERY_INTERVAL_MINUTES,
+        FORK_MATERIALIZE_TICK_SECONDS: source.FORK_MATERIALIZE_TICK_SECONDS,
     });
 }
 

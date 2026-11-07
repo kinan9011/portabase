@@ -12,10 +12,9 @@ import {ForkLockedError, assertForkConfigAllowed} from "@/fork/mode";
 import {checkRate} from "@/fork/net/rate-limit";
 import {assertForkResource} from "@/fork/resource-scope";
 import {
-    agentAclAllows, channelsAvailableTo, createMemberSource, createStackProject, dockerAccessEvidence, encryptionEnabled, getProjectName, readAgent,
+    agentAclAllows, channelsAvailableTo, createMemberSource, createStackProject, dockerAccessEvidence, encryptionEnabled, getProjectName, isAgentVersionAtLeast, readAgent,
     readMembers, setProjectStoragePolicies, stackProjectName, updateMemberSource, upstreamMasterKey,
 } from "@/fork/upstream";
-import {isAgentVersionAtLeast} from "@/utils/status-crypto";
 import {FORK_MIN_AGENT_FOR_STACKS} from "@/fork/versions";
 import {planStack} from "./plan";
 import {SelectionSchema} from "./types";
@@ -202,7 +201,7 @@ export async function materializeStack(d: MaterializeDeps, raw: unknown): Promis
                     databaseId = (await createMemberSource(tx, {agentId: agent.id, projectId, name: s.memberName, dbms: s.dbms, engine: s.engine, config: s.config, secrets: secretsFor, masterKey})).id;
                 }
                 const st = createNow ? status : "planned";
-                const row = {stackId: input.stackId, role: s.role, resourceKey: s.resourceKey, origin: s.origin, required: true, status: st, databaseId, dbms: s.dbms, engine: s.engine, memberName: s.memberName, coversKeys: [...s.covers], desiredHash: s.configHash, driftReason: null, lastProbe: null, lastProbeAt: null, updatedAt: now};
+                const row = {stackId: input.stackId, role: s.role, resourceKey: s.resourceKey, origin: s.origin, required: true, status: st, databaseId, dbms: s.dbms, engine: s.engine, memberName: s.memberName, coversKeys: [...s.covers], desiredHash: s.configHash, driftReason: null, lastProbe: null, lastProbeAt: st === "canary" ? now : null /* canary start, read by the drift job */, updatedAt: now};
                 if (cur) await tx.update(forkStackSource).set(row).where(eq(forkStackSource.id, cur.id));
                 else await tx.insert(forkStackSource).values(row);
                 counts.created++;
