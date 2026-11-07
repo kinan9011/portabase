@@ -10,9 +10,10 @@ const start = vi.fn();
 const cancel = vi.fn();
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
 vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: (...a: unknown[]) => start(...a), cancelStackRunAction: (...a: unknown[]) => cancel(...a)}));
+vi.mock("@/fork/actions/stack-schedule.action", () => ({updateStackScheduleAction: vi.fn()}));
 
 import {RunNowButton} from "@/fork/ui/stacks/run-controls.client";
-import {RunPanel} from "@/fork/ui/stacks/run-panel";
+import {RunPanel} from "@/fork/ui/stacks/schedule/run-panel";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 
 const ID = "0b7e1c1e-7f3a-4b6e-9a40-111111111111";

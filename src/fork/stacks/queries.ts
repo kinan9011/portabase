@@ -5,6 +5,8 @@ import {PAGE_SIZE, escapeLike, type StackListParams} from "@/fork/stacks/params"
 import {StackInventoryV1} from "@/fork/inventory/schema";
 import {loadPolicyView} from "@/fork/stack-policy/policy-view";
 import {loadRunView} from "@/fork/runs/view";
+import {loadActivityView} from "@/fork/stacks/activity-view";
+import {loadBackupsView} from "@/fork/stacks/backups-view";
 import {StackDetailSchema, StackListSchema, inventoryViewFrom, type StackDetail, type StackList} from "@/fork/stacks/dto";
 import {loadProtectionViews, type ProtectionInputs} from "@/fork/stacks/protection";
 
@@ -105,7 +107,7 @@ export async function loadStackList(db: ForkDb, organizationId: string, params: 
 }
 
 /** One stack of ONE organization, or `null` (missing or another organization's: identical, no oracle). The caller authorises first. */
-export type DetailOptions = {now?: Date; configLocked?: boolean; ctxOverride?: ProtectionInputs["ctxOverride"]; staleAfterHours?: number | null};
+export type DetailOptions = {now?: Date; rp?: number | null; configLocked?: boolean; ctxOverride?: ProtectionInputs["ctxOverride"]; staleAfterHours?: number | null};
 
 export async function loadStackDetail(db: ForkDb, organizationId: string, stackId: string, o: DetailOptions = {}): Promise<StackDetail | null> {
     const now = o.now ?? new Date();
@@ -141,6 +143,8 @@ export async function loadStackDetail(db: ForkDb, organizationId: string, stackI
         syncing: s.connection_id ? await isSyncRunning(db, s.connection_id, now) : false,
         policy: await loadPolicyView(db, s.id, now),
         runs: await loadRunView(db, s.id),
+        backups: await loadBackupsView(db, organizationId, s.id, {sequence: o.rp ?? null}),
+        activity: await loadActivityView(db, organizationId, s.id),
         inventory,
     });
 }

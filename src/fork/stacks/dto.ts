@@ -4,6 +4,8 @@ import {ConfigurationViewSchema, ProtectionViewSchema} from "@/fork/completeness
 import {StackInventoryV1} from "@/fork/inventory/schema";
 import {PolicyViewSchema} from "@/fork/stack-policy/policy-schema";
 import {RunViewSchema} from "@/fork/runs/view";
+import {ActivityViewSchema} from "@/fork/stacks/activity-view";
+import {BackupsViewSchema} from "@/fork/stacks/backups-view";
 
 /**
  * Client-facing DTOs of the stacks UI (W08). Strict, JSON-serialisable, built FIELD BY FIELD from the stored inventory:
@@ -87,6 +89,9 @@ export const StackDetailSchema = z.strictObject({
     policy: PolicyViewSchema.nullable().default(null),
     /** W12: runs (latest / active / paused), null for a stack that never had a policy. */
     runs: RunViewSchema.nullable().default(null),
+    /** W13: recovery-point table (+ the selected one's artifacts) and the durable run timeline. Polled with the page (router.refresh), never pushed. */
+    backups: BackupsViewSchema.nullable().default(null),
+    activity: ActivityViewSchema.nullable().default(null),
     /** `ok` = readable inventory, `unreadable` = stored but not understood by this release, `none` = no version recorded. */
     inventory: z.discriminatedUnion("state", [
         z.strictObject({state: z.literal("ok"), view: InventoryViewSchema, protection: ProtectionViewSchema, configuration: ConfigurationViewSchema}),

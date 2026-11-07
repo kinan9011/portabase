@@ -78,6 +78,8 @@ describe("upstream contract — symbols the fork imports", () => {
             "@/db/schema/13_storage-policy", "@/db/schema/10_alert-policy", "@/db/schema/01_setting", "@/utils/status-crypto",
             // W12 (src/fork/upstream only): activating user (re-authorization)
             "@/db/schema/02_user",
+            // W13 (src/fork/upstream only): the upstream notification dispatcher (lazy import in the job)
+            "@/features/notifications/utils/notifications.dispatch",
             // W06
             "@/components/ui/alert-dialog", "@/components/ui/alert", "@/components/ui/button", "@/components/ui/dialog", "@/components/ui/input", "@/components/ui/label",
             "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/components/ui/tabs", "@/lib/utils", "@/components/ui/checkbox", "@/components/ui/radio-group", "@/features/agents/utils/status/agent-status",

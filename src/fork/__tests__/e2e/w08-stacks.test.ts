@@ -94,7 +94,11 @@ describe("W08 stacks pages (real build)", () => {
         // filters over the real server
         const filtered = await (await get(base, "/dashboard/stacks?q=forklab&runtime=running&sort=attention", member)).text();
         expect(filtered).toContain("forklab-demo");
-        expect(filtered).not.toContain("old-blog");
+        // the LIST honours the filters; the W13 "Am I safe?" strip deliberately covers the whole estate (a filter must not hide an unsafe stack from it)
+        const rows = [...filtered.matchAll(/data-testid="stack-row"[\s\S]*?<\/tr>/g)].map((m) => m[0]).join("\n");
+        expect(rows).toContain("forklab-demo");
+        expect(rows).not.toContain("old-blog");
+        expect(filtered).toContain("Am I safe?");
         expect(await (await get(base, "/dashboard/stacks?q=%25%27%3B--&page=-3&sort=drop&runtime=x", member)).text()).toContain("No stacks match these filters");
         expect((await get(base, "/dashboard/stacks?q=" + "a".repeat(5000), member)).status).toBe(200);
 

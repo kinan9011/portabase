@@ -9,6 +9,10 @@ import {getForkPrincipal} from "@/fork/principal";
 import {forkBannerText} from "@/fork/self-check";
 import {parseStackListParams} from "@/fork/stacks/params";
 import {loadStackList} from "@/fork/stacks/queries";
+import {loadSafetyStrip} from "@/fork/stacks/safety-queries";
+import type {SafetyStrip} from "@/fork/stacks/safety";
+import {defaultNotificationChannel} from "@/fork/upstream/notification-channel";
+import {SafetyStripView} from "@/fork/ui/stacks/safety-strip/safety-strip";
 import type {StackList} from "@/fork/stacks/dto";
 import {STACKS_EMPTY, STACKS_PAGE} from "@/fork/ui/labels";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
@@ -49,6 +53,15 @@ export default async function StacksPage(props: {searchParams: Promise<Record<st
     } catch {
         list = null; // never echo the failure to the browser; the server log has it
     }
+    // W13: "Am I safe?" strip. A failure of the strip never hides the list (and the strip never invents a state: it is simply absent with an honest note).
+    let strip: SafetyStrip | null = null;
+    let noChannel = false;
+    try {
+        strip = await loadSafetyStrip(db, organizationId, {configLocked: mode.mode === "locked"});
+        noChannel = forkCan(actor, "arcane.manage") && (await defaultNotificationChannel(db)) === null;
+    } catch {
+        strip = null;
+    }
     const locked = forkBannerText(mode);
     return (
         <Page>
@@ -57,6 +70,7 @@ export default async function StacksPage(props: {searchParams: Promise<Record<st
                 <StatusAnnouncer>
                     <div className="flex flex-col gap-4">
                         {locked && <p role="note" data-testid="locked-note" className="rounded-lg border p-3 text-sm">{STACKS_EMPTY.locked}</p>}
+                        {strip && list && list.summary.total > 0 && <SafetyStripView strip={strip} noChannel={noChannel}/>}
                         {list ? <StackListView list={list} params={params} isAdmin={forkCan(actor, "arcane.manage")}/> : <StateNotice testId="load-error" tone="danger" alert title={STACKS_EMPTY.loadError.title} body={STACKS_EMPTY.loadError.body}/>}
                     </div>
                 </StatusAnnouncer>

@@ -6,14 +6,16 @@ import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import type {ConfigurationView, ProtectionView} from "@/fork/completeness/view";
 import type {InventoryView, StackDetail} from "@/fork/stacks/dto";
 import {TABS, type StackTab} from "@/fork/ui/stacks/tabs";
-import {CONFIG_TAB, RUNS, SCHEDULE_TAB, ENVIRONMENT_COPY, RP_STATUS_LABELS, STACK_DETAILS, STACKS_EMPTY, WARNING_COPY, WARNING_FALLBACK, WARNING_SEVERITY_LABELS} from "@/fork/ui/labels";
+import {ACTIVITY, BACKUPS, CONFIG_TAB, RUNS, SCHEDULE_TAB, ENVIRONMENT_COPY, RP_STATUS_LABELS, STACK_DETAILS, STACKS_EMPTY, WARNING_COPY, WARNING_FALLBACK, WARNING_SEVERITY_LABELS} from "@/fork/ui/labels";
 import {BlockersPanel} from "@/fork/ui/stacks/config-tab/blockers-panel";
 import {ConfigTab} from "@/fork/ui/stacks/config-tab/config-tab";
 import {FacetsPanel, LastGoodBackupLine} from "@/fork/ui/stacks/config-tab/facets-panel";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {fmtPort, fmtUtc, STACKS_HREF} from "@/fork/ui/stacks/format";
 import {ResourcesTabs} from "@/fork/ui/stacks/resources-tabs";
-import {ScheduleTab} from "@/fork/ui/stacks/schedule-tab";
+import {ScheduleTab} from "@/fork/ui/stacks/schedule/schedule-tab";
+import {ActivityTab} from "@/fork/ui/stacks/activity/activity-tab";
+import {BackupsTab} from "@/fork/ui/stacks/backups/backups-tab";
 import {RunNowButton, RunPoller} from "@/fork/ui/stacks/run-controls.client";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
 import {PrimaryStateBadge, ProtectionBadge, RpStatusBadge, RuntimeBadge, StaleBadge} from "@/fork/ui/stacks/stack-status-badges";
@@ -121,6 +123,8 @@ function Overview({v, p, c, onOpenConfiguration}: {v: InventoryView; p: Protecti
 
 export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean}) {
     const [tab, setTab] = React.useState<StackTab>(initialTab);
+    // a real navigation (e.g. "Open in Backups" from Activity) changes the server-parsed tab: follow it; polling refreshes keep the same value and change nothing
+    React.useEffect(() => { setTab(initialTab); }, [initialTab]);
     const gone = detail.runtime === "absent";
     const stale = detail.staleSince !== null && !gone;
     const onTab = (t: string) => {
@@ -165,16 +169,23 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
 
             {view && (
                 <Tabs value={tab} onValueChange={onTab}>
-                    <TabsList aria-label={D.tabsLabel}>
+                    {/* six tabs are wider than a phone: the list scrolls inside this box (never the page); its triggers are focusable, so keyboard users can reach every tab */}
+                    <div className="max-w-full overflow-x-auto" data-testid="tabs-scroll">
+                    <TabsList aria-label={D.tabsLabel} className="w-max">
                         <TabsTrigger value="overview">{D.tabs.overview}</TabsTrigger>
                         <TabsTrigger value="resources">{D.tabs.resources}</TabsTrigger>
                         <TabsTrigger value="configuration">{CONFIG_TAB.tab}</TabsTrigger>
+                        <TabsTrigger value="backups">{BACKUPS.tab}</TabsTrigger>
                         <TabsTrigger value="schedule">{SCHEDULE_TAB.tab}</TabsTrigger>
+                        <TabsTrigger value="activity">{ACTIVITY.tab}</TabsTrigger>
                     </TabsList>
+                    </div>
                     <TabsContent value="overview">{protection && configuration && <Overview v={view} p={protection} c={configuration} onOpenConfiguration={() => onTab("configuration")}/>}</TabsContent>
                     <TabsContent value="resources"><ResourcesTabs view={view}/></TabsContent>
                     <TabsContent value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
-                    <TabsContent value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`} runs={detail.runs} canRun={canRun}/></TabsContent>
+                    <TabsContent value="backups"><BackupsTab stackId={detail.id} view={detail.backups} runReason={runReason}/></TabsContent>
+                    <TabsContent value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} isAdmin={canConfigure} configLocked={configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`} runs={detail.runs} canRun={canRun}/></TabsContent>
+                    <TabsContent value="activity"><ActivityTab stackId={detail.id} view={detail.activity} limits={detail.runs?.limits ?? {waitMinutes: 10, stallMinutes: 30}}/></TabsContent>
                 </Tabs>
             )}
         </div>
