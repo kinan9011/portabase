@@ -1,4 +1,4 @@
-import {boolean, check, index, jsonb, pgTable, text, timestamp, unique, uuid} from "drizzle-orm/pg-core";
+import {boolean, check, index, integer, jsonb, pgTable, text, timestamp, unique, uuid} from "drizzle-orm/pg-core";
 import {sql} from "drizzle-orm";
 import {organization} from "@/db/schema/03_organization";
 import {agent} from "@/db/schema/08_agent";
@@ -27,12 +27,19 @@ export const forkArcaneConnection = pgTable("fork_arcane_connection", {
     /** W05: Arcane's id of this key (non-secret), for the permission self-test and rotation tracking. */
     keyId: text("key_id"),
     lastCheckedAt: ts("last_checked_at"),
+    /** W07 (ARCH-10): when discovery last TRIED to sync this connection (cron due-ness is derived from it, never from a timer). */
+    lastSyncAttemptAt: ts("last_sync_attempt_at"),
+    /** W07: consecutive connection-level sync failures; ≥ 5 opens the circuit (ADR-004 §7). Reset by any success / healthy check. */
+    syncFailureStreak: integer("sync_failure_streak").notNull().default(0),
+    /** W07: while in the future the CRON skips this connection (manual "Sync now" is the half-open probe). */
+    circuitOpenUntil: ts("circuit_open_until"),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [
     unique("fork_arcane_connection_org_name_uq").on(t.organizationId, t.name),
     check("fork_arcane_connection_health_ck", inList("health_status", HEALTH_STATUSES)),
     check("fork_arcane_connection_name_ck", sql`char_length(${t.name}) BETWEEN 1 AND 128`),
+    check("fork_arcane_connection_streak_ck", sql`${t.syncFailureStreak} >= 0`),
 ]);
 
 /**
@@ -52,6 +59,8 @@ export const forkArcaneEnvironment = pgTable("fork_arcane_environment", {
     lastSyncAt: ts("last_sync_at"),
     lastSyncStatus: text("last_sync_status"),
     lastSyncErrorClass: text("last_sync_error_class"),
+    /** W07: result of the last sync of THIS environment — counts and codes only (strict shape in `discovery/sync-summary.ts`). */
+    lastSyncSummary: jsonb("last_sync_summary"),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [
