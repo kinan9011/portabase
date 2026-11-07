@@ -129,15 +129,16 @@ describe("signed rotate_credential (A12)", () => {
         const leased = (await lease(bundle))!; // attempts = 1: the agent may have applied it
         expect(leased.task_id).toBe(r.taskId);
         const credential = (await decryptTask(agentId, r.taskId)).credential;
-        // the task expires, but the new credential stays provable for the bound
-        expect(await lease(bundle, new Date(NOW.getTime() + 11 * 60_000))).toBeNull();
-        expect((await taskRow(r.taskId)).status).toBe("expired");
+        // past `not_after` the delivered task is NOT expired any more (W17-i G9: it may have been applied; it is re-offered so the agent re-reports), and the new
+        // credential stays provable for the bound either way
+        expect((await lease(bundle, new Date(NOW.getTime() + 11 * 60_000)))?.task_id).toBe(r.taskId);
+        expect((await taskRow(r.taskId)).status).toBe("leased");
         expect((await enrolmentRow(agentId)).pending_task_id).toBe(r.taskId);
         // a second request is refused while pending
         expect(await requestCredentialRotation(deps(admin), {agentId, password: PASSWORD})).toMatchObject({ok: false, code: "rotation_in_progress"});
         // …after the bound it is dropped on the next lease call, the old credential still works and the new one does not
         const late = new Date(new Date(r.notAfter).getTime() + 24 * HOUR + 1000);
-        expect(await lease(bundle, late)).toBeNull();
+        expect((await lease(bundle, late))?.task_id).toBe(r.taskId);
         expect((await enrolmentRow(agentId)).pending_credential_hash).toBeNull();
         expect(await authenticateAgent(t.db, {agentId, authorization: `Bearer ${credential}`, source: "5.6.7.8", now: late})).toMatchObject({ok: false, status: 401});
         expect(await authenticateAgent(t.db, {agentId, authorization: authz(bundle), source: "5.6.7.8", now: late})).toMatchObject({ok: true});
