@@ -20,6 +20,8 @@ export type RpFacts = {
     channelIds: readonly string[];
     /** active run on the stack or a restore reading one of its backups */
     inUse: boolean;
+    /** `expires_at` is set: a previous prune attempt started and did not finish (retention_partial) ⇒ retried regardless of age (h). */
+    expiring?: boolean;
 };
 
 export type RetentionSelection = {prune: string[]; keep: Map<string, string>};
@@ -86,6 +88,7 @@ export function selectRetention(rps: readonly RpFacts[], policy: RetentionPolicy
     const prune: string[] = [];
     for (const r of newestFirst) {
         if (keep.has(r.id)) continue;
+        if (r.expiring) { prune.push(r.id); continue; }
         if (r.status !== "verified") {
             if (o.now.getTime() - when(r).getTime() < maxAgeMs) { keep.set(r.id, "young"); continue; }
         }

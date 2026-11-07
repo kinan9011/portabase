@@ -72,6 +72,12 @@ describe("runs: D33 retention selection over RPs (pure invariants)", () => {
         expect(r.keep.has(tomb.id)).toBe(false);
         expect(r.prune.length).toBeGreaterThan(0);
     });
+    it("(h) a young RP whose previous prune only half-finished (expiring) is retried regardless of age", () => {
+        const half = rp(2, {status: "incomplete", expiring: true});
+        expect(sel([rp(0), half]).prune).toContain(half.id);
+        const young = rp(2, {status: "incomplete"});
+        expect(sel([rp(0), young]).prune).not.toContain(young.id);
+    });
     it("is deterministic and never returns an id twice", () => {
         const rps = Array.from({length: 60}, (_, i) => rp(i * 3));
         const a = sel(rps); const b = sel([...rps].reverse());
