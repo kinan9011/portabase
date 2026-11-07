@@ -3,6 +3,7 @@ import {isSyncRunning} from "@/fork/discovery/sync-state";
 import type {ForkDb} from "@/fork/db/handle";
 import {PAGE_SIZE, escapeLike, type StackListParams} from "@/fork/stacks/params";
 import {StackInventoryV1} from "@/fork/inventory/schema";
+import {loadPolicyView} from "@/fork/stack-policy/policy-view";
 import {StackDetailSchema, StackListSchema, inventoryViewFrom, type StackDetail, type StackList} from "@/fork/stacks/dto";
 import {loadProtectionViews, type ProtectionInputs} from "@/fork/stacks/protection";
 
@@ -137,6 +138,7 @@ export async function loadStackDetail(db: ForkDb, organizationId: string, stackI
         staleSince: s.stale_since ? new Date(s.stale_since).toISOString() : null,
         lastSyncAt: s.last_sync_at ? new Date(s.last_sync_at).toISOString() : null,
         syncing: s.connection_id ? await isSyncRunning(db, s.connection_id, now) : false,
+        policy: await loadPolicyView(db, s.id, now),
         inventory,
     });
 }

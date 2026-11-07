@@ -2,6 +2,7 @@ import {z} from "zod";
 import {PROTECTION_STATES, RUNTIME_STATES} from "@/fork/db/enums";
 import {ConfigurationViewSchema, ProtectionViewSchema} from "@/fork/completeness/view";
 import {StackInventoryV1} from "@/fork/inventory/schema";
+import {PolicyViewSchema} from "@/fork/stack-policy/policy-schema";
 
 /**
  * Client-facing DTOs of the stacks UI (W08). Strict, JSON-serialisable, built FIELD BY FIELD from the stored inventory:
@@ -81,6 +82,8 @@ export const StackDetailSchema = z.strictObject({
     staleSince: iso,
     lastSyncAt: iso,
     syncing: z.boolean(),
+    /** W11: the ACTIVATED backup policy (Schedule tab), null when none. */
+    policy: PolicyViewSchema.nullable().default(null),
     /** `ok` = readable inventory, `unreadable` = stored but not understood by this release, `none` = no version recorded. */
     inventory: z.discriminatedUnion("state", [
         z.strictObject({state: z.literal("ok"), view: InventoryViewSchema, protection: ProtectionViewSchema, configuration: ConfigurationViewSchema}),

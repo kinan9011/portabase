@@ -11,8 +11,7 @@ import {loadMaterializedContext} from "@/fork/materialize/context";
  * browser views. The ONLY part of W09 that touches Postgres.
  *
  * Coverage, probes and source/agent/policy findings come from the materializer's persisted state (W10, `materialize/context.ts`). Inputs that no wave feeds yet are passed as "unknown", never invented:
- * accepted exclusions (W11), kit state (W14, so `false`: fail closed), storage-channel deletion checks (F4/W14P), schedule
- * interval (W11, so never Stale), test-restore age (R2). `ctxOverride` lets tests and later waves inject real coverage.
+ * kit state (W14, so `false`: fail closed), storage-channel deletion checks (F4/W14P), test-restore age (R2). `ctxOverride` lets tests and later waves inject real coverage.
  */
 const HOUR = 3_600_000;
 
@@ -42,7 +41,7 @@ export async function loadProtectionViews(
     }
 
     const mat = await loadMaterializedContext(db, {id: stack.id, environmentId: stack.environmentId}, now);
-    const ctx: CompletenessContext = {...EMPTY_CONTEXT, allowedRoots, coverage: mat.coverage, probes: mat.probes, sourceIssues: mat.sourceIssues, ...(o.ctxOverride ?? {})};
+    const ctx: CompletenessContext = {...EMPTY_CONTEXT, allowedRoots, coverage: mat.coverage, probes: mat.probes, sourceIssues: mat.sourceIssues, acceptedExclusions: mat.acceptedExclusions, ...(o.ctxOverride ?? {})};
     const report = validateCompleteness(inventory.stored, ctx);
     const hoursSince = r.last_verified ? Math.max(0, (now.getTime() - new Date(r.last_verified).getTime()) / HOUR) : null;
     const verifying = r.last_pending !== null && (r.last_verified === null || new Date(r.last_pending).getTime() > new Date(r.last_verified).getTime());
@@ -52,7 +51,7 @@ export async function loadProtectionViews(
         {
             hasActivePolicy, lastRunFailed: r.latest_status === "failed", coverageGap: !report.complete,
             verifiedRpCount: r.verified, pendingRpCount: r.pending, hoursSinceLastVerified: hoursSince,
-            staleAfterHours: o.staleAfterHours ?? null, kitVerified: false,
+            staleAfterHours: o.staleAfterHours ?? mat.staleAfterHours, kitVerified: false,
         },
         {
             hasActivePolicy, hoursSinceLastVerified: hoursSince, verifying, daysSinceTestRestore: null, channelDeletable: [],

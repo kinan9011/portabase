@@ -54,6 +54,9 @@ describe("upstream contract — symbols the fork imports", () => {
         ["src/components/ui/switch.tsx", "Switch"],
         ["src/components/ui/table.tsx", "Table"],
         ["src/components/ui/tabs.tsx", "Tabs"], // W08
+        ["src/components/ui/checkbox.tsx", "Checkbox"], // W11 (controlled copies of the storage selector / forms)
+        ["src/components/ui/radio-group.tsx", "RadioGroup"],
+        ["src/components/ui/radio-group.tsx", "RadioGroupItem"],
         ["src/lib/utils.ts", "cn"],
         ["src/features/agents/utils/status/agent-status.ts", "getAgentStatus"],
         ["src/features/agents/utils/status/agent-status.ts", "DASHBOARD_THRESHOLDS"],
@@ -70,7 +73,7 @@ describe("upstream contract — symbols the fork imports", () => {
             "@/db/schema/13_storage-policy", "@/db/schema/10_alert-policy", "@/db/schema/01_setting", "@/utils/status-crypto",
             // W06
             "@/components/ui/alert-dialog", "@/components/ui/alert", "@/components/ui/button", "@/components/ui/dialog", "@/components/ui/input", "@/components/ui/label",
-            "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/components/ui/tabs", "@/lib/utils", "@/features/agents/utils/status/agent-status",
+            "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/components/ui/tabs", "@/lib/utils", "@/components/ui/checkbox", "@/components/ui/radio-group", "@/features/agents/utils/status/agent-status",
         ]);
         const walk = (dir: string): string[] =>
             readdirSync(dir, {withFileTypes: true}).flatMap((e) =>

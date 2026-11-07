@@ -36,6 +36,13 @@
       "when": 1794017905866,
       "tag": "0004_stack_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794021026915,
+      "tag": "0005_stack_policy_activation",
+      "breakpoints": true
     }
   ]
 }

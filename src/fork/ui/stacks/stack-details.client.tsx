@@ -6,13 +6,14 @@ import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import type {ConfigurationView, ProtectionView} from "@/fork/completeness/view";
 import type {InventoryView, StackDetail} from "@/fork/stacks/dto";
 import {TABS, type StackTab} from "@/fork/ui/stacks/tabs";
-import {CONFIG_TAB, ENVIRONMENT_COPY, RP_STATUS_LABELS, STACK_DETAILS, STACKS_EMPTY, WARNING_COPY, WARNING_FALLBACK, WARNING_SEVERITY_LABELS} from "@/fork/ui/labels";
+import {CONFIG_TAB, SCHEDULE_TAB, ENVIRONMENT_COPY, RP_STATUS_LABELS, STACK_DETAILS, STACKS_EMPTY, WARNING_COPY, WARNING_FALLBACK, WARNING_SEVERITY_LABELS} from "@/fork/ui/labels";
 import {BlockersPanel} from "@/fork/ui/stacks/config-tab/blockers-panel";
 import {ConfigTab} from "@/fork/ui/stacks/config-tab/config-tab";
 import {FacetsPanel, LastGoodBackupLine} from "@/fork/ui/stacks/config-tab/facets-panel";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {fmtPort, fmtUtc, STACKS_HREF} from "@/fork/ui/stacks/format";
 import {ResourcesTabs} from "@/fork/ui/stacks/resources-tabs";
+import {ScheduleTab} from "@/fork/ui/stacks/schedule-tab";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
 import {PrimaryStateBadge, ProtectionBadge, RpStatusBadge, RuntimeBadge, StaleBadge} from "@/fork/ui/stacks/stack-status-badges";
 import {SyncPoller} from "@/fork/ui/stacks/sync-poller";
@@ -20,11 +21,13 @@ import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge} from "@/fork/ui/tone-badge";
 
 const D = STACK_DETAILS;
-function Actions({canConfigure}: {canConfigure: boolean}) {
-    // Every action is visibly disabled with its reason (§8.2 rule 10). None of them does anything in this release.
+function Actions({canConfigure, configLocked, stackId}: {canConfigure: boolean; configLocked: boolean; stackId: string}) {
+    // Configure is a real link for an administrator while configuration is open (W11); every other action is visibly disabled with its reason (§8.2 rule 10).
     return (
         <div className="flex flex-wrap items-start gap-3" data-testid="actions">
-            <ReasonButton type="button" variant="outline" reason={canConfigure ? D.actions.configure.admin : D.actions.configure.member}>{D.actions.configure.label}</ReasonButton>
+            {canConfigure && !configLocked
+                ? <Link href={`${STACKS_HREF}/${stackId}/configure`} data-testid="configure-link" className="border-input bg-background hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium">{D.actions.configure.label}</Link>
+                : <ReasonButton type="button" variant="outline" reason={canConfigure ? D.actions.configure.admin : D.actions.configure.member}>{D.actions.configure.label}</ReasonButton>}
             <ReasonButton type="button" variant="outline" reason={D.actions.backupNow.reason}>{D.actions.backupNow.label}</ReasonButton>
             <ReasonButton type="button" variant="outline" reason={D.actions.restore.reason}>{D.actions.restore.label}</ReasonButton>
             <ReasonButton type="button" variant="outline" reason={D.actions.mirror.reason}>{D.actions.mirror.label}</ReasonButton>
@@ -115,7 +118,7 @@ function Overview({v, p, c, onOpenConfiguration}: {v: InventoryView; p: Protecti
     );
 }
 
-export function StackDetailsClient({detail, initialTab, canConfigure}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean}) {
+export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean}) {
     const [tab, setTab] = React.useState<StackTab>(initialTab);
     const gone = detail.runtime === "absent";
     const stale = detail.staleSince !== null && !gone;
@@ -143,7 +146,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure}: {detail: 
                             <div className="flex gap-1.5"><dt>{D.lastSync}:</dt><dd className="text-foreground">{fmtUtc(detail.lastSyncAt, ENVIRONMENT_COPY.notSynced)}</dd></div>
                         </dl>
                     </div>
-                    <Actions canConfigure={canConfigure}/>
+                    <Actions canConfigure={canConfigure} configLocked={configLocked} stackId={detail.id}/>
                 </div>
                 {protection && <LastGoodBackupLine p={protection}/>}
                 <div className="flex flex-wrap items-start gap-4"><RuntimeBadge state={detail.runtime} describe/>{protection ? <PrimaryStateBadge state={protection.primary} describe/> : <ProtectionBadge state={detail.protection} describe/>}{stale && <StaleBadge/>}</div>
@@ -162,10 +165,12 @@ export function StackDetailsClient({detail, initialTab, canConfigure}: {detail: 
                         <TabsTrigger value="overview">{D.tabs.overview}</TabsTrigger>
                         <TabsTrigger value="resources">{D.tabs.resources}</TabsTrigger>
                         <TabsTrigger value="configuration">{CONFIG_TAB.tab}</TabsTrigger>
+                        <TabsTrigger value="schedule">{SCHEDULE_TAB.tab}</TabsTrigger>
                     </TabsList>
                     <TabsContent value="overview">{protection && configuration && <Overview v={view} p={protection} c={configuration} onOpenConfiguration={() => onTab("configuration")}/>}</TabsContent>
                     <TabsContent value="resources"><ResourcesTabs view={view}/></TabsContent>
                     <TabsContent value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
+                    <TabsContent value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`}/></TabsContent>
                 </Tabs>
             )}
         </div>

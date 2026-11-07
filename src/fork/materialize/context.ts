@@ -4,6 +4,7 @@ import type {SourceView} from "@/fork/completeness/view";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkStackPolicy, forkStackSource} from "@/fork/db/schema/stack";
 import {agentsLastContact, encryptionEnabled} from "@/fork/upstream";
+import {intervalHours, ScheduleSchema} from "@/fork/schedule/schedule";
 import {AGENT_FRESH_MS} from "./drift";
 
 /**
@@ -15,8 +16,14 @@ import {AGENT_FRESH_MS} from "./drift";
  */
 export const PROBE_TTL_MS = 10 * 60_000;
 
-export type MaterializedContext = {coverage: Record<string, CoverageKind>; probes: Record<string, ProbeResult>; sourceIssues: SourceIssue[]; sources: SourceView[]};
-export const NO_MATERIALIZATION: MaterializedContext = {coverage: {}, probes: {}, sourceIssues: [], sources: []};
+export type MaterializedContext = {
+    coverage: Record<string, CoverageKind>; probes: Record<string, ProbeResult>; sourceIssues: SourceIssue[]; sources: SourceView[];
+    /** W11: gaps the operator accepted (UX-20), by item key. */
+    acceptedExclusions: string[];
+    /** W11: dead-man threshold = 1.5 × the schedule interval (§4.7); null = no activated schedule ⇒ never Stale. */
+    staleAfterHours: number | null;
+};
+export const NO_MATERIALIZATION: MaterializedContext = {coverage: {}, probes: {}, sourceIssues: [], sources: [], acceptedExclusions: [], staleAfterHours: null};
 
 const kindOf = (l: {role: string; origin: string; dbms: string}): CoverageKind => (l.origin === "manual" ? "manual_files" : l.role === "db" ? "engine_dump" : "files");
 const rank: Record<CoverageKind, number> = {manual_files: 0, files: 1, engine_dump: 2};
@@ -69,5 +76,8 @@ export async function loadMaterializedContext(db: ForkDb, stack: {id: string; en
     }
     // D39: an active stack policy with encryption off is a blocker (activation is refused earlier; this catches it being switched off afterwards).
     if (policy?.activatedAt && !policy.deactivatedAt && !(await encryptionEnabled(db))) issues.push({key: "policy:encryption", kind: "policy", name: "Encryption", reason: "encryption_off", status: "unsupported", severity: "blocker"});
-    return {coverage, probes, sourceIssues: issues, sources};
+    const active = !!policy?.activatedAt && !policy.deactivatedAt;
+    const sched = active ? ScheduleSchema.safeParse(policy?.schedule) : null;
+    const interval = sched?.success ? intervalHours(sched.data, now) : null;
+    return {coverage, probes, sourceIssues: issues, sources, acceptedExclusions: active ? (policy?.acceptedExclusions ?? []) : [], staleAfterHours: interval === null ? null : interval * 1.5};
 }

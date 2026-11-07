@@ -51,7 +51,7 @@ export default async function StackDetailsPage(props: {params: Promise<{stackId:
             <PageContent>
                 <StatusAnnouncer>
                     {locked && <p role="note" data-testid="locked-note" className="mb-4 rounded-lg border p-3 text-sm">{STACKS_EMPTY.locked}</p>}
-                    <StackDetailsClient detail={detail} initialTab={parseTab((await props.searchParams).tab)} canConfigure={forkCan(actor, "stacks.backup.manage")}/>
+                    <StackDetailsClient detail={detail} initialTab={parseTab((await props.searchParams).tab)} canConfigure={forkCan(actor, "stacks.backup.manage")} configLocked={locked !== null}/>
                 </StatusAnnouncer>
             </PageContent>
         </Page>
