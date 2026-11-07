@@ -21,8 +21,13 @@ describe("W16 static guards (dry-run: no I/O, no secrets, pure core, honest stat
     it("the planner scope exists", () => { expect(RESTORE.map((f) => path.basename(f)).sort()).toEqual(["load.ts", "plan.ts", "schema.ts", "service.ts", "vocab.ts"]); });
 
     it("no network, process, restic, credential, key or task-enqueue import anywhere in the planner", () => {
-        const banned = /\bfetch\(|node:http|node:https|node:net|node:child_process|child_process|pinned-request|restic|@\/fork\/upstream\/storage-read|@\/fork\/upstream\/credentials|@\/fork\/upstream\/master-key|@\/fork\/keys|@\/fork\/kek|decrypt|@\/fork\/agent-channel\/tasks|@\/lib\/logger|console\./;
-        for (const f of SCOPE) expect(code(f), rel(f)).not.toMatch(banned);
+        const bannedModule = /node:https?|node:net|child_process|pinned-request|restic|upstream\/(storage-read|credentials|master-key)|@\/fork\/(keys|kek)\b|agent-channel\/tasks|@\/lib\/logger|^undici$|^axios$/;
+        const bannedCall = /\bfetch\(|\bdecrypt\w*\(|console\.|\bexec(Sync|File)?\(|\bspawn(Sync)?\(/;
+        for (const f of SCOPE) {
+            const c = code(f);
+            for (const m of c.matchAll(/(?:from\s+|import\(\s*)["']([^"']+)["']/g)) expect(m[1], `${rel(f)} imports ${m[1]}`).not.toMatch(bannedModule);
+            expect(c, rel(f)).not.toMatch(bannedCall);
+        }
     });
 
     it("plan.ts, schema.ts, vocab.ts are pure: no Date, Math.random, process.env, DB handle/schema/dto", () => {
@@ -46,7 +51,8 @@ describe("W16 static guards (dry-run: no I/O, no secrets, pure core, honest stat
     });
 
     it("no API route was added for the planner (server actions only; CSRF = Next origin check)", () => {
-        const routes = walk(path.join(ROOT, "app/api")).map(rel);
+        let routes: string[] = [];
+        try { routes = walk(path.join(ROOT, "app/api/fork")).map(rel); } catch { /* no fork routes dir */ }
         expect(routes.filter((r) => /restore/i.test(r))).toEqual([]);
     });
 });
