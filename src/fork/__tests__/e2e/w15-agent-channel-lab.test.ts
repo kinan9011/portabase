@@ -45,7 +45,7 @@ const URL_FOR_AGENTS = () => `http://forklab-dashboard.localhost:${new URL(base)
 
 async function waitFor<T>(what: string, fn: () => Promise<T | null | undefined | false>, ms = 90_000): Promise<T> {
     const end = Date.now() + ms;
-    for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error(`timeout waiting for ${what}\n--- dashboard ---\n${out.slice(-1500)}`); await sleep(1000); }
+    for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error(`timeout waiting for ${what}\n--- dashboard (fork lines) ---\n${out.split("\n").filter((l) => /[Ff]ork|rror/.test(l) && !/Received POST/.test(l)).slice(-12).join("\n").slice(-2500)}\n--- agents ---\n${containers.map((c) => `${c}: ${logs(c).split("\n").filter((l) => /[Ff]ork|rror|WARN/.test(l)).slice(-6).join(" | ")}`).join("\n").slice(-2000)}`); await sleep(1000); }
 }
 
 const deps = (): ChannelDeps => ({db, principal: {userId: adminId, systemRole: "superadmin", memberships: []}, keys: fileKeyProvider, serverUrl: URL_FOR_AGENTS,
@@ -87,7 +87,7 @@ describe.skipIf(!LAB)("W15 live: real fork dashboard + two real fork agents (sig
         const port = await freePort(); base = `http://${GW}:${port}`;
         child = spawn("pnpm", ["exec", "next", "start", "-p", String(port), "-H", GW], {cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"], env: {...process.env, NODE_ENV: "production", DATABASE_URL: t.url,
             PROJECT_URL: URL_FOR_AGENTS(), PROJECT_SECRET: "w15-lab-secret-not-a-real-secret-0123456789", PRIVATE_PATH: priv, AUTH_DEFAULT_USER: ADMIN.email, AUTH_DEFAULT_PASSWORD: ADMIN.password,
-            AUTH_DEFAULT_USER_NAME: "W15 Lab", SKIP_ONBOARDING: "true", FORK_STACKS_ENABLED: "true", FORK_ARCANE_ENABLED: "true", FORK_ALLOW_INSECURE_LOOPBACK: "true", FORK_MIGRATE_DUMP: "off",
+            AUTH_DEFAULT_USER_NAME: "W15 Lab", SKIP_ONBOARDING: "true", AUTH_SIGNUP_ENABLED: "false", FORK_STACKS_ENABLED: "true", FORK_ARCANE_ENABLED: "true", FORK_ALLOW_INSECURE_LOOPBACK: "true", FORK_MIGRATE_DUMP: "off",
             FORK_VERIFY_TICK_SECONDS: "3600", FORK_KIT_WATCH_MINUTES: "1440"}});
         child.stdout!.on("data", (d) => { out += d; }); child.stderr!.on("data", (d) => { out += d; });
         await waitFor("dashboard ready", async () => out.includes("Fork initialised") && (await fetch(`${base}/api/health`).then((r) => r.ok).catch(() => false)), 180_000);
@@ -105,6 +105,10 @@ describe.skipIf(!LAB)("W15 live: real fork dashboard + two real fork agents (sig
     }, 420_000);
 
     afterAll(async () => {
+        if (process.env.W15_EVIDENCE_DIR) { // evidence for ADR-007 §E: agent logs (secret-free by the last test) + the fork lines of the dashboard log
+            for (const n of containers) writeFileSync(path.join(process.env.W15_EVIDENCE_DIR, `${n}.log`), logs(n).replace(/\x1b\[[0-9;]*m/g, ""));
+            writeFileSync(path.join(process.env.W15_EVIDENCE_DIR, "dashboard-fork.log"), out.split("\n").filter((l) => /[Ff]ork|agent-channel/.test(l) && !/Received POST/.test(l)).join("\n"));
+        }
         for (const n of containers) { try { docker(["rm", "-f", n]); } catch { /* gone */ } }
         try { docker(["network", "rm", NET]); } catch { /* in use / gone */ }
         child?.kill("SIGTERM"); await sleep(500); if (child?.exitCode === null) child?.kill("SIGKILL");
