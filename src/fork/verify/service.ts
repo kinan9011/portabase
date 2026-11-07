@@ -2,6 +2,7 @@ import {createHash} from "node:crypto";
 import {and, eq, sql} from "drizzle-orm";
 import {recordAudit} from "@/fork/audit";
 import type {ForkDb} from "@/fork/db/handle";
+import {forkAgentHashReport} from "@/fork/db/schema/agent-channel";
 import {forkRecoveryPoint, forkRecoveryPointArtifact} from "@/fork/db/schema/recovery";
 import {parseInventoryStrict, type StackInventoryV1} from "@/fork/inventory/schema";
 import {KeyUnavailableError, type KeyProvider} from "@/fork/keys";
@@ -27,7 +28,7 @@ import {checkArchiveObject, type OpenArchive} from "./artifact";
  * with a closed reason; an INFRASTRUCTURE failure (unreadable, channel down, signing key unavailable) ⇒ retried with backoff and `failed:verify_failed`
  * (code `infrastructure`) only after `maxAttempts`; a vanished object ⇒ downgraded `incomplete:artifact_missing`. Nothing is ever promoted on a guess.
  */
-export const VERIFY_CODES = ["ok", "truncated", "auth_failed", "gzip_invalid", "tar_invalid", "bad_header", "unsupported_version", "empty", "too_large", "size_mismatch", "unencrypted", "restic_unreadable", "missing", "infrastructure", "signing_unavailable", "manifest_unreadable"] as const;
+export const VERIFY_CODES = ["ok", "truncated", "auth_failed", "gzip_invalid", "tar_invalid", "bad_header", "unsupported_version", "empty", "too_large", "size_mismatch", "agent_hash_mismatch", "unencrypted", "restic_unreadable", "missing", "infrastructure", "signing_unavailable", "manifest_unreadable"] as const;
 export type VerifyCode = (typeof VERIFY_CODES)[number];
 
 export type VerifyDeps = {
@@ -54,10 +55,12 @@ export type VerifyOutcome =
     | {outcome: "skipped"; rpId: string; why: "not_pending" | "not_found" | "busy"};
 
 type ArtRow = typeof forkRecoveryPointArtifact.$inferSelect;
-type Result = {id: string; code: VerifyCode; infra: boolean; plaintextSha256?: string; plaintextSize?: number; dumpFormat?: string | null; formatVersion?: number | null};
+/** D45: `match` = the fork agent's own plaintext SHA-256 + size (reported through the channel) equals what this job computed; `absent` = no report (agent not enrolled / old agent / report lost) — recorded honestly, never counted as a match. */
+type AgentHash = "match" | "absent";
+type Result = {id: string; code: VerifyCode; infra: boolean; agentHash?: AgentHash; plaintextSha256?: string; plaintextSize?: number; dumpFormat?: string | null; formatVersion?: number | null};
 
 const reportOf = (attempts: number, outcome: string, results: Result[], extra: Record<string, unknown> = {}) => ({
-    version: 1, attempts, outcome, results: results.map((r) => ({artifact: r.id, code: r.code})), ...extra,
+    version: 1, attempts, outcome, results: results.map((r) => ({artifact: r.id, code: r.code, ...(r.agentHash ? {agent_hash: r.agentHash} : {})})), ...extra,
 });
 
 /** A long download cannot sit inside a transaction: one verifier per RP via a lease (expires on its own if the process dies). */
@@ -121,7 +124,14 @@ async function verifyLeased(d: VerifyDeps, rpId: string): Promise<VerifyOutcome>
             results.push({id: a.id, code: "size_mismatch", infra: false});
             return fail("verify_failed", "size_mismatch", results);
         }
-        results.push({id: a.id, code: "ok", infra: false, plaintextSha256: v.plaintextSha256, plaintextSize: v.plaintextSize, dumpFormat: v.dumpFormat, formatVersion: v.formatVersion});
+        // D45: cross-check the plaintext hash + size the fork AGENT computed before encryption (reported through the channel) against ours.
+        // Different ⇒ the stored archive is not what the agent read (or the report is forged): the RP is `failed`, never `verified`.
+        const rep = a.backupId ? await agentPlaintextReport(d.db, a.backupId) : null;
+        if (rep && (rep.sha256 !== v.plaintextSha256 || rep.sizeBytes !== v.plaintextSize)) {
+            results.push({id: a.id, code: "agent_hash_mismatch", infra: false, agentHash: undefined});
+            return fail("plaintext_hash_mismatch", "agent_hash_mismatch", results);
+        }
+        results.push({id: a.id, code: "ok", infra: false, agentHash: rep ? "match" : "absent", plaintextSha256: v.plaintextSha256, plaintextSize: v.plaintextSize, dumpFormat: v.dumpFormat, formatVersion: v.formatVersion});
     }
     if (results.some((r) => r.infra)) return retryOrFail(d, rp, attempt, "infrastructure", results, now());
 
@@ -195,6 +205,11 @@ async function verifyLeased(d: VerifyDeps, rpId: string): Promise<VerifyOutcome>
     });
     if (!promoted) return {outcome: "skipped", rpId, why: "not_pending"};
     return {outcome: "verified", rpId, manifestChannels: refs.length};
+}
+
+async function agentPlaintextReport(db: ForkDb, backupId: string): Promise<{sha256: string; sizeBytes: number} | null> {
+    const [r] = await db.select({sha256: forkAgentHashReport.sha256, sizeBytes: forkAgentHashReport.sizeBytes}).from(forkAgentHashReport).where(eq(forkAgentHashReport.backupId, backupId));
+    return r ?? null;
 }
 
 async function loadInventory(db: ForkDb, stackId: string, version: number | null): Promise<StackInventoryV1 | null> {
