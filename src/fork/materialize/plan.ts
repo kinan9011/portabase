@@ -12,6 +12,8 @@ import {
 
 const sha = (v: unknown) => createHash("sha256").update(canonicalJson(v)).digest("hex");
 const MAX_NAME = 200;
+/** Hash of what the upstream `databases` row must contain (secrets excluded by construction: plan configs have none). */
+export const configHashOf = (dbms: string, engine: string, config: Record<string, unknown>) => sha({dbms, engine, config});
 
 /** Member names are display text only; bounded and made unique by a hash suffix when truncated. */
 function memberName(prefix: string, label: string): string {
@@ -34,7 +36,7 @@ function dbSource(svc: string, engineHint: string, input: DbInput, roots: readon
         const config = {path: safeAbsPath(input.path) as string};
         const body = {role: "db", dbms: "sqlite", engine: "archive", config, covers: [key], needsSecret: false};
         // sqlite `.backup` saves the DB file only: it does NOT make the rest of its volume covered (data keys not added).
-        return {resourceKey: key, role: "db", origin: "discovered", memberName: memberName("db", svc), dbms: "sqlite", engine: "archive", config, covers: [key], coverage: "engine_dump", secretFor: null, needsSecret: false, requiresDocker: false, hash: sha(body)};
+        return {resourceKey: key, role: "db", origin: "discovered", memberName: memberName("db", svc), dbms: "sqlite", engine: "archive", config, covers: [key], coverage: "engine_dump", secretFor: null, needsSecret: false, requiresDocker: false, hash: sha(body), configHash: configHashOf("sqlite", "archive", config)};
     }
     if (!(DUMP_ENGINES as readonly string[]).includes(engineHint)) return invalid;
     const engine = engineHint as DumpEngine;
@@ -47,7 +49,7 @@ function dbSource(svc: string, engineHint: string, input: DbInput, roots: readon
     if (input.database !== undefined) config.database = input.database;
     const covers = [key, ...dataKeys];
     const body = {role: "db", dbms: engine, engine: "archive", config, covers: [...covers].sort(), needsSecret: req.secret};
-    return {resourceKey: key, role: "db", origin: "discovered", memberName: memberName("db", svc), dbms: engine, engine: "archive", config, covers, coverage: "engine_dump", secretFor: req.secret ? svc : null, needsSecret: req.secret, requiresDocker: false, hash: sha(body)};
+    return {resourceKey: key, role: "db", origin: "discovered", memberName: memberName("db", svc), dbms: engine, engine: "archive", config, covers, coverage: "engine_dump", secretFor: req.secret ? svc : null, needsSecret: req.secret, requiresDocker: false, hash: sha(body), configHash: configHashOf(engine, "archive", config)};
 }
 
 /**
@@ -106,7 +108,7 @@ export function planStack(inv: StackInventoryV1, sel: Selection, allowedRoots: r
             ];
             const engine = sel.composeMethod === "snapshot" ? "restic" : "archive";
             const config = {path: wd};
-            sources.push({resourceKey: key, role: "compose", origin: "discovered", memberName: memberName("compose", wd), dbms: "files", engine, config, covers, coverage: "files", secretFor: null, needsSecret: false, requiresDocker: false, hash: sha({role: "compose", dbms: "files", engine, config, covers: [...covers].sort(), needsSecret: false})});
+            sources.push({resourceKey: key, role: "compose", origin: "discovered", memberName: memberName("compose", wd), dbms: "files", engine, config, covers, coverage: "files", secretFor: null, needsSecret: false, requiresDocker: false, hash: sha({role: "compose", dbms: "files", engine, config, covers: [...covers].sort(), needsSecret: false}), configHash: configHashOf("files", engine, config)});
         }
     }
 
@@ -123,7 +125,7 @@ export function planStack(inv: StackInventoryV1, sel: Selection, allowedRoots: r
         if (!p || v.unsupported || v.directive) { skip(key, "bind_path_denied"); continue; }
         const engine = sel.bindMethod === "snapshot" ? "restic" : "archive";
         const config = {path: normPath(p)};
-        sources.push({resourceKey: key, role: "bind", origin: "discovered", memberName: memberName("bind", p), dbms: "files", engine, config, covers: [key], coverage: "files", secretFor: null, needsSecret: false, requiresDocker: false, hash: sha({role: "bind", dbms: "files", engine, config, covers: [key], needsSecret: false})});
+        sources.push({resourceKey: key, role: "bind", origin: "discovered", memberName: memberName("bind", p), dbms: "files", engine, config, covers: [key], coverage: "files", secretFor: null, needsSecret: false, requiresDocker: false, hash: sha({role: "bind", dbms: "files", engine, config, covers: [key], needsSecret: false}), configHash: configHashOf("files", engine, config)});
     }
 
     // ---- named volumes (SEC-24) --------------------------------------------------------------------------------------------
@@ -140,7 +142,7 @@ export function planStack(inv: StackInventoryV1, sel: Selection, allowedRoots: r
         if (!VOLUME_NAME_RE.test(v.name) || v.name.length > 255) { skip(key, "volume_name_invalid"); continue; }
         if (!isAdoptableVolumeName(v.name)) { skip(key, "anonymous_volume"); continue; }
         const config = {volume_name: v.name}; // `container_name` is NEVER set in R1 (D29)
-        sources.push({resourceKey: key, role: "volume", origin: "discovered", memberName: memberName("volume", v.name), dbms: "docker-volume", engine: "archive", config, covers: [key], coverage: "files", secretFor: null, needsSecret: false, requiresDocker: true, hash: sha({role: "volume", dbms: "docker-volume", engine: "archive", config, covers: [key], needsSecret: false})});
+        sources.push({resourceKey: key, role: "volume", origin: "discovered", memberName: memberName("volume", v.name), dbms: "docker-volume", engine: "archive", config, covers: [key], coverage: "files", secretFor: null, needsSecret: false, requiresDocker: true, hash: sha({role: "volume", dbms: "docker-volume", engine: "archive", config, covers: [key], needsSecret: false}), configHash: configHashOf("docker-volume", "archive", config)});
     }
 
     // ---- databases ----------------------------------------------------------------------------------------------------------
@@ -165,7 +167,7 @@ export function planStack(inv: StackInventoryV1, sel: Selection, allowedRoots: r
         if (!p || v.unsupported || v.directive || allowedRoots.length === 0) { skip(key, "manual_invalid"); continue; }
         if (!ms.covers.every((k) => known.has(k))) { skip(key, "manual_key_unknown"); continue; }
         const config = {path: normPath(p)};
-        sources.push({resourceKey: `manual:${normPath(p)}`, role: "bind", origin: "manual", memberName: memberName("manual", p), dbms: "files", engine: "archive", config, covers: ms.covers, coverage: "manual_files", secretFor: null, needsSecret: false, requiresDocker: false, hash: sha({role: "bind", origin: "manual", dbms: "files", engine: "archive", config, covers: [...ms.covers].sort(), needsSecret: false})});
+        sources.push({resourceKey: `manual:${normPath(p)}`, role: "bind", origin: "manual", memberName: memberName("manual", p), dbms: "files", engine: "archive", config, covers: ms.covers, coverage: "manual_files", secretFor: null, needsSecret: false, requiresDocker: false, hash: sha({role: "bind", origin: "manual", dbms: "files", engine: "archive", config, covers: [...ms.covers].sort(), needsSecret: false}), configHash: configHashOf("files", "archive", config)});
     }
 
     sources.sort((a, b) => (a.resourceKey < b.resourceKey ? -1 : a.resourceKey > b.resourceKey ? 1 : 0));

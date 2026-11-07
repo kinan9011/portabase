@@ -82,7 +82,10 @@ export type PlannedSource = {
     secretFor: string | null;
     needsSecret: boolean;
     requiresDocker: boolean;
+    /** Identity of this member in the plan (role, covers, config, secret need). */
     hash: string;
+    /** What the upstream row must look like (dbms, engine, NON-secret config): the drift job compares the live row against it. */
+    configHash: string;
 };
 
 export const SKIP_REASONS = [
