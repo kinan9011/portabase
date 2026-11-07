@@ -276,6 +276,17 @@ describe("W08 details: Resources match the lab-shaped stack (sub-tabs, shared/ex
         expect(nets[1].textContent).toContain("External");
         expect(await axeViolations(container)).toEqual([]);
     });
+    it("ports not published on the host say 'container only'; a service with no recorded env names shows no env line (never '0 variables')", () => {
+        const inv = richInventory();
+        inv.services[1].ports = [{target: 5432, protocol: "tcp"}, {target: 8080, published: 18080, protocol: "tcp"}];
+        inv.services[1].env_keys = [];
+        const view = toInventoryView(inv, {version: 1, capturedAt: new Date()})!;
+        mountDetail(StackDetailSchema.parse({...detail(), inventory: {state: "ok", view}}), {tab: "resources"});
+        const web = screen.getAllByTestId("service-row")[1].textContent!;
+        expect(web).toContain("5432/tcp (container only)");
+        expect(web).toContain("18080→8080/tcp");
+        expect(web).not.toMatch(/environment variable/);
+    });
     it("empty sub-tabs say so", async () => {
         const d = detail();
         if (d.inventory.state === "ok") { d.inventory.view.databases = []; d.inventory.view.binds = []; }

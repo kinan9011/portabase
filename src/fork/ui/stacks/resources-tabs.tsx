@@ -29,7 +29,7 @@ function Services({v}: {v: InventoryView}) {
                 <TableBody>
                     {v.services.map((s) => (
                         <TableRow key={s.name} data-testid="service-row">
-                            <TableCell><div className="font-semibold">{s.name}</div>{s.privileged && <div className="text-xs">{R.privileged}</div>}<div className="text-muted-foreground text-xs">{R.envNote(s.envCount)}</div></TableCell>
+                            <TableCell><div className="font-semibold">{s.name}</div>{s.privileged && <div className="text-xs">{R.privileged}</div>}{s.envCount > 0 && <div className="text-muted-foreground text-xs">{R.envNote(s.envCount)}</div>}</TableCell>
                             <TableCell><div className="font-mono text-xs break-all">{s.image.ref}</div><div className="text-muted-foreground text-xs">{s.image.pinned ? R.imagePinned : R.imageUnpinned}{s.image.builtLocally ? ` · ${R.builtLocally}` : ""}</div></TableCell>
                             <TableCell><ServiceStateBadge state={s.state}/></TableCell>
                             <TableCell>{s.ports.length ? <ul>{s.ports.map((p) => <li key={fmtPort(p)} className="font-mono text-xs">{fmtPort(p)}</li>)}</ul> : <span className="text-muted-foreground">—</span>}</TableCell>

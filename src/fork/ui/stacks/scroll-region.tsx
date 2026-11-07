@@ -7,6 +7,6 @@ import type * as React from "react";
 export function ScrollRegion({label, children}: {label: string; children: React.ReactNode}) {
     return (
         // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users must be able to scroll an overflowing table
-        <section aria-label={label} tabIndex={0} className="overflow-x-auto rounded-lg border">{children}</section>
+        <section aria-label={label} tabIndex={0} className="overflow-x-auto rounded-lg border [&_[data-slot=table-container]]:overflow-visible">{children}</section>
     );
 }

@@ -2,7 +2,8 @@
 export const fmtUtc = (iso: string | null | undefined, fallback: string): string =>
     iso ? `${new Date(iso).toLocaleString("en-US", {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"})} UTC` : fallback;
 
-export const fmtPort = (p: {published?: number; target: number; protocol: string}): string => (p.published !== undefined ? `${p.published}→${p.target}/${p.protocol}` : `${p.target}/${p.protocol}`);
+/** `host→container/proto` when published, `container/proto (container only)` when the port is not published on the host. */
+export const fmtPort = (p: {published?: number; target: number; protocol: string}): string => (p.published !== undefined ? `${p.published}→${p.target}/${p.protocol}` : `${p.target}/${p.protocol} (container only)`);
 
 export const fmtBytes = (n: number | null): string | null => {
     if (n === null) return null;

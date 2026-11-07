@@ -244,7 +244,7 @@ export const STACK_DETAILS = {
         inventoryVersion: "Inventory version",
         composeRead: {none: "Not read (names and paths come from container labels only)", arcane_compose: "Read through Arcane (names only)", agent_files: "Read from the host by the agent"},
         composeReadLabel: "Compose file",
-        ports: "Published ports",
+        ports: "Ports",
     },
     resources: {
         heading: "Resources",
@@ -271,7 +271,7 @@ export const STACK_DETAILS = {
         dbBasis: {image: "image name", port: "port", mount: "mount name"},
         dbNote: "A guess from the image, port or mount name. It is a hint only: Portabase has not connected to any database.",
         bindNote: "Host paths come from the container's labels and mounts and are hints. The agent checks them again before any backup.",
-        envNote: (n: number) => `${n} environment variable name${n === 1 ? "" : "s"} (values are never stored)`,
+        envNote: (n: number) => `${n} environment variable name${n === 1 ? "" : "s"} recorded (values are never stored)`,
     },
 } as const;
 
