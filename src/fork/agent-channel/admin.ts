@@ -78,7 +78,7 @@ export async function enrolAgent(d: ChannelDeps, raw: unknown): Promise<EnrolRes
             ? refuse("insecure_transport", "The fork agent channel needs an https:// dashboard URL. Put the dashboard behind TLS first.")
             : refuse("invalid_url", "The dashboard URL is not valid.");
     }
-    let signing;
+    let signing: Awaited<ReturnType<ChannelDeps["keys"]["signing"]>>;
     try { signing = await d.keys.signing(); } catch { return refuse("signing_unavailable", "The dashboard signing key is not available."); }
     const {kidOfPublicKey} = await import("@/fork/manifest/sign");
     const kid = kidOfPublicKey(signing.publicKeyPem);

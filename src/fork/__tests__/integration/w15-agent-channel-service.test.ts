@@ -146,7 +146,7 @@ describe("enrol / revoke / rotate (ADR-007 D2)", () => {
     it("rate limits failed attempts per source (429 with Retry-After seconds)", async () => {
         const admin = await user("admin");
         const {agentId} = await enrolled(admin);
-        let last;
+        let last: Awaited<ReturnType<typeof auth>> | undefined;
         for (let i = 0; i < 40; i++) last = await auth(agentId, `Bearer fork.${agentId}.${"C".repeat(43)}`, "9.9.9.9");
         expect(last).toMatchObject({ok: false, status: 429, code: "rate_limited"});
     });

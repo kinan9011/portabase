@@ -70,7 +70,7 @@ export async function enqueueTask(d: ChannelDeps, raw: unknown): Promise<Enqueue
     if (plaintext.length > MAX_PAYLOAD_BYTES) return refuse("invalid_input", "The task payload is too large.");
     const tp = checkChannelTransport(d.serverUrl(), chEnv(d));
     if (!tp.ok) { await audit("denied", {reason: tp.code, type}); return tp.code === "insecure_transport" ? refuse("insecure_transport", "Agent tasks need an https:// dashboard URL.") : refuse("invalid_url", "The dashboard URL is not valid."); }
-    let signing;
+    let signing: Awaited<ReturnType<ChannelDeps["keys"]["signing"]>>;
     try { signing = await d.keys.signing(); } catch { return refuse("signing_unavailable", "The dashboard signing key is not available."); }
     const {kidOfPublicKey} = await import("@/fork/manifest/sign");
     const kid = kidOfPublicKey(signing.publicKeyPem);

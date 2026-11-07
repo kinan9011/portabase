@@ -106,7 +106,7 @@ describe.skipIf(!LAB)("W15 live: real fork dashboard + two real fork agents (sig
 
     afterAll(async () => {
         if (process.env.W15_EVIDENCE_DIR) { // evidence for ADR-007 §E: agent logs (secret-free by the last test) + the fork lines of the dashboard log
-            for (const n of containers) writeFileSync(path.join(process.env.W15_EVIDENCE_DIR, `${n}.log`), logs(n).replace(/\x1b\[[0-9;]*m/g, ""));
+            for (const n of containers) writeFileSync(path.join(process.env.W15_EVIDENCE_DIR, `${n}.log`), logs(n).replaceAll(String.fromCharCode(27), "").replace(/\[[0-9;]*m/g, ""));
             writeFileSync(path.join(process.env.W15_EVIDENCE_DIR, "dashboard-fork.log"), out.split("\n").filter((l) => /[Ff]ork|agent-channel/.test(l) && !/Received POST/.test(l)).join("\n"));
         }
         for (const n of containers) { try { docker(["rm", "-f", n]); } catch { /* gone */ } }
