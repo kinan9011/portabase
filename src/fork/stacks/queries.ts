@@ -2,7 +2,9 @@ import {sql, type SQL} from "drizzle-orm";
 import {isSyncRunning} from "@/fork/discovery/sync-state";
 import type {ForkDb} from "@/fork/db/handle";
 import {PAGE_SIZE, escapeLike, type StackListParams} from "@/fork/stacks/params";
-import {StackDetailSchema, StackListSchema, toInventoryView, type StackDetail, type StackList} from "@/fork/stacks/dto";
+import {StackInventoryV1} from "@/fork/inventory/schema";
+import {StackDetailSchema, StackListSchema, inventoryViewFrom, type StackDetail, type StackList} from "@/fork/stacks/dto";
+import {loadProtectionViews, type ProtectionInputs} from "@/fork/stacks/protection";
 
 /**
  * Read side of the Docker Stacks UI (W08). Every query is scoped by `organization_id` (the caller passes the organization the
@@ -101,22 +103,33 @@ export async function loadStackList(db: ForkDb, organizationId: string, params: 
 }
 
 /** One stack of ONE organization, or `null` (missing or another organization's: identical, no oracle). The caller authorises first. */
-export async function loadStackDetail(db: ForkDb, organizationId: string, stackId: string, now: Date = new Date()): Promise<StackDetail | null> {
+export type DetailOptions = {now?: Date; configLocked?: boolean; ctxOverride?: ProtectionInputs["ctxOverride"]; staleAfterHours?: number | null};
+
+export async function loadStackDetail(db: ForkDb, organizationId: string, stackId: string, o: DetailOptions = {}): Promise<StackDetail | null> {
+    const now = o.now ?? new Date();
     const res = await db.execute(sql`
-        select s.id, s.display_name, s.compose_project, s.environment_name, s.runtime_state, s.protection_state, s.stale_since,
+        select s.id, s.display_name, s.compose_project, s.environment_name, s.runtime_state, s.protection_state, s.stale_since, s.environment_id,
                e.last_sync_at, e.connection_id
           from fork_stack s
           left join fork_arcane_environment e on e.id = s.environment_id
          where s.id = ${stackId} and s.organization_id = ${organizationId}`);
-    const s = res.rows[0] as {id: string; display_name: string; compose_project: string; environment_name: string; runtime_state: string; protection_state: string; stale_since: Date | null; last_sync_at: Date | null; connection_id: string | null} | undefined;
+    const s = res.rows[0] as {id: string; display_name: string; compose_project: string; environment_name: string; runtime_state: string; protection_state: string; stale_since: Date | null; environment_id: string | null; last_sync_at: Date | null; connection_id: string | null} | undefined;
     if (!s) return null;
 
-    const inv = await db.execute(sql`select version, discovered_at, inventory from fork_stack_inventory where stack_id = ${s.id} order by version desc limit 1`);
-    const row = inv.rows[0] as {version: number; discovered_at: Date; inventory: unknown} | undefined;
+    const inv = await db.execute(sql`select version, discovered_at, inventory, content_hash from fork_stack_inventory where stack_id = ${s.id} order by version desc limit 1`);
+    const row = inv.rows[0] as {version: number; discovered_at: Date; inventory: unknown; content_hash: string} | undefined;
     let inventory: StackDetail["inventory"] = {state: "none"};
     if (row) {
-        const view = toInventoryView(row.inventory, {version: row.version, capturedAt: new Date(row.discovered_at)});
-        inventory = view ? {state: "ok", view} : {state: "unreadable"};
+        const parsed = StackInventoryV1.safeParse(row.inventory);
+        if (!parsed.success) inventory = {state: "unreadable"};
+        else {
+            const view = inventoryViewFrom(parsed.data, {version: row.version, capturedAt: new Date(row.discovered_at)});
+            const {protection, configuration} = await loadProtectionViews(
+                db, {id: s.id, staleSince: s.stale_since ? new Date(s.stale_since).toISOString() : null, environmentId: s.environment_id, protectionState: s.protection_state},
+                {stored: parsed.data, contentHash: row.content_hash}, {configLocked: o.configLocked ?? false, now, ctxOverride: o.ctxOverride, staleAfterHours: o.staleAfterHours},
+            );
+            inventory = {state: "ok", view, protection, configuration};
+        }
     }
     return StackDetailSchema.parse({
         id: s.id, name: s.display_name, composeProject: s.compose_project, environmentName: s.environment_name,

@@ -15,7 +15,7 @@ import {StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";
 import {parseTab} from "@/fork/ui/stacks/tabs";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 
-// Stack Details (W08): header + Overview + Resources. Resource-scoped authorisation (SEC-12) BEFORE anything is read.
+// Stack Details (W08 + W09): header + Overview + Resources + Configuration. Resource-scoped authorisation (SEC-12) BEFORE anything is read.
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {title: STACKS_PAGE.title};
 
@@ -38,7 +38,7 @@ export default async function StackDetailsPage(props: {params: Promise<{stackId:
 
     let detail: StackDetail | null;
     try {
-        detail = await loadStackDetail(db, organizationId, stackId);
+        detail = await loadStackDetail(db, organizationId, stackId, {configLocked: mode.mode === "locked"});
     } catch {
         return <Page><PageContent><StateNotice testId="load-error" tone="danger" alert title={STACKS_EMPTY.loadError.title} body={STACKS_EMPTY.loadError.body}/></PageContent></Page>;
     }

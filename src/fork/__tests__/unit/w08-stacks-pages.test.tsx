@@ -3,8 +3,9 @@ import {render} from "@testing-library/react";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 import {axeViolations} from "@/fork/__tests__/axe";
 import {richInventory} from "@/fork/__tests__/w08-fixtures";
+import {okState} from "@/fork/__tests__/w09-fixtures";
 import {ForkForbiddenError, ForkNotFoundError, type ForkPrincipal} from "@/fork/acl";
-import {StackDetailSchema, StackListSchema, toInventoryView} from "@/fork/stacks/dto";
+import {StackDetailSchema, StackListSchema} from "@/fork/stacks/dto";
 import {STACKS_EMPTY} from "@/fork/ui/labels";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
@@ -22,7 +23,7 @@ import StacksPage from "../../../../app/(customer)/dashboard/(organization)/stac
 
 const P = (role: string | null, orgRole: string | null): ForkPrincipal => ({userId: "u", systemRole: role, memberships: orgRole ? [{organizationId: ORG, role: orgRole}] : []});
 const LIST = StackListSchema.parse({items: [], total: 0, page: 1, pageSize: 25, summary: {total: 0, unprotected: 0, staleOrGone: 0}, environments: [], syncing: false, circuitOpen: false, setup: {connected: false, enabledEnvironments: 0}});
-const DETAIL = StackDetailSchema.parse({id: ID, name: "forklab-demo", composeProject: "forklab-demo", environmentName: "local", runtime: "running", protection: "unprotected", staleSince: null, lastSyncAt: null, syncing: false, inventory: {state: "ok", view: toInventoryView(richInventory(), {version: 1, capturedAt: new Date("2026-11-07T01:00:00Z")})}});
+const DETAIL = StackDetailSchema.parse({id: ID, name: "forklab-demo", composeProject: "forklab-demo", environmentName: "local", runtime: "running", protection: "unprotected", staleSince: null, lastSyncAt: null, syncing: false, inventory: okState(richInventory())});
 const on = () => { process.env.FORK_STACKS_ENABLED = "true"; };
 const sp = (o: Record<string, string> = {}) => Promise.resolve(o);
 const mountList = async (o: Record<string, string> = {}) => render(await StacksPage({searchParams: sp(o)}));
@@ -140,7 +141,7 @@ describe("Stack details page (SEC-12 resource-scoped, no existence oracle)", () 
     it("authorised: loads with the organization returned by the authorisation (not the request) and renders; ?tab selects the tab; bogus tab falls back", async () => {
         on();
         let r = await mountDetail({tab: "resources"});
-        expect(h.detail).toHaveBeenCalledWith({tag: "db"}, ORG, ID);
+        expect(h.detail).toHaveBeenCalledWith({tag: "db"}, ORG, ID, {configLocked: false});
         expect(r.container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Resources");
         expect(await axeViolations(r.container)).toEqual([]);
         r.unmount();

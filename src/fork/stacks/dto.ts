@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {PROTECTION_STATES, RUNTIME_STATES} from "@/fork/db/enums";
+import {ConfigurationViewSchema, ProtectionViewSchema} from "@/fork/completeness/view";
 import {StackInventoryV1} from "@/fork/inventory/schema";
 
 /**
@@ -82,7 +83,7 @@ export const StackDetailSchema = z.strictObject({
     syncing: z.boolean(),
     /** `ok` = readable inventory, `unreadable` = stored but not understood by this release, `none` = no version recorded. */
     inventory: z.discriminatedUnion("state", [
-        z.strictObject({state: z.literal("ok"), view: InventoryViewSchema}),
+        z.strictObject({state: z.literal("ok"), view: InventoryViewSchema, protection: ProtectionViewSchema, configuration: ConfigurationViewSchema}),
         z.strictObject({state: z.literal("unreadable")}),
         z.strictObject({state: z.literal("none")}),
     ]),
@@ -97,8 +98,11 @@ export function safeImageRef(ref: string): string {
 /** Maps a STORED inventory to the view. Returns `null` when the stored value does not parse as `StackInventoryV1` (never throws, never echoes). */
 export function toInventoryView(stored: unknown, meta: {version: number; capturedAt: Date}): InventoryView | null {
     const parsed = StackInventoryV1.safeParse(stored);
-    if (!parsed.success) return null;
-    const inv = parsed.data;
+    return parsed.success ? inventoryViewFrom(parsed.data, meta) : null;
+}
+
+/** Same mapping from an inventory that is already parsed (the loader parses once and also feeds the completeness validator). */
+export function inventoryViewFrom(inv: StackInventoryV1, meta: {version: number; capturedAt: Date}): InventoryView {
     const mountsOf = (kind: string) => inv.mounts.filter((m) => m.kind === kind);
 
     const databases = inv.services.flatMap((s) => (s.database_hint ? [{service: s.name, engine: s.database_hint.engine, basis: s.database_hint.basis}] : []));

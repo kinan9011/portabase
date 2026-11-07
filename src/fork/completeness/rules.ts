@@ -1,10 +1,9 @@
 /** Path rules shared by the validator (SEC-15 / SEC-22 / SEC-24). Pure. */
-
-const CONTROL = /[\u0000-\u001f\u007f]/;
+import {hasControl} from "@/fork/inventory/labels";
 
 /** Absolute POSIX path, no `..` segment, no control characters, ≤ 1024 chars. Everything else is refused (hint data is hostile). */
 export function isSafeAbsPath(p: string): boolean {
-    if (p.length === 0 || p.length > 1024 || CONTROL.test(p) || !p.startsWith("/")) return false;
+    if (p.length === 0 || p.length > 1024 || hasControl(p) || !p.startsWith("/")) return false;
     return !p.split("/").includes("..");
 }
 

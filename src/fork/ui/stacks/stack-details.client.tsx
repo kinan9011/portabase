@@ -3,14 +3,18 @@
 import Link from "next/link";
 import * as React from "react";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
+import type {ConfigurationView, ProtectionView} from "@/fork/completeness/view";
 import type {InventoryView, StackDetail} from "@/fork/stacks/dto";
 import {TABS, type StackTab} from "@/fork/ui/stacks/tabs";
-import {ENVIRONMENT_COPY, STACK_DETAILS, STACKS_EMPTY, WARNING_COPY, WARNING_FALLBACK, WARNING_SEVERITY_LABELS} from "@/fork/ui/labels";
+import {CONFIG_TAB, ENVIRONMENT_COPY, RP_STATUS_LABELS, STACK_DETAILS, STACKS_EMPTY, WARNING_COPY, WARNING_FALLBACK, WARNING_SEVERITY_LABELS} from "@/fork/ui/labels";
+import {BlockersPanel} from "@/fork/ui/stacks/config-tab/blockers-panel";
+import {ConfigTab} from "@/fork/ui/stacks/config-tab/config-tab";
+import {FacetsPanel, LastGoodBackupLine} from "@/fork/ui/stacks/config-tab/facets-panel";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {fmtPort, fmtUtc, STACKS_HREF} from "@/fork/ui/stacks/format";
 import {ResourcesTabs} from "@/fork/ui/stacks/resources-tabs";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
-import {ProtectionBadge, RuntimeBadge, StaleBadge} from "@/fork/ui/stacks/stack-status-badges";
+import {PrimaryStateBadge, ProtectionBadge, RpStatusBadge, RuntimeBadge, StaleBadge} from "@/fork/ui/stacks/stack-status-badges";
 import {SyncPoller} from "@/fork/ui/stacks/sync-poller";
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge} from "@/fork/ui/tone-badge";
@@ -52,7 +56,7 @@ function groupWarnings(ws: InventoryView["warnings"]) {
     return [...m.values()];
 }
 
-function Overview({v}: {v: InventoryView}) {
+function Overview({v, p, c, onOpenConfiguration}: {v: InventoryView; p: ProtectionView; c: ConfigurationView; onOpenConfiguration: () => void}) {
     const o = D.overview;
     const ports = v.services.flatMap((s) => s.ports.map((p) => ({s: s.name, p})));
     return (
@@ -60,9 +64,19 @@ function Overview({v}: {v: InventoryView}) {
             <section aria-labelledby="ov-resources" className="flex flex-col gap-3"><h2 id="ov-resources" className="text-lg font-semibold">{o.resources}</h2><Summary v={v}/></section>
 
             <div className="grid gap-4 md:grid-cols-2">
-                <section aria-labelledby="ov-rp" className="rounded-xl border p-4"><h2 id="ov-rp" className="font-semibold">{o.recovery}</h2><p className="mt-1 text-lg">{o.noRecovery}</p><p className="text-muted-foreground text-sm">{o.noRecoveryNote}</p></section>
-                <section aria-labelledby="ov-blockers" className="rounded-xl border p-4"><h2 id="ov-blockers" className="font-semibold">{o.blockers}</h2><p className="text-muted-foreground mt-1 text-sm" data-testid="blockers">{o.blockersNote}</p></section>
+                <section aria-labelledby="ov-rp" className="rounded-xl border p-4" data-testid="recovery-section">
+                    <h2 id="ov-rp" className="font-semibold">{o.recovery}</h2>
+                    {p.recoveryPoints.verified + p.recoveryPoints.pending === 0 ? <><p className="mt-1 text-lg">{o.noRecovery}</p><p className="text-muted-foreground text-sm">{o.noRecoveryNote}</p></> : (
+                        <div className="mt-2 flex flex-col gap-2 text-sm">
+                            <p>{o.verifiedCount(p.recoveryPoints.verified)}</p>
+                            {p.recoveryPoints.pending > 0 && <p className="flex flex-wrap items-center gap-2"><RpStatusBadge status="pending_verification"/><span className="text-muted-foreground text-xs">{RP_STATUS_LABELS.pending_verification.description}</span></p>}
+                        </div>
+                    )}
+                </section>
+                <BlockersPanel p={p} c={c} onOpenConfiguration={onOpenConfiguration}/>
             </div>
+
+            <FacetsPanel p={p}/>
 
             <section aria-labelledby="ov-shared" className="flex flex-col gap-2" data-testid="shared-section">
                 <h2 id="ov-shared" className="text-lg font-semibold">{o.sharedHeading}</h2>
@@ -111,6 +125,8 @@ export function StackDetailsClient({detail, initialTab, canConfigure}: {detail: 
         try { window.history.replaceState(null, "", next === "overview" ? window.location.pathname : `${window.location.pathname}?tab=${next}`); } catch { /* URL sync is a convenience */ }
     };
     const view = detail.inventory.state === "ok" ? detail.inventory.view : null;
+    const protection = detail.inventory.state === "ok" ? detail.inventory.protection : null;
+    const configuration = detail.inventory.state === "ok" ? detail.inventory.configuration : null;
     const warn = TONE_MAP.warning;
     return (
         <div className="flex flex-col gap-5">
@@ -129,7 +145,8 @@ export function StackDetailsClient({detail, initialTab, canConfigure}: {detail: 
                     </div>
                     <Actions canConfigure={canConfigure}/>
                 </div>
-                <div className="flex flex-wrap items-start gap-4"><RuntimeBadge state={detail.runtime} describe/><ProtectionBadge state={detail.protection} describe/>{stale && <StaleBadge/>}</div>
+                {protection && <LastGoodBackupLine p={protection}/>}
+                <div className="flex flex-wrap items-start gap-4"><RuntimeBadge state={detail.runtime} describe/>{protection ? <PrimaryStateBadge state={protection.primary} describe/> : <ProtectionBadge state={detail.protection} describe/>}{stale && <StaleBadge/>}</div>
             </header>
 
             {gone && <StateNotice testId="gone-banner" tone="warning" title={D.goneBanner.title} body={D.goneBanner.body}/>}
@@ -144,9 +161,11 @@ export function StackDetailsClient({detail, initialTab, canConfigure}: {detail: 
                     <TabsList aria-label={D.tabsLabel}>
                         <TabsTrigger value="overview">{D.tabs.overview}</TabsTrigger>
                         <TabsTrigger value="resources">{D.tabs.resources}</TabsTrigger>
+                        <TabsTrigger value="configuration">{CONFIG_TAB.tab}</TabsTrigger>
                     </TabsList>
-                    <TabsContent value="overview"><Overview v={view}/></TabsContent>
+                    <TabsContent value="overview">{protection && configuration && <Overview v={view} p={protection} c={configuration} onOpenConfiguration={() => onTab("configuration")}/>}</TabsContent>
                     <TabsContent value="resources"><ResourcesTabs view={view}/></TabsContent>
+                    <TabsContent value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
                 </Tabs>
             )}
         </div>

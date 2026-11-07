@@ -33,3 +33,21 @@ export const FULL_COVERAGE = {
 };
 
 export {richInventory};
+
+import {EMPTY_CONTEXT, validateCompleteness, type CompletenessContext, type PrimaryInputs, type FacetInputs} from "@/fork/completeness";
+import {toConfigurationView, toProtectionView} from "@/fork/completeness/view";
+import {inventoryViewFrom} from "@/fork/stacks/dto";
+
+const PRIMARY: PrimaryInputs = {hasActivePolicy: false, lastRunFailed: false, coverageGap: false, verifiedRpCount: 0, pendingRpCount: 0, hoursSinceLastVerified: null, staleAfterHours: null, kitVerified: false};
+const FACETS: FacetInputs = {hasActivePolicy: false, hoursSinceLastVerified: null, verifying: false, daysSinceTestRestore: null, channelDeletable: [], pausedAfterReauthorization: false, inventoryStale: false, configLocked: false};
+
+/** Builds the `inventory: {state:"ok", …}` value of a StackDetail without a database (same pure functions the loader uses). */
+export function okState(inv: StackInventoryV1, o: {ctx?: Partial<CompletenessContext>; primary?: Partial<PrimaryInputs>; facets?: Partial<FacetInputs>; version?: number; hash?: string | null} = {}) {
+    const report = validateCompleteness(inv, {...EMPTY_CONTEXT, ...(o.ctx ?? {})});
+    return {
+        state: "ok" as const,
+        view: inventoryViewFrom(inv, {version: o.version ?? 1, capturedAt: new Date("2026-11-07T01:00:05Z")}),
+        protection: toProtectionView(report, {...PRIMARY, coverageGap: !report.complete, ...(o.primary ?? {})}, {...FACETS, ...(o.facets ?? {})}),
+        configuration: toConfigurationView(inv, report, o.hash === undefined ? "a".repeat(64) : o.hash),
+    };
+}

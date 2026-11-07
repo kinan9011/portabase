@@ -3,9 +3,10 @@ import {act, fireEvent, render, screen, within} from "@testing-library/react";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {axeViolations} from "@/fork/__tests__/axe";
 import {CANARY, richInventory} from "@/fork/__tests__/w08-fixtures";
+import {okState} from "@/fork/__tests__/w09-fixtures";
 import {DEFAULT_PARAMS, parseStackListParams} from "@/fork/stacks/params";
-import {StackDetailSchema, StackListSchema, toInventoryView, type StackDetail, type StackList} from "@/fork/stacks/dto";
-import {PROTECTION_LABELS, RUNTIME_LABELS, STACK_DETAILS, STACKS_EMPTY, STACKS_PAGE, STALE_BANNER} from "@/fork/ui/labels";
+import {StackDetailSchema, StackListSchema, type StackDetail, type StackList} from "@/fork/stacks/dto";
+import {PRIMARY_STATE_LABELS, PROTECTION_LABELS, RUNTIME_LABELS, STACK_DETAILS, STACKS_EMPTY, STACKS_PAGE, STALE_BANNER} from "@/fork/ui/labels";
 
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh}), notFound: () => { throw new Error("NEXT_NOT_FOUND"); }}));
@@ -27,9 +28,8 @@ const mountList = (l: StackList, o: {admin?: boolean; params?: Record<string, st
     render(<StatusAnnouncer><StackListView list={l} params={parseStackListParams(o.params ?? {})} isAdmin={o.admin ?? false}/></StatusAnnouncer>);
 
 const detail = (o: Partial<StackDetail> & {inv?: Parameters<typeof richInventory>[0]} = {}): StackDetail => {
-    const view = toInventoryView(richInventory(o.inv), {version: 2, capturedAt: new Date("2026-11-07T01:00:05Z")})!;
     const {inv: _i, ...rest} = o;
-    return StackDetailSchema.parse({id: ID, name: "forklab-demo", composeProject: "forklab-demo", environmentName: "local", runtime: "running", protection: "unprotected", staleSince: null, lastSyncAt: "2026-11-07T01:05:00.000Z", syncing: false, inventory: {state: "ok", view}, ...rest});
+    return StackDetailSchema.parse({id: ID, name: "forklab-demo", composeProject: "forklab-demo", environmentName: "local", runtime: "running", protection: "unprotected", staleSince: null, lastSyncAt: "2026-11-07T01:05:00.000Z", syncing: false, inventory: okState(richInventory(o.inv), {version: 2}), ...rest});
 };
 const mountDetail = (d: StackDetail, o: {tab?: "overview" | "resources"; canConfigure?: boolean} = {}) =>
     render(<StatusAnnouncer><StackDetailsClient detail={d} initialTab={o.tab ?? "overview"} canConfigure={o.canConfigure ?? true}/></StatusAnnouncer>);
@@ -181,7 +181,7 @@ describe("W08 details: header, actions with visible reasons, tabs", () => {
         expect(container.textContent).toContain("Environment:local");
         expect(container.textContent).toMatch(/Last sync:Nov 7, 2026, 1:05 AM UTC/);
         expect(screen.getByTestId("runtime-badge").textContent).toContain(RUNTIME_LABELS.running.description);
-        expect(screen.getByTestId("protection-badge").textContent).toContain(PROTECTION_LABELS.unprotected.description);
+        expect(screen.getByTestId("primary-state-badge").textContent).toContain(PRIMARY_STATE_LABELS.unprotected.description); // W09: derived §4.6 state
         expect(await axeViolations(container)).toEqual([]);
     });
     it("all four actions are aria-disabled, focusable, do nothing, and show a visible reason linked by aria-describedby", () => {
@@ -207,7 +207,7 @@ describe("W08 details: header, actions with visible reasons, tabs", () => {
         const {container} = mountDetail(detail());
         expect(screen.getByTestId("resource-summary").textContent).toContain("2 of 2 running");
         expect(container.textContent).toContain(STACK_DETAILS.overview.noRecovery);
-        expect(screen.getByTestId("blockers").textContent).toBe(STACK_DETAILS.overview.blockersNote);
+        expect(screen.getByTestId("blockers-panel")).toBeTruthy(); // W09 replaced the placeholder; its content is covered in w09-ui
         const shared = screen.getAllByTestId("shared-item");
         expect(shared).toHaveLength(1);
         expect(shared[0].textContent).toContain("lab_proxy");
@@ -280,8 +280,7 @@ describe("W08 details: Resources match the lab-shaped stack (sub-tabs, shared/ex
         const inv = richInventory();
         inv.services[1].ports = [{target: 5432, protocol: "tcp"}, {target: 8080, published: 18080, protocol: "tcp"}];
         inv.services[1].env_keys = [];
-        const view = toInventoryView(inv, {version: 1, capturedAt: new Date()})!;
-        mountDetail(StackDetailSchema.parse({...detail(), inventory: {state: "ok", view}}), {tab: "resources"});
+        mountDetail(StackDetailSchema.parse({...detail(), inventory: okState(inv)}), {tab: "resources"});
         const web = screen.getAllByTestId("service-row")[1].textContent!;
         expect(web).toContain("5432/tcp (container only)");
         expect(web).toContain("18080→8080/tcp");
@@ -299,7 +298,7 @@ describe("W08 details: Resources match the lab-shaped stack (sub-tabs, shared/ex
     it("nothing secret reaches the DOM: no env names, container ids, canary", () => {
         const inv: any = richInventory();
         inv.services[0].image.ref = "ci:tok3n@registry.example.com/db:1";
-        const d = StackDetailSchema.parse({...detail(), inventory: {state: "ok", view: toInventoryView(inv, {version: 1, capturedAt: new Date()})}});
+        const d = StackDetailSchema.parse({...detail(), inventory: okState(inv)});
         const {container} = mountDetail(d, {tab: "resources"});
         for (const s of ["POSTGRES_PASSWORD", "APP_SECRET", "abcdef123456", "tok3n", CANARY]) expect(container.textContent).not.toContain(s);
     });
