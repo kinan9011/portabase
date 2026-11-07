@@ -21,13 +21,13 @@ export function CoverageChecklist({items}: {items: ItemView[]}) {
                     <TableBody>
                         {items.map((i) => (
                             <TableRow key={i.key} data-testid="checklist-row" data-status={i.status}>
-                                <TableCell>
+                                <TableCell className="max-w-[24rem] whitespace-normal">
                                     <div className="font-mono text-xs break-all font-semibold">{i.name || ITEM_KIND_LABELS[i.kind]}</div>
                                     {i.consumers.length > 0 && <div className="text-muted-foreground text-xs">{i.consumers.join(", ")}</div>}
                                 </TableCell>
                                 <TableCell>{ITEM_KIND_LABELS[i.kind]}</TableCell>
                                 <TableCell><ItemStatusBadge status={i.status}/></TableCell>
-                                <TableCell className="max-w-md whitespace-normal">
+                                <TableCell className="min-w-[16rem] max-w-md whitespace-normal">
                                     <p className="text-sm">{REASON_COPY[i.reason]}</p>
                                     {i.gap && i.resolvable && <div className="mt-2"><ReasonButton type="button" variant="outline" size="sm" reason={T.resolve.addSourceReason}>{T.resolve.addSource}</ReasonButton></div>}
                                     {i.gap && !i.resolvable && i.status !== "unsupported" && <div className="mt-2"><ReasonButton type="button" variant="outline" size="sm" reason={T.resolve.acceptReason}>{T.resolve.accept}</ReasonButton></div>}

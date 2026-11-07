@@ -26,10 +26,10 @@ export function ConfigTab({c}: {c: ConfigurationView}) {
                             <TableBody>
                                 {files.map((f) => (
                                     <TableRow key={f.key} data-testid="file-row">
-                                        <TableCell><div className="font-mono text-xs break-all font-semibold">{f.name || "—"}</div>{f.consumers.length > 0 && <div className="text-muted-foreground text-xs">{f.consumers.join(", ")}</div>}</TableCell>
+                                        <TableCell className="max-w-[28rem] whitespace-normal"><div className="font-mono text-xs break-all font-semibold">{f.name || "—"}</div>{f.consumers.length > 0 && <div className="text-muted-foreground text-xs">{f.consumers.join(", ")}</div>}</TableCell>
                                         <TableCell>{f.placement ? T.files.placement[f.placement] : "—"}</TableCell>
                                         <TableCell><ItemStatusBadge status={f.status}/></TableCell>
-                                        <TableCell className="text-muted-foreground text-xs">{T.files.hashNone}</TableCell>
+                                        <TableCell className="text-muted-foreground text-xs whitespace-normal">{T.files.hashNone}</TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
