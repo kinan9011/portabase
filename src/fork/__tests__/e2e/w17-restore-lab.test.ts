@@ -1,6 +1,6 @@
 import {execFileSync, spawn, type ChildProcess} from "node:child_process";
 import {createPrivateKey, randomBytes, randomUUID, sign as rsaSign} from "node:crypto";
-import {chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, statSync} from "node:fs";
+import {chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, } from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -9,24 +9,21 @@ import {drizzle} from "drizzle-orm/node-postgres";
 import {afterAll, beforeAll, describe, expect, it} from "vitest";
 import {enrolAgent} from "@/fork/agent-channel/admin";
 import {decodeBundle} from "@/fork/agent-channel/bundle";
-import type {ChannelDeps} from "@/fork/agent-channel/deps";
 import {EnvelopeSchema} from "@/fork/agent-channel/envelope";
 import {encryptPayload, payloadSha256} from "@/fork/agent-channel/payload";
 import {SIGN_DOMAIN} from "@/fork/agent-channel/vocab";
 import {canonicalJson} from "@/fork/canonical";
 import type {ForkDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
-import {registerLiveAnchor} from "@/fork/manifest/anchors";
-import {buildManifest} from "@/fork/manifest/build";
 import {kidOfPublicKey, signManifest} from "@/fork/manifest/sign";
-import {approveRestorePlan, createRestorePlan, loadPlanRow} from "@/fork/restore/service";
+import {createRestorePlan, loadPlanRow} from "@/fork/restore/service";
 import {buildStagePayload, type BuildInput} from "@/fork/restore-tasks/build";
 import {enqueueRestoreTask, type RestoreTaskDeps} from "@/fork/restore-tasks/enqueue";
 import {freshForkDb, seedAgent, type W04Db} from "@/fork/__tests__/w04-helpers";
 import {decryptAgentArchive, encryptAgentArchive, sha256} from "@/fork/__tests__/agent-archive";
 import {ADMIN} from "@/fork/__tests__/e2e/helpers";
 import {testKeypair} from "@/fork/__tests__/w14-fixtures";
-import {P, req} from "@/fork/__tests__/w16-world";
+import {req} from "@/fork/__tests__/w16-world";
 import {PASSWORD, seedW17World, type W17} from "@/fork/__tests__/w17-world";
 
 /**

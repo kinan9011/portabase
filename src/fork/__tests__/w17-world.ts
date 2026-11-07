@@ -10,7 +10,7 @@ import {buildManifest} from "@/fork/manifest/build";
 import {signManifest} from "@/fork/manifest/sign";
 import {createRestorePlan, approveRestorePlan} from "@/fork/restore/service";
 import {seedBackup, type W04Db} from "@/fork/__tests__/w04-helpers";
-import {testKeypair} from "@/fork/__tests__/w14-fixtures";
+import type {testKeypair} from "@/fork/__tests__/w14-fixtures";
 import {P, req, seedUser, seedWorld, type World} from "@/fork/__tests__/w16-world";
 
 /** W17 test world: a plannable world (w16-world) whose RP has a REAL signed manifest and whose target agent is REALLY enrolled on the channel (task key, credential). */
