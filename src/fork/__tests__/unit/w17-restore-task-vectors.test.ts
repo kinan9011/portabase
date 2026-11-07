@@ -1,0 +1,164 @@
+import * as nodeCrypto from "node:crypto";
+import {createPrivateKey, randomBytes, sign as rsaSign} from "node:crypto";
+import {readFileSync, writeFileSync} from "node:fs";
+import path from "node:path";
+import {describe, expect, it} from "vitest";
+import {verifyEnvelope, type Envelope} from "@/fork/agent-channel/envelope";
+import {encryptPayload, payloadSha256} from "@/fork/agent-channel/payload";
+import {validatePayload} from "@/fork/agent-channel/tasks";
+import {RESTORE_TASK_TYPES, SIGN_DOMAIN, TASK_REQUIRES, TARGETED_TASK_TYPES} from "@/fork/agent-channel/vocab";
+import {canonicalJson} from "@/fork/canonical";
+import {buildManifest} from "@/fork/manifest/build";
+import {signManifest} from "@/fork/manifest/sign";
+import {verifyManifestBundle} from "@/fork/manifest/verify";
+import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
+import {testKeypair} from "@/fork/__tests__/w14-fixtures";
+
+/**
+ * Cross-language vectors of the W17-i restore tasks (plan-W17 i-3). The dashboard code signs / builds them; the Rust agent (`src/fork/tests/restore_vectors.json`)
+ * must decide exactly as recorded. Fixed clock inside the file, injected on both sides; TEST-ONLY keys; no secrets.
+ * Generator: `W17_VECTORS_OUT=<agent>/src/fork/tests/restore_vectors.json pnpm exec vitest run --project unit w17-restore-task-vectors`.
+ */
+const NOW = 1794052800; // 2026-11-07T12:00:00Z
+const AGENT = "11111111-1111-4111-8111-111111111111";
+const OTHER_AGENT = "33333333-3333-4333-8333-333333333333";
+const ENROLL = "22222222-2222-4222-8222-222222222222";
+const STACK = "44444444-4444-4444-8444-444444444444";
+const RP = "55555555-5555-4555-8555-555555555555";
+const OTHER_RP = "66666666-6666-4666-8666-666666666666";
+const RESTORE = "77777777-7777-4777-8777-777777777777";
+const PLAN = "88888888-8888-4888-8888-888888888888";
+const HEX = (c: string) => c.repeat(64);
+
+const header = (o: Record<string, unknown> = {}) => ({v: 1, restore_id: RESTORE, plan_id: PLAN, plan_hash: HEX("a"), stack_id: STACK, rp_id: RP, purpose: "restore", mode: "selective", host_role: "test", approvals: [], workspace: "/srv/restore/app", project: "app", ...o});
+const samples = {
+    restore_probe: {v: 1},
+    restore_stage: {...header(), manifest: {json_b64: "e30=", sig_b64: "AAAA", sha256: HEX("b")}, artifacts: [{index: 0, source: "archive", url: "https://minio.example.test/b/o?X-Amz-Signature=x"}], paths: [{index: 0, dest: "/srv/restore/app/files/app"}]},
+    restore_apply: {...header(), manifest_sha256: HEX("b"), volumes: [{index: 1, name: "app_appdata", compose_volume: "appdata"}], sqlite: [], networks: [{name: "app_default"}], unpack: []},
+    restore_cleanup: {...header(), workspace_remove: true, volumes: true, networks: true, containers: false},
+} as const;
+
+type PCase = {type: string; name: string; payload: unknown; schema_valid: boolean; agent: string};
+function payloadCases(): PCase[] {
+    const out: PCase[] = [];
+    for (const type of RESTORE_TASK_TYPES) out.push({type, name: `${type}_valid`, payload: samples[type], schema_valid: true, agent: "ok"});
+    const bad = (type: keyof typeof samples, name: string, payload: unknown, schema_valid = false, agent = "payload_invalid") => out.push({type, name, payload, schema_valid, agent});
+    const s = samples;
+    bad("restore_probe", "probe_unknown_key", {...s.restore_probe, x: 1});
+    bad("restore_probe", "probe_relative_workspace", {v: 1, workspace: "srv/x"});
+    bad("restore_stage", "stage_unknown_key", {...s.restore_stage, extra: true});
+    bad("restore_stage", "stage_missing_header_field", (({restore_id: _r, ...rest}) => rest)(s.restore_stage));
+    bad("restore_stage", "stage_relative_dest", {...s.restore_stage, paths: [{index: 0, dest: "srv/restore/app/x"}]});
+    bad("restore_stage", "stage_dotdot_dest", {...s.restore_stage, paths: [{index: 0, dest: "/srv/restore/app/../../etc"}]});
+    bad("restore_stage", "stage_dollar_dest", {...s.restore_stage, paths: [{index: 0, dest: "/srv/restore/app/$HOME"}]});
+    bad("restore_stage", "stage_tilde_dest", {...s.restore_stage, paths: [{index: 0, dest: "/srv/restore/app/~root"}]});
+    bad("restore_stage", "stage_trailing_slash_dest", {...s.restore_stage, paths: [{index: 0, dest: "/srv/restore/app/x/"}]});
+    bad("restore_stage", "stage_double_slash_dest", {...s.restore_stage, paths: [{index: 0, dest: "/srv/restore//app/x"}]});
+    bad("restore_stage", "stage_control_char_dest", {...s.restore_stage, paths: [{index: 0, dest: "/srv/restore/app/a\u0007b"}]});
+    bad("restore_stage", "stage_bad_source", {...s.restore_stage, artifacts: [{index: 0, source: "restic", url: "https://x.example/"}]});
+    bad("restore_stage", "stage_bad_purpose", {...s.restore_stage, purpose: "drill"});
+    bad("restore_stage", "stage_bad_mode_existing_stack", {...s.restore_stage, mode: "existing_stack"});
+    bad("restore_apply", "apply_volume_name_with_slash", {...s.restore_apply, volumes: [{index: 1, name: "a/b", compose_volume: "b"}]});
+    bad("restore_apply", "apply_sqlite_absolute", {...s.restore_apply, sqlite: [{index: 2, volume: "app_appdata", relative_path: "/etc/x.db"}]});
+    bad("restore_apply", "apply_sqlite_dotdot", {...s.restore_apply, sqlite: [{index: 2, volume: "app_appdata", relative_path: "../x.db"}]});
+    bad("restore_apply", "apply_missing_manifest_sha", (({manifest_sha256: _m, ...rest}) => rest)(s.restore_apply));
+    bad("restore_cleanup", "cleanup_flag_not_bool", {...s.restore_cleanup, volumes: "yes"});
+    bad("restore_cleanup", "cleanup_unknown_key", {...s.restore_cleanup, wipe: true});
+    // schema-valid but semantically refused by the agent (header rules, DD5/DD17)
+    bad("restore_apply", "test_restore_with_volume", {...s.restore_apply, purpose: "test_restore"}, true, "mode_unsupported");
+    bad("restore_stage", "production_without_approval", {...s.restore_stage, host_role: "production", approvals: []}, true, "approval_missing");
+    return out;
+}
+
+function buildVectors() {
+    const k = testKeypair(), other = testKeypair();
+    const taskKey = randomBytes(32);
+    const own = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "restore.target.v1"];
+    let n = 100;
+    const mk = (type: string, o: Partial<Envelope> & {omitTarget?: boolean} = {}, plaintext = Buffer.from(JSON.stringify(samples[type as keyof typeof samples] ?? {}))) => {
+        const {omitTarget, ...rest} = o;
+        const seq = n++;
+        const task_id = `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`;
+        const e: Envelope = {v: 1, task_id, agent_id: AGENT, enroll_id: ENROLL, type, seq, issued_at: NOW - 5, not_after: NOW + 600, nonce: randomBytes(16).toString("base64url"), payload_sha256: payloadSha256(plaintext),
+            requires: [...((TASK_REQUIRES as Record<string, readonly string[]>)[type] ?? [])], kid: k.kid, ...(omitTarget ? {} : {target_agent_id: AGENT}), ...rest};
+        const text = canonicalJson({...e, requires: [...e.requires].sort()});
+        const signature = rsaSign("sha256", Buffer.from(SIGN_DOMAIN + text), createPrivateKey(k.privateKey)).toString("base64");
+        return {envelope: text, signature, payload_enc: encryptPayload(taskKey, {taskId: task_id, agentId: AGENT, type}, plaintext), payload_plain: plaintext.toString("utf8")};
+    };
+    const cases: {name: string; envelope: string; signature: string; payload_enc: string; payload_plain: string; expect: string}[] = [];
+    for (const type of RESTORE_TASK_TYPES) cases.push({name: `${type}_targeted_ok`, expect: "ok", ...mk(type)});
+    cases.push({name: "restore_probe_without_target", expect: "target_mismatch", ...mk("restore_probe", {omitTarget: true})});
+    cases.push({name: "restore_stage_without_target", expect: "target_mismatch", ...mk("restore_stage", {omitTarget: true})});
+    cases.push({name: "restore_stage_targeted_at_another_agent", expect: "target_mismatch", ...mk("restore_stage", {target_agent_id: OTHER_AGENT})});
+    cases.push({name: "restore_apply_without_target", expect: "target_mismatch", ...mk("restore_apply", {omitTarget: true})});
+    cases.push({name: "restore_cleanup_without_target", expect: "target_mismatch", ...mk("restore_cleanup", {omitTarget: true})});
+    cases.push({name: "compose_up_unknown_type_in_w17i", expect: "unsupported_type", ...mk("compose_up", {requires: ["compose.render.v1"], target_agent_id: AGENT}, Buffer.from("{}"))});
+
+    // ---- manifest cases (RSA PKCS#1 v1.5 / SHA-256 over the RAW bytes, no domain prefix) ----
+    const art = {sourceName: "volume_app_data", engine: "docker-volume", archiveKind: "archive_enc", dumpFormat: null, archiveFormatVersion: 1, encrypted: true, channelId: null, channelKind: "s3", pathOrSnapshotId: "backups/a/vol.tar.gz.enc", generatedId: "g1",
+        sizeBytes: 1200, ciphertextSha256: HEX("c"), plaintextSha256: HEX("d"), plaintextSize: 1000, required: true};
+    const db = {...art, sourceName: "db_db", engine: "postgresql", dumpFormat: "pg_custom" as const, pathOrSnapshotId: "backups/a/db.tar.gz.enc", generatedId: "g2", plaintextSha256: HEX("e"), plaintextSize: 2000};
+    const base = buildManifest({id: RP, stackId: STACK, stackName: "app", sequence: 7, createdAt: new Date("2026-11-07T10:00:00Z"), finalizedAt: new Date("2026-11-07T10:05:00Z"), consistencyLevel: "mixed", inventoryVersion: 1, inventoryHash: HEX("f"), requiredArtifactCount: 2},
+        [art, db], null, {kid: k.kid, signedAt: new Date("2026-11-07T10:10:00Z"), verifiedAt: new Date("2026-11-07T10:09:00Z")});
+    const good = signManifest(base, k.privateKey);
+    const sha = (j: string) => nodeCrypto.createHash("sha256").update(j).digest("hex") as string;
+    const mcase = (name: string, json: string, sigB64: string, expect: string, o: {rp_id?: string; sequence?: number; manifest_sha256?: string; min_sequence?: number} = {}) =>
+        ({name, json, sig_b64: sigB64, expect, rp_id: o.rp_id ?? RP, stack_id: STACK, sequence: o.sequence ?? 7, manifest_sha256: o.manifest_sha256 ?? sha(json), ...(o.min_sequence !== undefined ? {min_sequence: o.min_sequence} : {})});
+    const sig = (json: string, key = k) => rsaSign("sha256", Buffer.from(json, "utf8"), createPrivateKey(key.privateKey)).toString("base64");
+    const gsig = good.sig.toString("base64");
+    const foreign = signManifest({...base, kid: other.kid}, other.privateKey);
+    const otherRp = signManifest({...base, rp: {...base.rp, id: OTHER_RP}}, k.privateKey);
+    const tampered = good.json.replace('"stack_name":"app"', '"stack_name":"apq"');
+    const extraField = canonicalJson({...base, surprise: 1});
+    const manifests = [
+        mcase("valid", good.json, gsig, "ok"),
+        mcase("wrong_kid_not_pinned", foreign.json, foreign.sig.toString("base64"), "manifest_unknown_kid"),
+        mcase("tampered_byte", tampered, gsig, "manifest_signature"),
+        mcase("signature_of_other_bytes", good.json, sig(foreign.json), "manifest_signature"),
+        mcase("other_rp_id_valid_signature", otherRp.json, otherRp.sig.toString("base64"), "manifest_mismatch"),
+        mcase("sequence_below_min", good.json, gsig, "manifest_mismatch", {min_sequence: 8}),
+        mcase("sequence_equal_to_min_is_ok", good.json, gsig, "ok", {min_sequence: 7}),
+        mcase("sha_differs_from_payload", good.json, gsig, "manifest_mismatch", {manifest_sha256: HEX("0")}),
+        mcase("header_sequence_differs", good.json, gsig, "manifest_mismatch", {sequence: 6}),
+        mcase("extra_field_signed", extraField, sig(extraField), "manifest_invalid"),
+        mcase("not_json", "not json", sig("not json"), "manifest_invalid"),
+    ];
+    return {note: "TEST-ONLY keys and data. Generated by dashboard src/fork/__tests__/unit/w17-restore-task-vectors.test.ts (W17_VECTORS_OUT=…). The Rust agent decides exactly like this.",
+        now: NOW, agent_id: AGENT, enroll_id: ENROLL, own_capabilities: own, pins: [{kid: k.kid, pem: k.publicKey}], task_key_b64: taskKey.toString("base64"),
+        ids: {stack_id: STACK, rp_id: RP, restore_id: RESTORE, plan_id: PLAN},
+        codes: [...RESTORE_REASONS], types: Object.fromEntries(RESTORE_TASK_TYPES.map((t) => [t, [...TASK_REQUIRES[t]]])), targeted: [...TARGETED_TASK_TYPES],
+        cases, payload_cases: payloadCases(), manifest_artifacts: [art, db].map((a) => ({source_name: a.sourceName, plaintext_sha256: a.plaintextSha256, plaintext_size: a.plaintextSize, dump_format: a.dumpFormat})), manifests};
+}
+const VECTORS = path.join(process.cwd(), "src/fork/__tests__/fixtures/restore-task-vectors.json");
+
+describe("W17-i cross-language vectors", () => {
+    if (process.env.W17_VECTORS_OUT) {
+        it("writes fresh vectors (generator mode)", () => { const j = JSON.stringify(buildVectors(), null, 2) + "\n"; writeFileSync(process.env.W17_VECTORS_OUT!, j); writeFileSync(VECTORS, j); });
+    }
+    const load = () => JSON.parse(readFileSync(VECTORS, "utf8")) as ReturnType<typeof buildVectors>;
+    it("envelope cases verify under the TS reference verifier (signatures are valid; target rules are agent-side)", () => {
+        const v = load();
+        expect(v.cases.length).toBeGreaterThanOrEqual(10);
+        for (const c of v.cases) expect(verifyEnvelope(c.envelope, c.signature, v.pins).ok, c.name).toBe(true);
+    });
+    it("payload cases: the TS schema accepts exactly the schema_valid ones", () => {
+        const v = load();
+        for (const c of v.payload_cases) expect(validatePayload(c.type as never, c.payload as Record<string, unknown>) === null, c.name).toBe(c.schema_valid);
+        expect(v.payload_cases.filter((c) => c.agent === "ok")).toHaveLength(RESTORE_TASK_TYPES.length);
+    });
+    it("manifest cases: the TS reference verifier accepts only the valid ones", () => {
+        const v = load();
+        const anchors = [{kid: v.pins[0].kid, publicKeyPem: v.pins[0].pem}];
+        for (const c of v.manifests) {
+            const r = verifyManifestBundle({json: c.json, sig: Buffer.from(c.sig_b64, "base64")}, anchors, {stackId: c.stack_id, rpId: c.rp_id, sequence: c.sequence, ...(c.min_sequence !== undefined ? {minSequence: c.min_sequence} : {})});
+            const shaOk = c.manifest_sha256 === nodeCrypto.createHash("sha256").update(c.json).digest("hex");
+            expect(r.ok && shaOk, c.name).toBe(c.expect === "ok");
+        }
+    });
+    it("codes and types in the vectors equal the dashboard's lists", () => {
+        const v = load();
+        expect(v.codes).toEqual([...RESTORE_REASONS]);
+        expect(Object.keys(v.types).sort()).toEqual([...RESTORE_TASK_TYPES].sort());
+        expect(v.targeted).toEqual([...RESTORE_TASK_TYPES]);
+    });
+});
