@@ -1055,3 +1055,35 @@ export const KIT = {
         unavailable: "The keys needed for the kit could not be read. Nothing was created.",
     } as Record<string, string>,
 } as const;
+
+/** W14 D40 dashboard database backup + KEK rotation (kit page). */
+export const DASHBOARD_DB = {
+    heading: "Back up this dashboard's own database",
+    intro: "The dashboard database holds your settings, schedules and the record of every recovery point. Back it up as an ordinary PostgreSQL source on an agent that can reach it, to a storage channel that no other host's agent uses. Pick the source below once it exists.",
+    select: "Source that backs up the dashboard database",
+    none: "Not chosen yet",
+    save: "Save",
+    saved: "Saved.",
+    restoreNote: "After you restore the dashboard database on a new server: sign every user out, rotate all API keys, and rotate the storage credentials, because the old server may have been exposed.",
+    verdicts: {
+        not_declared: "No source is chosen. The dashboard database is not covered by a backup you can rely on.",
+        ok: "Covered: a scheduled backup exists, it ran recently, and its storage is not shared with other hosts.",
+        source_missing: "The chosen source no longer exists. Choose another one.",
+        no_schedule: "The source has no schedule, so it is never backed up automatically.",
+        no_channel: "The source has no storage channel.",
+        local_only: "The source only writes to storage on the dashboard host, which is lost together with the dashboard.",
+        shared_channel: "The storage is also used by another host's agent. A compromised host could delete this backup. Use a channel only this host uses.",
+        no_success: "No backup of this source has succeeded yet.",
+        stale: "The last successful backup is more than 48 hours old.",
+    } as Record<string, string>,
+    errors: {forbidden: "Only a system administrator can do this.", locked: "Configuration is locked until the single-organization check passes.", invalid_input: "Choose a source from the list.", not_found: "That source cannot be used."} as Record<string, string>,
+} as const;
+
+export const KEK_ROTATION = {
+    heading: "Rotate the fork encryption key",
+    intro: "Creates a new key for the secrets this fork stores (for example the Arcane API key) and re-encrypts them. The old key is kept until you retire it. The recovery kit becomes out of date: create and verify a new one afterwards.",
+    password: "Your account password",
+    button: "Rotate the key",
+    done: (moved: number) => `Rotated. ${moved} stored secret${moved === 1 ? "" : "s"} moved to the new key. Create a new recovery kit now.`,
+    errors: {forbidden: "Only a system administrator can do this.", locked: "Configuration is locked until the single-organization check passes.", rate_limited: "Too many attempts. Wait a moment and try again.", step_up_failed: "The password is not correct.", no_password: "This account has no password, so it cannot confirm its identity for this step.", invalid_input: "Enter your password."} as Record<string, string>,
+} as const;

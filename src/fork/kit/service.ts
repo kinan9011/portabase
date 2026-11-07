@@ -17,6 +17,8 @@ import {checkPassphrase, type PassphraseVerdict} from "./passphrase";
 import {verifyPasswordStepUp, type PasswordVerifier} from "./stepup";
 import {consumeKitToken, issueKitToken, KIT_TOKEN_TTL_MS} from "./tokens";
 import {loadKitSources} from "./sources";
+import {rotateKekAndReencrypt} from "@/fork/kek-rotation";
+import {watchKit} from "./watch";
 
 /**
  * Recovery kit service (D25/D41, ADR-013 K-8/K-9). System administrator only (`recovery.kit.manage`, instance-wide like every fork configuration, D21),
@@ -210,4 +212,26 @@ export async function loadKitView(db: ForkDb, now = new Date()): Promise<KitView
 export async function isKitVerified(db: ForkDb, now = new Date()): Promise<boolean> {
     const r = await db.execute(sql`select 1 from fork_kit where superseded_at is null and status = 'verified' and verified_at is not null and verified_at > ${new Date(now.getTime() - KIT_VERIFY_MAX_AGE_DAYS * 86_400_000)} limit 1`);
     return r.rows.length === 1;
+}
+
+// ---- 4. KEK rotation (ADR-013 §4) — same gates as generation; the kit goes stale at once ----------------------------------------------------------
+const RotateSchema = z.strictObject({password: z.string().min(1).max(1024)});
+export type RotateKekResult = {ok: true; moved: number; failed: number; kitState: string} | Refusal;
+
+export async function rotateKek(d: KitDeps, raw: unknown): Promise<RotateKekResult> {
+    const parsed = RotateSchema.safeParse(raw);
+    if (!parsed.success) return refuse("invalid_input", "Enter your password.");
+    const a = await authorize(d, "fork.kek.rotate");
+    if (!("userId" in a)) return a;
+    const rl = limited(d, `${a.userId}:kit-stepup`, STEP_UP_RATE);
+    if (rl) return rl;
+    const now = d.now?.() ?? new Date();
+    const verdict = await verifyPasswordStepUp(d.db, a.userId, parsed.data.password, d.verifyPassword);
+    if (verdict !== "ok") {
+        await recordAudit(d.db, {actorUserId: a.userId, action: "fork.kek.rotate", resourceType: "fork_kek", result: "denied", details: {reason: verdict === "no_password" ? "no-password" : "wrong-password"}, now});
+        return verdict === "no_password" ? refuse("no_password", "This account has no password, so it cannot confirm its identity for this step.") : refuse("step_up_failed", "The password is not correct.");
+    }
+    const r = await rotateKekAndReencrypt(d.db, d.kekDir, {actorUserId: a.userId, now});
+    const w = await watchKit({db: d.db, keys: d.keys, kekDir: d.kekDir, now: () => now, unverifiedHours: 24}).catch(() => null);
+    return {ok: true, moved: r.moved, failed: r.failed, kitState: w?.state ?? "unknown"};
 }

@@ -2,7 +2,7 @@
 
 import {appDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
-import {beginKitGeneration, confirmKitFingerprint, type KitDeps} from "@/fork/kit/service";
+import {beginKitGeneration, confirmKitFingerprint, rotateKek, type KitDeps} from "@/fork/kit/service";
 import {getForkPrincipal} from "@/fork/principal";
 import {userAction} from "@/lib/safe-actions/actions";
 import {z} from "zod";
@@ -16,3 +16,6 @@ const deps = async (): Promise<KitDeps> => ({db: await appDb(), principal: await
 
 export const beginKitGenerationAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => beginKitGeneration(await deps(), parsedInput));
 export const confirmKitFingerprintAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => confirmKitFingerprint(await deps(), parsedInput));
+
+/** Rotate the fork KEK and re-encrypt every fork secret (system admin + step-up). The kit becomes stale: generate and verify a new one. */
+export const rotateKekAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => rotateKek(await deps(), parsedInput));
