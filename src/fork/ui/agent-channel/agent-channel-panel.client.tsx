@@ -22,7 +22,7 @@ import {AGENT_CHANNEL as L} from "@/fork/ui/agent-channel/labels";
  * lock state, rate limit, password step-up, https and audit). Secret handling:
  *  - the account password lives only in an uncontrolled `SecretInput` and is read once per action;
  *  - the enrolment bundle exists only in the local state of the open dialog: closing it sets the state to `null`; it never goes into a URL, a cache,
- *    browser storage or the console. The credential rotation is a signed task: no credential is ever shown for it;
+ *    browser storage or any log. The credential rotation is a signed task: no credential is ever shown for it;
  *  - nothing here receives a stored credential — the page's view model has none (strict DTO).
  */
 type Bundle = {bundle: string; fingerprint: string; insecureLab: boolean; agentName: string};
