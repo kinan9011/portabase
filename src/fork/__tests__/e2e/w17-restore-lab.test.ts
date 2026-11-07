@@ -71,6 +71,11 @@ const task = async (id: string) => (await q("select status, result, attempts fro
 const finished = (id: string, ms = 120_000) => waitFor(`task ${id} final`, async () => { const x = await task(id); return x && !["queued", "leased", "running"].includes(x.status) ? x : null; }, ms);
 const volume = (name: string) => { try { return JSON.parse(docker(["volume", "inspect", name]))[0] as {Labels: Record<string, string>}; } catch { return null; } };
 const listing = (vol: string) => docker(["run", "--rm", "-v", `${vol}:/vol:ro`, "busybox", "sh", "-c", "cd /vol && find . -type f | sort | xargs sha256sum"]);
+// the agent runs as root: what it writes under ROOT is root-owned, so the host-side test looks through busybox
+const rootSh = (script: string) => docker(["run", "--rm", "-v", `${ROOT}:${ROOT}`, "busybox", "sh", "-c", script]);
+const rexists = (p: string) => { try { rootSh(`test -e '${p}'`); return true; } catch { return false; } };
+const rread = (p: string) => rootSh(`cat '${p}'`);
+const rmode = (p: string) => rootSh(`stat -c %a '${p}'`);
 const stateFile = (vol: string, file: string) => { try { return docker(["run", "--rm", "-v", `${vol}:/s:ro`, "busybox", "cat", `/s/${file}`]); } catch { return ""; } };
 
 async function startAgent(name: string, stateVol: string, agentId: string, bundle: string, clean: boolean) {
@@ -194,7 +199,9 @@ describe.skipIf(!LAB)("W17-i live: agent restore engine (probe, stage, apply, cl
         for (const v of [ST_CLEAN, ST_VPS, REF_VOL, "w17lab_foreign", "w17lab_otherrun"]) { try { docker(["volume", "rm", "-f", v]); } catch { /* gone */ } }
         try { docker(["network", "rm", NET]); } catch { /* gone */ }
         server?.close(); child?.kill("SIGTERM"); await sleep(500); if (child?.exitCode === null) child?.kill("SIGKILL");
-        await t?.drop(); rmSync(tmp, {recursive: true, force: true});
+        await t?.drop();
+        try { rootSh("rm -rf " + ROOT + "/*"); } catch { /* none */ }
+        rmSync(tmp, {recursive: true, force: true});
     });
 
     it("L1 probe on the clean agent (restore.target.v1, root shared); the vps agent reports neither restore nor compose", async () => {
@@ -220,10 +227,10 @@ describe.skipIf(!LAB)("W17-i live: agent restore engine (probe, stage, apply, cl
         const shas = Object.fromEntries((done.result.staged as {role: string; plaintext_sha256: string}[]).map((s) => [s.role, s.plaintext_sha256]));
         expect(shas.volume).toBe(FX.fixtures.find((f) => f.name === "lab-volume")!.plaintext_sha256);
         expect(shas.pg_dump).toBe(FX.fixtures.find((f) => f.name === "lab-postgres")!.plaintext_sha256);
-        expect(readFileSync(path.join(composeDest, "data/hello.txt"), "utf8")).toBe("hello from the backup\n");
+        expect(rread(path.join(composeDest, "data/hello.txt"))).toBe("hello from the backup");
         const ws = path.join(ROOT, "restore/app");
-        expect(statSync(path.join(ws, ".portabase")).mode & 0o777).toBe(0o700);
-        expect(existsSync(path.join(ws, ".portabase/stage/a0.tar.gz"))).toBe(true);
+        expect(rmode(path.join(ws, ".portabase"))).toBe("700");
+        expect(rexists(path.join(ws, ".portabase/stage/a0.tar.gz"))).toBe(true);
     }, 240_000);
 
     it("L3 apply: the volume exists with ownership + compose labels and its listing equals an independently extracted reference volume", async () => {
@@ -249,7 +256,7 @@ describe.skipIf(!LAB)("W17-i live: agent restore engine (probe, stage, apply, cl
         RUN.push(`L4 vps-planted-for-clean: ${da.status}/${JSON.stringify(da.result)}; clean-without-target: ${db2.status}/${JSON.stringify(db2.result)}`);
         expect(da).toMatchObject({status: "rejected", result: {reason: "target_mismatch"}});
         expect(db2).toMatchObject({status: "rejected", result: {reason: "target_mismatch"}});
-        expect(existsSync(path.join(ROOT, "restore/iso"))).toBe(false);
+        expect(rexists(path.join(ROOT, "restore/iso"))).toBe(false);
         expect(stripAnsi(logs(VPS))).not.toContain(b);
     }, 240_000);
 
@@ -260,9 +267,11 @@ describe.skipIf(!LAB)("W17-i live: agent restore engine (probe, stage, apply, cl
         const bi = (rid: string): BuildInput => ({restoreId: rid, planId, planHash, plan: plan.plan, approvals: [], indexOf});
         const urls = new Map(rows.map((r, i) => [i, `http://${GW}:${serverPort}/${world.rp}/${r.source_name}?${SECRET_QS}`]));
         const m = JSON.parse(world.manifestJson);
+        let n = 0;
         const stage = async (rid: string, json: string, sig: string, sha: string) => {
             const p = buildStagePayload(bi(rid), {manifest: {jsonB64: Buffer.from(json).toString("base64"), sigB64: sig, sha256: sha}, urls});
-            const dest = {...p, workspace: `${ROOT}/restore/forge`, project: "forge", paths: [], artifacts: p.artifacts.slice(0, 1)};
+            const proj = `forge${++n}`; // one workspace per case: a workspace belongs to ONE restore_id
+            const dest = {...p, workspace: `${ROOT}/restore/${proj}`, project: proj, paths: [], artifacts: p.artifacts.slice(0, 1)};
             return finished(await plant(world.agent, cleanBundle, "restore_stage", dest, {target: world.agent}));
         };
         const other = testKeypair();
@@ -283,7 +292,8 @@ describe.skipIf(!LAB)("W17-i live: agent restore engine (probe, stage, apply, cl
         objects.set(key, good);
         RUN.push(`L5 swapped object: ${swapped.status}:${swapped.result.reason} artifact=${swapped.result.artifact}`);
         expect(swapped).toMatchObject({status: "failed", result: {reason: "checksum_mismatch", artifact: 0}});
-        expect(existsSync(path.join(ROOT, "restore/forge/files"))).toBe(false);
+        expect(rexists(path.join(ROOT, "restore/forge4/.portabase/stage/a0.tar.gz"))).toBe(false); // the swapped object was never staged
+        expect(rexists(path.join(ROOT, "restore/forge1/.portabase/stage/a0.tar.gz")) || rexists(path.join(ROOT, "restore/forge2/.portabase/stage/a0.tar.gz")) || rexists(path.join(ROOT, "restore/forge3/.portabase/stage/a0.tar.gz"))).toBe(false);
     }, 360_000);
 
     it("L7 cleanup: foreign volumes survive; the owned volume and the workspace are removed", async () => {
@@ -296,14 +306,14 @@ describe.skipIf(!LAB)("W17-i live: agent restore engine (probe, stage, apply, cl
         expect(done, JSON.stringify(done.result)).toMatchObject({status: "succeeded"});
         expect(volume(volName)).toBeNull();
         expect(volume("w17lab_foreign")).not.toBeNull(); expect(volume("w17lab_otherrun")).not.toBeNull();
-        expect(existsSync(path.join(ROOT, "restore/app"))).toBe(false);
+        expect(rexists(path.join(ROOT, "restore/app"))).toBe(false);
     }, 240_000);
 
     it("L6 kill + restart: tmp/ and secret/ are swept, the journal shows abort, and a new stage with the same restore_id skips the finished artifact", async () => {
         // a second world whose LAST artifact is large and trickled; the first (small) artifact finishes and is journaled
         const sk = await fileKeyProvider.signing(); const key = {privateKey: sk.privateKeyPem, publicKey: sk.publicKeyPem, kid: kidOfPublicKey(sk.publicKeyPem)};
-        const pad = randomBytes(40 * 1024 * 1024); const padTgz = path.join(tmp, "pad.tar.gz"); const padDir = path.join(tmp, "pad"); mkdirSync(padDir, {recursive: true}); writeFileSync(path.join(padDir, "blob.bin"), pad);
-        execFileSync("tar", ["-czf", padTgz, "-C", padDir, "."]); const padPlain = readFileSync(padTgz);
+        const pad = randomBytes(40 * 1024 * 1024); const padTgz = path.join(tmp, "pad.tar.gz"); const padDir = path.join(tmp, "pad"); mkdirSync(path.join(padDir, "vol"), {recursive: true}); writeFileSync(path.join(padDir, "vol/blob.bin"), pad);
+        execFileSync("tar", ["-czf", padTgz, "-C", padDir, "vol"]); const padPlain = readFileSync(padTgz);
         const fx = (n: string) => FX.fixtures.find((f) => f.name === n)!;
         const w2 = await seedW17World(t, "", key as ReturnType<typeof testKeypair>, adminId, {org, hostRole: "test", roots: [ROOT], caps: ["channel.v1", "noop.v1"],
             plain: {compose_app: {sha: sha256(filesPlain), size: filesPlain.length}, db_db: {sha: fx("lab-postgres").plaintext_sha256, size: fx("lab-postgres").plaintext_size, dump: "pg_custom"}, volume_app_data: {sha: sha256(padPlain), size: padPlain.length}},
@@ -327,7 +337,7 @@ describe.skipIf(!LAB)("W17-i live: agent restore engine (probe, stage, apply, cl
             const journal = stateFile(ST2, `fork-restore/${rid}.jsonl`);
             RUN.push(`L6 journal after kill+restart:\n${journal}`);
             const ws2 = path.join(ROOT, "restore2/app");
-            expect(existsSync(path.join(ws2, ".portabase/secret"))).toBe(false); expect(existsSync(path.join(ws2, ".portabase/tmp"))).toBe(false);
+            expect(rexists(path.join(ws2, ".portabase/secret"))).toBe(false); expect(rexists(path.join(ws2, ".portabase/tmp"))).toBe(false);
             expect(journal).toContain('"reason":"restart"');
             // the interrupted task's lease lapses and the dashboard re-offers it: the agent re-reports its stored outcome / or a fresh stage with the same restore_id completes
             objects.get(`/${w2.rp}/volume_app_data`)!.slow = false;
