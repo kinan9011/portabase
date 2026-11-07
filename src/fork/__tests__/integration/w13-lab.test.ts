@@ -285,11 +285,14 @@ describe.skipIf(!LAB)("W13 live: scheduled grouped backup of the demo stack thro
     }, 420_000);
 
     it("4b. drift to Partial: the unreadable probe makes the stack Partial ⇒ the evaluator raises ONE `stack.partial`", async () => {
+        await q("update fork_stack_source set last_probe='unreadable', last_probe_at=now() where stack_id=$1 and role='bind'", [stackId]); // the write the W10 drift job makes
         const r = await evaluateAlerts({db, configLocked: false, minHours: 12});
         expect(r.errors).toBe(0);
         expect((await q("select count(*)::int n from fork_notification_outbox where kind='stack.partial'"))[0].n).toBe(1);
         await evaluateAlerts({db, configLocked: false, minHours: 12});
         expect((await q("select count(*)::int n from fork_notification_outbox where kind='stack.partial'"))[0].n).toBe(1); // once per episode
+        await q("update fork_stack_source set last_probe='readable', last_probe_at=now() where stack_id=$1 and role='bind'", [stackId]);
+        await evaluateAlerts({db, configLocked: false, minHours: 12}); // clears the episode silently
     }, 120_000);
 
     it("5. EXIT 9: the agent is DOWN ⇒ the waiting rows time out: run FAILED 'agent_did_not_start', rows cancelled, no pending/verified RP for that run", async () => {
@@ -342,10 +345,11 @@ describe.skipIf(!LAB)("W13 live: scheduled grouped backup of the demo stack thro
     }, 120_000);
 
     it("11. dead-man + Fork configuration locked: no verified backup for > N h ⇒ ONE `stack.no_good_backup`; a failed self-check ⇒ ONE `fork.selfcheck.failed`", async () => {
-        const r = await evaluateAlerts({db, configLocked: false, minHours: 12, now: () => new Date(Date.now() + 60 * 3_600_000)});
+        await q("update fork_stack_policy set activated_at = now() - interval '60 hours' where stack_id=$1", [stackId]); // no verified RP can exist before W14: the reference is the activation
+        const r = await evaluateAlerts({db, configLocked: false, minHours: 12});
         expect(r.errors).toBe(0);
         expect((await q("select count(*)::int n from fork_notification_outbox where kind='stack.no_good_backup'"))[0].n).toBe(1);
-        await evaluateAlerts({db, configLocked: false, minHours: 12, now: () => new Date(Date.now() + 61 * 3_600_000)});
+        await evaluateAlerts({db, configLocked: false, minHours: 12});
         expect((await q("select count(*)::int n from fork_notification_outbox where kind='stack.no_good_backup'"))[0].n).toBe(1);
         expect(await recordSelfCheckTransition(db, {ok: false, failed: "org-count"} as never)).toBe("failed");
         await q("delete from fork_meta where key = 'selfcheck.state'"); // the lab dashboard build must not see a stale transition
@@ -359,10 +363,10 @@ describe.skipIf(!LAB)("W13 live: scheduled grouped backup of the demo stack thro
         const deliverable = rows.filter((r) => r.state === "delivered");
         for (const kind of ["run.failed", "run.incomplete", "run.blocked", "run.skipped", "run.policy_paused", "stack.partial", "stack.no_good_backup", "fork.selfcheck.failed"]) {
             const rs = rows.filter((r) => r.kind === kind);
-            expect(rs.length, `${kind}: exactly one outbox row per trigger`).toBeGreaterThanOrEqual(1);
+            expect(rs.length, `${kind}: exactly one outbox row per trigger`).toBe(1);
             expect(rs.every((r) => r.state === "delivered"), `${kind} delivered`).toBe(true);
             const title = `Portabase · ${(NOTIFY.kinds as Record<string, {title: string}>)[kind].title}`;
-            expect(sunk.filter((m) => m.title === title).length, `${kind}: one webhook delivery per outbox row`).toBe(kind === "run.incomplete" || kind === "run.blocked" ? rows.filter((r) => ["run.incomplete", "run.blocked"].includes(r.kind)).length : rs.length);
+            expect(sunk.filter((m) => m.title === title).length, `${kind}: one webhook delivery per outbox row`).toBe(kind === "run.incomplete" || kind === "run.blocked" ? 2 : 1);
         }
         expect(sunk.length).toBe(deliverable.length); // nothing delivered twice, nothing delivered that the outbox does not say
         expect(rows.filter((r) => r.state === "failed" || r.state === "pending")).toEqual([]);

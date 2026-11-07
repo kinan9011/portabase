@@ -169,7 +169,9 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
 
             {view && (
                 <Tabs value={tab} onValueChange={onTab}>
-                    <TabsList aria-label={D.tabsLabel}>
+                    {/* six tabs are wider than a phone: the list scrolls inside this box (never the page); its triggers are focusable, so keyboard users can reach every tab */}
+                    <div className="max-w-full overflow-x-auto" data-testid="tabs-scroll">
+                    <TabsList aria-label={D.tabsLabel} className="w-max">
                         <TabsTrigger value="overview">{D.tabs.overview}</TabsTrigger>
                         <TabsTrigger value="resources">{D.tabs.resources}</TabsTrigger>
                         <TabsTrigger value="configuration">{CONFIG_TAB.tab}</TabsTrigger>
@@ -177,6 +179,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                         <TabsTrigger value="schedule">{SCHEDULE_TAB.tab}</TabsTrigger>
                         <TabsTrigger value="activity">{ACTIVITY.tab}</TabsTrigger>
                     </TabsList>
+                    </div>
                     <TabsContent value="overview">{protection && configuration && <Overview v={view} p={protection} c={configuration} onOpenConfiguration={() => onTab("configuration")}/>}</TabsContent>
                     <TabsContent value="resources"><ResourcesTabs view={view}/></TabsContent>
                     <TabsContent value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
