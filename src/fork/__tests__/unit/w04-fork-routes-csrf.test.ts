@@ -11,7 +11,15 @@ const routes = (dir: string): string[] =>
     readdirSync(dir, {withFileTypes: true}).flatMap((e) => (e.isDirectory() ? routes(path.join(dir, e.name)) : e.name === "route.ts" ? [path.join(dir, e.name)] : []));
 
 describe("SEC-16 every state-changing /api/fork route calls forkCsrfGuard first", () => {
-    const files = routes(root);
+    const all = routes(root);
+    // W15: the agent channel routes are called by agents (no browser, no cookies): they authenticate with a bearer credential through `withAgent` — never a session —
+    // so a cross-site request cannot carry any authority. They are pinned by their own test below instead of the CSRF guard.
+    const files = all.filter((f) => !f.includes(`${path.sep}agent${path.sep}`));
+    it("agent channel routes are cookie-less bearer routes: each authenticates through withAgent and never reads a session", () => {
+        const agent = all.filter((f) => f.includes(`${path.sep}agent${path.sep}`));
+        expect(agent.length).toBe(4);
+        for (const f of agent) { const src = readFileSync(f, "utf8"); expect(src, f).toContain("withAgent("); expect(src, f).not.toMatch(/currentUser|getForkPrincipal|cookies\(/); }
+    });
     it("there is at least the status route (the scan is not vacuous)", () => expect(files.length).toBeGreaterThan(0));
     it.each(files.map((f) => [path.relative(process.cwd(), f), readFileSync(f, "utf8")]))("%s", (_f, src) => {
         for (const m of src.matchAll(/export\s+(?:async\s+)?function\s+(POST|PUT|PATCH|DELETE)\s*\(([^)]*)\)\s*\{([\s\S]*?)\n\}/g)) {

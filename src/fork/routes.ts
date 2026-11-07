@@ -29,5 +29,6 @@ export function forkPageHidden(pathname: string, role: string | null | undefined
 }
 
 export function forkRoutePatterns(source: Record<string, string | undefined> = process.env): RegExp[] {
-    return anyForkFlagOn(source) ? [...CONFIG_ROUTES, ...RUNTIME_ROUTES] : [...RUNTIME_ROUTES];
+    // flags off ⇒ the fork is invisible (a real upstream 404 from the proxy); runtime routes exist for `on` AND `locked` mode, both of which need a flag
+    return anyForkFlagOn(source) ? [...CONFIG_ROUTES, ...RUNTIME_ROUTES] : [];
 }
