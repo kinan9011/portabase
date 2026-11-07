@@ -27,12 +27,12 @@ export function ReviewSection({stackId, preview, blockerList, extraReasons, pend
     return (
         <div className="flex flex-col gap-4">
             <p className="text-muted-foreground text-sm">{V.intro}</p>
-            <div role="group" aria-label={V.summaryLabel} className="flex flex-col gap-1 text-sm" data-testid="review-summary">
+            <section aria-label={V.summaryLabel} className="flex flex-col gap-1 text-sm" data-testid="review-summary">
                 <p>{V.included(included)}</p>
                 <p data-testid="review-gaps">{preview.gaps > 0 ? V.gaps(preview.gaps) : V.complete}</p>
                 <p className="text-muted-foreground text-xs">{V.readability}</p>
                 {preview.size.bytes !== null && <p className="text-xs">{CONFIGURE.storage.size.known(fmtBytes(preview.size.bytes) ?? "", preview.size.counted)}</p>}
-            </div>
+            </section>
             <section aria-labelledby={`${id}-src`} className="flex flex-col gap-1">
                 <h3 id={`${id}-src`} className="font-medium">{V.sources}</h3>
                 {preview.sources.length === 0 ? <p className="text-sm">{V.sourcesNone}</p> : (

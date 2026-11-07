@@ -3,7 +3,7 @@ import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {axeViolations} from "@/fork/__tests__/axe";
-import {CH_LOCAL, CH_S3, STACK_ID, w11Inventory, w11View} from "@/fork/__tests__/w11-fixtures";
+import {CH_S3, STACK_ID, w11Inventory, w11View} from "@/fork/__tests__/w11-fixtures";
 import {computePreview} from "@/fork/stack-policy/preview";
 import {SelectionSchema} from "@/fork/materialize/types";
 import {CONFIGURE, SCHEDULE_TAB} from "@/fork/ui/labels";

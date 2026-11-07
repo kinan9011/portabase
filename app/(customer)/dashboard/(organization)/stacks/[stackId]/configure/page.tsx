@@ -8,7 +8,7 @@ import {getForkPrincipal} from "@/fork/principal";
 import {assertForkResource} from "@/fork/resource-scope";
 import {forkBannerText} from "@/fork/self-check";
 import {loadConfigureView} from "@/fork/stack-policy/configure-view";
-import {CONFIGURE, STACKS_EMPTY, STACKS_PAGE} from "@/fork/ui/labels";
+import {CONFIGURE, STACKS_EMPTY} from "@/fork/ui/labels";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
 import {ConfigureForm} from "@/fork/ui/stacks/wizard/configure-form.client";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";

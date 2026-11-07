@@ -56,19 +56,20 @@ export function ConfigureForm({view, locked}: {view: ConfigureView; locked: bool
 
     // ---- read-only preview of the pending selection (debounced; stale answers are dropped) ----
     const seq = React.useRef(0);
+    const stackId = view.stack.id;
     const selectionKey = JSON.stringify([toSelection(st, view), st.accepted]);
     React.useEffect(() => {
         const mine = ++seq.current;
+        const [selection, acceptedExclusions] = JSON.parse(selectionKey) as [unknown, string[]];
         const timer = setTimeout(async () => {
             try {
-                const r = normalise<PreviewResult>(await previewStackPolicyAction({stackId: view.stack.id, selection: toSelection(st, view), acceptedExclusions: st.accepted}));
+                const r = normalise<PreviewResult>(await previewStackPolicyAction({stackId, selection, acceptedExclusions}));
                 if (mine !== seq.current) return;
                 if (r.kind === "ok" && r.outcome.ok) setPreview(r.outcome.preview);
             } catch { /* keep the previous preview: it is labelled as a preview, nothing is claimed */ }
         }, 350);
         return () => clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectionKey]);
+    }, [selectionKey, stackId]);
 
     const dbErrors = dbFieldErrors(st, view);
     const blockerList = blockers({view, state: st, preview, locked, dbErrors, cronInvalid: !cronValid});
