@@ -11,7 +11,7 @@ import {APPROVAL_KINDS, DENY_RULE_IDS, PLAN_OUTCOMES, RESTORE_MODES, RESTORE_PUR
 function everyObjectIsStrict(schema: {safeParse: (v: unknown) => {success: boolean}}, value: unknown) {
     const paths: (string | number)[][] = [];
     const find = (x: unknown, p: (string | number)[]) => {
-        if (Array.isArray(x)) x.forEach((e, k) => find(e, [...p, k]));
+        if (Array.isArray(x)) { for (const [k, e] of x.entries()) find(e, [...p, k]); }
         else if (x && typeof x === "object") { paths.push(p); for (const [k, v] of Object.entries(x)) find(v, [...p, k]); }
     };
     find(value, []);

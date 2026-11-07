@@ -347,6 +347,6 @@ describe("canary: the planner never reads or emits a secret", () => {
             expect(auditRows).not.toContain(CANARY);
             expect(JSON.stringify(out)).not.toContain(CANARY);
             for (const s of spies) expect(JSON.stringify(s.mock.calls)).not.toContain(CANARY);
-        } finally { spies.forEach((s) => s.mockRestore()); delete process.env.CANARY_W16; rmSync(kek, {recursive: true, force: true}); }
+        } finally { for (const s of spies) s.mockRestore(); delete process.env.CANARY_W16; rmSync(kek, {recursive: true, force: true}); }
     });
 });
