@@ -29,8 +29,14 @@ export const forkStack = pgTable("fork_stack", {
     staleSince: ts("stale_since"),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
+    /** W16 (§4.8, D44): NULL = not declared (treated as personal data, OD-1). Set by a system admin only. */
+    containsPersonalData: boolean("contains_personal_data"),
+    /** W16 (D44): explicit per-stack opt-in to data-only test restores. Both set or both NULL. */
+    testRestoreOptInAt: ts("test_restore_opt_in_at"),
+    testRestoreOptInBy: text("test_restore_opt_in_by"),
 }, (t) => [
     unique("fork_stack_env_project_uq").on(t.environmentId, t.composeProject),
+    check("fork_stack_opt_in_ck", sql`(${t.testRestoreOptInAt} IS NULL) = (${t.testRestoreOptInBy} IS NULL)`),
     index("fork_stack_org_idx").on(t.organizationId),
     check("fork_stack_runtime_state_ck", inList("runtime_state", RUNTIME_STATES)),
     check("fork_stack_protection_state_ck", inList("protection_state", PROTECTION_STATES)),

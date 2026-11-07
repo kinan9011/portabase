@@ -23,4 +23,8 @@ describe("fork env flags", () => {
         expect(forkEnv({FORK_MIGRATE_DUMP: "REQUIRED"}).FORK_MIGRATE_DUMP).toBe("required");
         expect(forkEnv({FORK_MIGRATE_DUMP: "off"}).FORK_MIGRATE_DUMP).toBe("off");
     });
+    it("W16: restore plan TTL defaults to 24 h, accepts 1..168, anything else falls back", () => {
+        expect(forkEnv({}).FORK_RESTORE_PLAN_TTL_HOURS).toBe(24);
+        for (const [v, want] of [["1", 1], ["168", 168], ["0", 24], ["169", 24], ["x", 24], ["", 24]] as const) expect(forkEnv({FORK_RESTORE_PLAN_TTL_HOURS: v}).FORK_RESTORE_PLAN_TTL_HOURS, v).toBe(want);
+    });
 });
