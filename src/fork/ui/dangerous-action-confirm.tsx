@@ -46,11 +46,11 @@ export function DangerousActionConfirm({title, description, confirmLabel, onConf
             <AlertDialogContent {...(trigger ? {} : focus)}>
                 <AlertDialogHeader>
                     <AlertDialogTitle>{title}</AlertDialogTitle>
-                    <AlertDialogDescription asChild><div className="space-y-2 text-sm text-muted-foreground">{description}</div></AlertDialogDescription>
+                    <AlertDialogDescription asChild><div className="text-muted-foreground space-y-2 text-sm">{description}</div></AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={onConfirm} className="bg-destructive text-white hover:bg-destructive/90">{confirmLabel}</AlertDialogAction>
+                    <AlertDialogAction onClick={onConfirm} className="bg-destructive hover:bg-destructive/90 text-white">{confirmLabel}</AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>

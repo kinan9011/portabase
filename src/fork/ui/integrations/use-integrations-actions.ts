@@ -2,7 +2,7 @@
 
 import {useMutation} from "@tanstack/react-query";
 import {useRouter} from "next/navigation";
-import * as React from "react";
+import type * as React from "react";
 import {disconnectArcaneAction, rotateArcaneKeyAction, saveArcaneConnectionAction, testArcaneConnectionAction} from "@/fork/actions/arcane-connection.action";
 import {updateArcaneEnvironmentAction} from "@/fork/actions/arcane-environment.action";
 import type {Outcome} from "@/fork/arcane/connection-service";

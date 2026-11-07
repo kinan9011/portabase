@@ -25,12 +25,12 @@ export function clientEndpointIdentity(raw: string): string | null {
 }
 
 export const PermissionList = () => (
-    <div id="arcane-permission-help" className="rounded-lg border bg-muted/40 p-4 text-sm">
+    <div id="arcane-permission-help" className="bg-muted/40 rounded-lg border p-4 text-sm">
         <p className="font-medium">Before you connect</p>
-        <p className="mt-1 text-muted-foreground">{ARCANE_KEY_FIELD_COPY.help}</p>
+        <p className="text-muted-foreground mt-1">{ARCANE_KEY_FIELD_COPY.help}</p>
         <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div><dt className="text-xs text-muted-foreground">Global permissions</dt><dd className="font-mono text-xs">{ARCANE_KEY_FIELD_COPY.requiredPermissions.global.join(", ")}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Per environment</dt><dd className="font-mono text-xs">{ARCANE_KEY_FIELD_COPY.requiredPermissions.perEnvironment.join(", ")}</dd></div>
+            <div><dt className="text-muted-foreground text-xs">Global permissions</dt><dd className="font-mono text-xs">{ARCANE_KEY_FIELD_COPY.requiredPermissions.global.join(", ")}</dd></div>
+            <div><dt className="text-muted-foreground text-xs">Per environment</dt><dd className="font-mono text-xs">{ARCANE_KEY_FIELD_COPY.requiredPermissions.perEnvironment.join(", ")}</dd></div>
         </dl>
     </div>
 );
@@ -78,8 +78,8 @@ export function ConnectionForm({connection, keyRef, pending, lockedReason, onSub
                 <div className="flex flex-col gap-1.5">
                     <Label htmlFor={urlId}>Manager URL *</Label>
                     <Input id={urlId} type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://arcane.example.internal" required autoComplete="off" spellCheck={false} aria-describedby={endpointError ? errId : undefined} aria-invalid={endpointError ? true : undefined}/>
-                    {endpointError && <p id={errId} role="alert" className="text-sm text-destructive">{endpointError}</p>}
-                    <p className="text-xs text-muted-foreground">HTTPS. Private or loopback addresses work only when the server operator allow-listed them.</p>
+                    {endpointError && <p id={errId} role="alert" className="text-destructive text-sm">{endpointError}</p>}
+                    <p className="text-muted-foreground text-xs">HTTPS. Private or loopback addresses work only when the server operator allow-listed them.</p>
                 </div>
                 {endpointChanged && (
                     <p role="note" className={`flex items-start gap-2 rounded-md border p-3 text-sm ${TONE_MAP.warning.panel} ${TONE_MAP.warning.body}`}>
@@ -87,15 +87,15 @@ export function ConnectionForm({connection, keyRef, pending, lockedReason, onSub
                     </p>
                 )}
                 <SecretKeyInput ref={keyRef} stored={!!connection} required={keyRequired} describedBy="arcane-permission-help"/>
-                <p className="-mt-2 text-xs text-muted-foreground">Write-only. Sent once over this request, encrypted on the server, never shown again{connection ? "; leave empty to keep the stored key" : ""}.</p>
+                <p className="text-muted-foreground -mt-2 text-xs">Write-only. Sent once over this request, encrypted on the server, never shown again{connection ? "; leave empty to keep the stored key" : ""}.</p>
 
                 <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
-                    <div><Label htmlFor="tls-insecure">Skip TLS certificate verification</Label><p className="text-xs text-muted-foreground">Off by default. Lab or private CA only.</p>
+                    <div><Label htmlFor="tls-insecure">Skip TLS certificate verification</Label><p className="text-muted-foreground text-xs">Off by default. Lab or private CA only.</p>
                         {tlsInsecure && <p role="note" className={`mt-1 flex items-start gap-1.5 text-xs ${TONE_MAP.warning.title}`}><ToneIcon tone="warning" className="mt-0.5"/>{ARCANE_KEY_FIELD_COPY.tlsWarning}</p>}</div>
                     <Switch id="tls-insecure" checked={tlsInsecure} onCheckedChange={setTlsInsecure}/>
                 </div>
                 <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
-                    <div><Label htmlFor="tier2">Allow reading Compose files ({ARCANE_KEY_FIELD_COPY.tier2.permission})</Label><p className="text-xs text-muted-foreground">Off by default.</p>
+                    <div><Label htmlFor="tier2">Allow reading Compose files ({ARCANE_KEY_FIELD_COPY.tier2.permission})</Label><p className="text-muted-foreground text-xs">Off by default.</p>
                         {tier2 && <p role="note" className={`mt-1 flex items-start gap-1.5 text-xs ${TONE_MAP.warning.title}`}><ToneIcon tone="warning" className="mt-0.5"/>{ARCANE_KEY_FIELD_COPY.tier2.warning}</p>}</div>
                     <Switch id="tier2" checked={tier2} onCheckedChange={setTier2}/>
                 </div>

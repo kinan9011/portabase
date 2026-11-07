@@ -17,7 +17,7 @@ export function ReasonButton({reason, onClick, children, ...props}: Omit<React.C
                 {...props}
                 aria-disabled={blocked || props["aria-disabled"] ? true : undefined}
                 aria-describedby={blocked ? id : props["aria-describedby"]}
-                className={`${props.className ?? ""} ${blocked ? "opacity-60 cursor-not-allowed" : ""}`}
+                className={`${props.className ?? ""} ${blocked ? "cursor-not-allowed opacity-60" : ""}`}
                 onClick={(e) => {
                     if (blocked) { e.preventDefault(); return; }
                     onClick?.(e);
@@ -25,7 +25,7 @@ export function ReasonButton({reason, onClick, children, ...props}: Omit<React.C
             >
                 {children}
             </Button>
-            {blocked && <span id={id} className="max-w-64 text-xs text-muted-foreground">{reason}</span>}
+            {blocked && <span id={id} className="text-muted-foreground max-w-64 text-xs">{reason}</span>}
         </span>
     );
 }

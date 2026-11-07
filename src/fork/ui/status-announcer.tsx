@@ -15,7 +15,7 @@ export function StatusAnnouncer({children}: {children: React.ReactNode}) {
     return (
         <Ctx.Provider value={setMessage}>
             {children}
-            <div role="status" aria-live="polite" aria-atomic="true" data-testid="job-status" className="min-h-5 text-sm text-muted-foreground">{message}</div>
+            <div role="status" aria-live="polite" aria-atomic="true" data-testid="job-status" className="text-muted-foreground min-h-5 text-sm">{message}</div>
         </Ctx.Provider>
     );
 }

@@ -15,7 +15,7 @@ import {CONNECTION_STATE_LABELS, SYNC_NOW, type ConnectionState} from "@/fork/ui
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge, ToneIcon} from "@/fork/ui/tone-badge";
 
-const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short"}) : "Never");
+const fmt = (iso: string | null) => (iso ? `${new Date(iso).toLocaleString("en-US", {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"})} UTC` : "Never");
 
 export function StateBadge({state}: {state: ConnectionState}) {
     const l = CONNECTION_STATE_LABELS[state];
@@ -58,7 +58,7 @@ function RotateDialog({open, onOpenChange, keyRef, pending, onRotate, error}: {o
                         <DialogDescription>The new key is verified against Arcane first. If it is refused, the stored key stays in use and nothing changes. Backups and recovery points are not affected.</DialogDescription>
                     </DialogHeader>
                     <SecretKeyInput ref={keyRef} required describedBy="arcane-permission-help" label="New discovery key (list permissions only)"/>
-                    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+                    {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
                     <PermissionList/>
                     <DialogFooter>
                         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -91,13 +91,13 @@ export function ConnectionCard({connection, state, errorClass, lastVerification,
     const descId = React.useId();
     const [disconnectOpen, setDisconnectOpen] = React.useState(false);
     return (
-        <section aria-labelledby="arcane-heading" aria-busy={label.busy || pending || undefined} className="rounded-xl border bg-card text-card-foreground shadow-sm">
+        <section aria-labelledby="arcane-heading" aria-busy={label.busy || pending || undefined} className="bg-card text-card-foreground rounded-xl border shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b p-6">
                 <div className="flex items-start gap-3">
-                    <div className="flex size-12 items-center justify-center rounded-lg bg-primary/10 text-primary"><Plug className="size-6" aria-hidden="true"/></div>
+                    <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-lg"><Plug className="size-6" aria-hidden="true"/></div>
                     <div>
                         <div className="flex flex-wrap items-center gap-2.5"><h2 id="arcane-heading" className="text-lg font-semibold">{connection.name}</h2><StateBadge state={state}/></div>
-                        <p id={descId} className="mt-1 max-w-prose text-sm text-muted-foreground">{label.description}</p>
+                        <p id={descId} className="text-muted-foreground mt-1 max-w-prose text-sm">{label.description}</p>
                     </div>
                 </div>
                 <div className="flex flex-wrap items-start gap-2">
@@ -111,12 +111,12 @@ export function ConnectionCard({connection, state, errorClass, lastVerification,
             <ProblemAlert state={state} errorClass={errorClass}/>
             {lastVerification && <VerificationPanel v={lastVerification}/>}
             <dl className="grid gap-5 p-6 sm:grid-cols-2 lg:grid-cols-4">
-                <div><dt className="text-xs text-muted-foreground">Manager URL</dt><dd className="mt-1 break-all font-mono text-sm">{connection.baseUrl}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Arcane version (tested)</dt><dd className="mt-1 text-sm">{connection.pinnedApiVersion ?? "Not verified yet"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">API key</dt><dd className="mt-1 text-sm">Stored, encrypted. Never shown again.</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Last checked</dt><dd className="mt-1 text-sm">{fmt(connection.lastCheckedAt)}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">TLS verification</dt><dd className="mt-1 text-sm">{connection.tlsInsecure ? "OFF for this connection" : "On"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Compose file reading ({"projects:read"})</dt><dd className="mt-1 text-sm">{connection.allowProjectsRead ? "Allowed" : "Off"}</dd></div>
+                <div><dt className="text-muted-foreground text-xs">Manager URL</dt><dd className="mt-1 font-mono text-sm break-all">{connection.baseUrl}</dd></div>
+                <div><dt className="text-muted-foreground text-xs">Arcane version (tested)</dt><dd className="mt-1 text-sm">{connection.pinnedApiVersion ?? "Not verified yet"}</dd></div>
+                <div><dt className="text-muted-foreground text-xs">API key</dt><dd className="mt-1 text-sm">Stored, encrypted. Never shown again.</dd></div>
+                <div><dt className="text-muted-foreground text-xs">Last checked</dt><dd className="mt-1 text-sm">{fmt(connection.lastCheckedAt)}</dd></div>
+                <div><dt className="text-muted-foreground text-xs">TLS verification</dt><dd className="mt-1 text-sm">{connection.tlsInsecure ? "OFF for this connection" : "On"}</dd></div>
+                <div><dt className="text-muted-foreground text-xs">Compose file reading ({"projects:read"})</dt><dd className="mt-1 text-sm">{connection.allowProjectsRead ? "Allowed" : "Off"}</dd></div>
             </dl>
             <DangerousActionConfirm
                 open={disconnectOpen}

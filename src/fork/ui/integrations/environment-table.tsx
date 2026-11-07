@@ -13,7 +13,7 @@ import {ToneIcon} from "@/fork/ui/tone-badge";
 
 const NO_AGENT = "__none__";
 const AGENT_TONE: Record<"online" | "degraded" | "offline", Tone> = {online: "success", degraded: "warning", offline: "danger"};
-const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short"}) : ENVIRONMENT_COPY.notSynced);
+const fmt = (iso: string | null) => (iso ? `${new Date(iso).toLocaleString("en-US", {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"})} UTC` : ENVIRONMENT_COPY.notSynced);
 
 export function AgentStatus({status}: {status: IntegrationsEnvironment["agentStatus"]}) {
     if (!status) return <span data-testid="agent-status" className="text-muted-foreground">{AGENT_STATUS_LABELS.none}</span>;
@@ -36,11 +36,11 @@ export function EnvironmentTable({view, lockedReason, busyId, onChange}: {view: 
         <section aria-labelledby="env-heading" className="flex flex-col gap-3">
             <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <h2 id="env-heading" className="text-lg font-semibold">Environments</h2>
-                <p className="text-sm text-muted-foreground">{ENVIRONMENT_COPY.discoveryHelp}</p>
+                <p className="text-muted-foreground text-sm">{ENVIRONMENT_COPY.discoveryHelp}</p>
             </div>
             {locked && <p id={reasonId} className="text-sm font-medium">{lockedReason}</p>}
             {view.environments.length === 0 ? (
-                <p className="rounded-lg border p-6 text-sm text-muted-foreground">No environment found yet. Run Test connection: the key must cover at least one Arcane environment.</p>
+                <p className="text-muted-foreground rounded-lg border p-6 text-sm">No environment found yet. Run Test connection: the key must cover at least one Arcane environment.</p>
             ) : (
                 <div className="overflow-x-auto rounded-lg border">
                     <Table>
@@ -56,7 +56,7 @@ export function EnvironmentTable({view, lockedReason, busyId, onChange}: {view: 
                                 const block = locked || busy;
                                 return (
                                     <TableRow key={e.id} aria-busy={busy || undefined}>
-                                        <TableCell><div className="font-medium">{e.name}</div><div className="font-mono text-xs text-muted-foreground">id {e.externalId}</div></TableCell>
+                                        <TableCell><div className="font-medium">{e.name}</div><div className="text-muted-foreground font-mono text-xs">id {e.externalId}</div></TableCell>
                                         <TableCell>
                                             <div className="flex flex-col gap-1.5">
                                                 <Select value={e.agentId ?? NO_AGENT} open={block ? false : undefined} onValueChange={(v) => !block && onChange({environmentId: e.id, agentId: v === NO_AGENT ? null : v})}>
@@ -70,18 +70,18 @@ export function EnvironmentTable({view, lockedReason, busyId, onChange}: {view: 
                                                 <AgentStatus status={e.agentStatus}/>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="whitespace-normal text-sm">{fmt(e.lastSyncAt)}{e.lastSyncStatus && e.lastSyncStatus !== "ok" ? ` · ${e.lastSyncStatus}` : ""}</TableCell>
-                                        <TableCell className="whitespace-normal"><span>{ENVIRONMENT_COPY.stacksUnknown}<span className="sr-only"> not available yet</span></span><span className="block text-xs text-muted-foreground">{ENVIRONMENT_COPY.stacksUnknownReason}</span></TableCell>
+                                        <TableCell className="text-sm whitespace-normal">{fmt(e.lastSyncAt)}{e.lastSyncStatus && e.lastSyncStatus !== "ok" ? ` · ${e.lastSyncStatus}` : ""}</TableCell>
+                                        <TableCell className="whitespace-normal"><span>{ENVIRONMENT_COPY.stacksUnknown}<span className="sr-only"> not available yet</span></span><span className="text-muted-foreground block text-xs">{ENVIRONMENT_COPY.stacksUnknownReason}</span></TableCell>
                                         <TableCell className="min-w-48 whitespace-normal">
                                             <Select value={e.hostRole} open={block ? false : undefined} onValueChange={(v) => { if (block || v === e.hostRole) return; if (v === "test") setPendingRole({env: e}); else onChange({environmentId: e.id, hostRole: v as "production" | "test"}); }}>
                                                 <SelectTrigger aria-label={`Host role for ${e.name}`} aria-disabled={block || undefined} aria-describedby={locked ? reasonId : undefined} className="w-40"><SelectValue/></SelectTrigger>
                                                 <SelectContent>{(Object.keys(HOST_ROLE_LABELS) as (keyof typeof HOST_ROLE_LABELS)[]).map((r) => <SelectItem key={r} value={r}>{HOST_ROLE_LABELS[r].label}</SelectItem>)}</SelectContent>
                                             </Select>
-                                            <span className="mt-1 block max-w-56 text-xs text-muted-foreground">{HOST_ROLE_LABELS[e.hostRole].description}</span>
+                                            <span className="text-muted-foreground mt-1 block max-w-56 text-xs">{HOST_ROLE_LABELS[e.hostRole].description}</span>
                                         </TableCell>
-                                        <TableCell className="whitespace-normal text-right">
+                                        <TableCell className="text-right whitespace-normal">
                                             <Switch checked={e.enabled} aria-label={`Discovery for ${e.name}`} aria-disabled={block || undefined} aria-describedby={locked ? reasonId : undefined} onCheckedChange={(v) => { if (!block) onChange({environmentId: e.id, enabled: v}); }}/>
-                                            <span className="mt-1 block text-xs text-muted-foreground">{e.enabled ? "Enabled" : "Disabled"}</span>
+                                            <span className="text-muted-foreground mt-1 block text-xs">{e.enabled ? "Enabled" : "Disabled"}</span>
                                         </TableCell>
                                     </TableRow>
                                 );

@@ -92,6 +92,7 @@ describe("all 9 connection states render with label, inline description, alert c
         const {container} = renderView();
         expect(container.textContent).toContain("Stored, encrypted. Never shown again.");
         expect(container.textContent).toContain("2.17.3");
+        expect(container.textContent).toContain("Nov 7, 2026, 10:00 AM UTC"); // fixed zone: server and browser render the same text (no hydration mismatch)
         expect(screen.getAllByText(/^not available yet$/).length).toBe(2);
         expect(container.querySelectorAll('input[type="password"]').length).toBe(0);
     });
@@ -293,7 +294,7 @@ describe("test connection + environment table", () => {
         h.test.mockResolvedValue({data: {ok: true, connection: conn({healthStatus: "auth_failed", lastErrorClass: "invalid_key"}), verification: {ok: false, state: "auth_failed", errorClass: "invalid_key", version: "2.17.3", keyId: null, environments: [], extraPermissions: [], missingPermissions: [], warnings: []}, warnings: []}});
         renderView();
         fireEvent.click(screen.getByRole("button", {name: "Test connection"}));
-        await waitFor(() => expect(screen.getByTestId("job-status").textContent).toMatch(/Saved, but the check reports: Invalid credentials/));
+        await waitFor(() => expect(screen.getByTestId("job-status").textContent).toMatch(/^Check finished: Invalid credentials\./));
         expect(screen.getByTestId("job-status").textContent).not.toMatch(/verified\./);
     });
     it("rows: name + external id, agent status with icon+text, discovery switch calls the action with the environment id", async () => {

@@ -46,12 +46,12 @@ function Inner({view, lockedReason, forceTransient, initialVerification}: Integr
             if (what === "rotate") { setRotateOpen(false); announce("Key rotated. The new key was verified against Arcane."); return; }
             if (what === "save") setEditing(false);
             const v = (o as Outcome & {ok: true}).verification;
-            announce(v && !v.ok ? `Saved, but the check reports: ${CONNECTION_STATE_LABELS[deriveConnectionState({healthStatus: v.state, lastErrorClass: v.errorClass})].label}.` : what === "save" ? "Saved. Arcane verified." : "Test finished. Arcane verified.");
+            const checkLabel = v && !v.ok ? CONNECTION_STATE_LABELS[deriveConnectionState({healthStatus: v.state, lastErrorClass: v.errorClass})].label : null;
+            announce(checkLabel ? `${what === "save" ? "Saved, but the check reports" : "Check finished"}: ${checkLabel}.` : what === "save" ? "Saved. Arcane verified." : "Test finished. Arcane verified.");
             return;
         }
         // refused / failed: say exactly what the server said, change nothing on screen
         const msg = r.kind === "refused" ? (r.message || REFUSAL_COPY[r.code]) : r.message;
-        if (r.kind === "refused" && "verification" in (r.outcome as object)) setVerification(null);
         if (what === "rotate") setRotateError(msg);
         if (what === "save") setFormError(msg);
         announce(`Not done: ${msg}`);
@@ -68,7 +68,7 @@ function Inner({view, lockedReason, forceTransient, initialVerification}: Integr
             {lockedReason && (
                 <Alert data-testid="locked-banner"><ToneIcon tone="warning"/><AlertTitle>{lockedReason}</AlertTitle><AlertDescription>Existing schedules and notifications keep running. Fix the cause named in the title, then reload this page.</AlertDescription></Alert>
             )}
-            {view.additionalConnections > 0 && <p role="note" className="text-sm text-muted-foreground">{view.additionalConnections} more Arcane connection{view.additionalConnections === 1 ? " exists" : "s exist"} in the database; only the first is shown.</p>}
+            {view.additionalConnections > 0 && <p role="note" className="text-muted-foreground text-sm">{view.additionalConnections} more Arcane connection{view.additionalConnections === 1 ? " exists" : "s exist"} in the database; only the first is shown.</p>}
             {warnings.map((w) => <Alert key={w} role="note"><ToneIcon tone="warning"/><AlertDescription>{w}</AlertDescription></Alert>)}
             {c && !editing ? (
                 <ConnectionCard
@@ -80,7 +80,7 @@ function Inner({view, lockedReason, forceTransient, initialVerification}: Integr
                     rotateError={rotateError} rotateOpen={rotateOpen} setRotateOpen={setRotateOpen} rotatePending={actions.rotate.isPending}
                 />
             ) : (
-                <section aria-labelledby="arcane-heading" className="rounded-xl border bg-card shadow-sm">
+                <section aria-labelledby="arcane-heading" className="bg-card rounded-xl border shadow-sm">
                     {c ? <h2 id="arcane-heading" className="border-b p-6 text-lg font-semibold">Edit Arcane connection</h2> : <SetupPath/>}
                     <ConnectionForm
                         connection={c} keyRef={keyRef} pending={actions.save.isPending} lockedReason={lockedReason} endpointError={formError}
