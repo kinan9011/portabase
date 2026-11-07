@@ -62,7 +62,7 @@ describe("W05 read-only / no-leak structure", () => {
         for (const f of W05) {
             const imports = [...src(f).matchAll(/from "(@\/[^"]+)"/g)].map((m) => m[1]).filter((i) => !i.startsWith("@/fork/"));
             for (const i of imports) // W06 read model: the agents table + the upstream agent-status util (pinned in upstream-contract.test.ts)
-            expect(["@/lib/safe-actions/actions", "@/db/schema/08_agent", "@/features/agents/utils/status/agent-status"], `${f} imports ${i}`).toContain(i);
+            expect(["@/lib/safe-actions/actions", "@/db/schema/08_agent", "@/features/agents/utils/status/agent-status", "@/utils/get-server-url"], `${f} imports ${i}`).toContain(i);
         }
     });
 });

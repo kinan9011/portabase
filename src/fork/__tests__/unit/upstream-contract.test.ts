@@ -22,6 +22,8 @@ describe("upstream contract — symbols the fork imports", () => {
         ["src/lib/logger.ts", "logger"],
         // W05: server actions are built on the upstream safe-action client (signed-in, not pending/banned)
         ["src/lib/safe-actions/actions.ts", "userAction"],
+        // W15: the agent-channel actions need the dashboard base URL (PROJECT_URL) the agents will call
+        ["src/utils/get-server-url.ts", "getServerUrl"],
         ["src/features/layout/components/menu-sidebar.tsx", "SidebarMenuCustomBase"],
         ["src/features/layout/components/menu-sidebar.tsx", "SidebarGroupItem"],
         ["src/components/ui/sidebar.tsx", "SidebarProvider"],
@@ -71,7 +73,7 @@ describe("upstream contract — symbols the fork imports", () => {
 
     it("every non-fork import in src/fork (non-test) is covered by the table above", () => {
         const covered = new Set([
-            "@/lib/auth/current-user", "@/lib/logger", "@/lib/safe-actions/actions", "@/features/layout/components/menu-sidebar", "@/components/ui/sidebar",
+            "@/lib/auth/current-user", "@/lib/logger", "@/lib/safe-actions/actions", "@/utils/get-server-url", "@/features/layout/components/menu-sidebar", "@/components/ui/sidebar",
             "@/db/schema/03_organization", "@/db/schema/04_member", "@/db/schema/06_project", "@/db/schema/07_database",
             "@/db/schema/08_agent", "@/db/schema/14_storage-backup",
             // W10 (src/fork/upstream only — w10-static.test.ts enforces that boundary)
