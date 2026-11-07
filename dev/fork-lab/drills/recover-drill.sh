@@ -24,8 +24,10 @@ KD=(--kit "$OUT/kit.pbkit" --passphrase-file "$OUT/passphrase.txt" "${K[@]}")
 KP=(--paper-file "$OUT/paper-lines.txt" "${K[@]}")
 rc() { rclone --config "$OUT/rclone.conf" "$@"; }
 
-log "== oracle intact before the disaster ==" | tee -a "$REP"
-bash "$LAB/demo-stack/seed.sh" --verify >/dev/null 2>&1 && ok "source stack == expected.json before the drill" || { bad "source stack differs from the oracle before the drill"; exit 1; }
+if [ "${DRILL_ONLY:-}" != tamper ]; then
+  log "== oracle intact before the disaster ==" | tee -a "$REP"
+  bash "$LAB/demo-stack/seed.sh" --verify >/dev/null 2>&1 && ok "source stack == expected.json before the drill" || { bad "source stack differs from the oracle before the drill"; exit 1; }
+fi
 
 log "== read-only: list, plan --deep, verify-kit (timed) ==" | tee -a "$REP"
 t=$(tm); bash "$CLI" list "${KD[@]}" >"$OUT/list.txt" 2>&1; log "list: $(el "$t" "$(tm)") exit=$?" | tee -a "$REP"
@@ -55,16 +57,16 @@ bash "$CLI" plan "${KD[@]}" >"$OUT/neg-forged.txt" 2>&1; r=$?
 [ "$r" = 3 ] && grep -q "NOT valid" "$OUT/neg-forged.txt" && ok "forged manifest (byte flipped, newest sequence) ⇒ exit 3: signature NOT valid" || bad "forged manifest: exit $r ($(tail -2 "$OUT/neg-forged.txt" | tr '\n' ' '))"
 forged=$(rs snapshots --json 2>/dev/null | jq -r '.[] | select(.tags | index("seq:9999")) | .id'); [ -n "$forged" ] && rs forget "$forged" >/dev/null 2>&1; rm -rf "$W"
 bash "$CLI" plan "${KD[@]}" >/dev/null 2>&1 && ok "forged snapshot removed again: plan passes" || bad "plan still failing after removing the forged snapshot"
-# (d) wrong checksum: one stored archive object altered in MinIO (the original is put back afterwards)
-obj=$(rc lsf -R --files-only "$SR/backups" 2>/dev/null | grep -E '\.tar\.gz\.enc$' | head -1)
-if [ -n "$obj" ]; then
-  rc copyto "$SR/backups/$obj" "$OUT/orig.enc" >/dev/null 2>&1; cp "$OUT/orig.enc" "$OUT/flip.enc"; printf '\x55' | dd of="$OUT/flip.enc" bs=1 seek=60 conv=notrunc 2>/dev/null
-  rc copyto "$OUT/flip.enc" "$SR/backups/$obj" >/dev/null 2>&1
+# (d) wrong checksum: EVERY stored archive object gets one byte altered in MinIO (originals saved and put back afterwards)
+mkdir -p "$OUT/orig"; mapfile -t objs < <(rc lsf -R --files-only "$SR/backups" 2>/dev/null | grep -E '\.tar\.gz\.enc$')
+if [ "${#objs[@]}" -gt 0 ]; then
+  i=0; for o in "${objs[@]}"; do i=$((i+1)); rc copyto "$SR/backups/$o" "$OUT/orig/$i" >/dev/null 2>&1; cp "$OUT/orig/$i" "$OUT/flip"; printf '\x55' | dd of="$OUT/flip" bs=1 seek=60 conv=notrunc 2>/dev/null; rc copyto "$OUT/flip" "$SR/backups/$o" >/dev/null 2>&1; done
   bash "$CLI" plan --deep "${KD[@]}" >"$OUT/neg-sum.txt" 2>&1; r=$?
-  [ "$r" = 3 ] && grep -qE "checksum mismatch|failed verification" "$OUT/neg-sum.txt" && ok "altered stored archive ⇒ exit 3 ($(grep -oE 'checksum mismatch|failed verification' "$OUT/neg-sum.txt" | head -1))" || bad "altered archive: exit $r"
-  rc copyto "$OUT/orig.enc" "$SR/backups/$obj" >/dev/null 2>&1; rm -f "$OUT/orig.enc" "$OUT/flip.enc"
-  bash "$CLI" plan --deep "${KD[@]}" >/dev/null 2>&1 && ok "object restored: plan --deep passes again" || bad "plan --deep fails after restoring the object"
+  [ "$r" = 3 ] && grep -qE "checksum mismatch|failed verification" "$OUT/neg-sum.txt" && ok "altered stored archives (${#objs[@]} objects) ⇒ exit 3 ($(grep -oE 'checksum mismatch|failed verification' "$OUT/neg-sum.txt" | head -1))" || bad "altered archives: exit $r"
+  i=0; for o in "${objs[@]}"; do i=$((i+1)); rc copyto "$OUT/orig/$i" "$SR/backups/$o" >/dev/null 2>&1; done; rm -rf "$OUT/orig" "$OUT/flip"
+  bash "$CLI" plan --deep "${KD[@]}" >/dev/null 2>&1 && ok "objects restored: plan --deep passes again" || bad "plan --deep fails after restoring the objects"
 else bad "no stored archive found to alter"; fi
+[ "${DRILL_ONLY:-}" = tamper ] && { log "tamper-only run: fail=$fail" | tee -a "$REP"; exit $fail; }
 
 log "== DISASTER: dashboard DB wiped, agent + Arcane + original stack gone (storage kept) ==" | tee -a "$REP"
 t=$(tm)

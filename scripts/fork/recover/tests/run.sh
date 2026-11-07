@@ -138,6 +138,10 @@ if t full; then
       [ "$got" = "$(jq -r .rows_sha "$D/info.json")" ] && ok "full: -F$fmt restore diff=0 (500 rows hash equals the source)" || bad "full: -F$fmt rows differ"
       cleanup_docker
     done
+    new_case f-sqlite sqlite-engine
+    run restore --yes --root "$D/restore" "${C[@]}"; expect "sqlite engine archive: unpacked and reported honestly (original path not recorded)" 0 'does not record where the file lived'
+    [ "$(sha256sum "$D/restore/databases/ledger/app.db" 2>/dev/null | cut -d' ' -f1)" = "$(jq -r .rows_sha "$D/info.json")" ] && ok "full: sqlite file diff=0 (byte-identical)" || bad "full: sqlite file differs"
+    cleanup_docker
     new_case f-abs abs-bind
     run restore --yes --root "$D/restore" "${C[@]}"; expect "absolute bind into the ORIGINAL path is re-pointed into the restore root (override file), then policy passes" 0 're-pointed absolute bind mounts'
     src="$(docker inspect pbrtest-app-1 --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"

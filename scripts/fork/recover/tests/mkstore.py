@@ -174,10 +174,17 @@ def main():
         real, rows_sha = real_pg("fc"); pg_tgz = tgz([(f"{uuid.uuid4()}.dump", real)])
     if case == "pg-real-fd":
         real, rows_sha = real_pg("fd"); pg_tgz, pg_format = tgz([(f"{gid}.tar.gz", real)]), "pg_directory"
+    db_engine = "postgresql"
+    if case == "sqlite-engine":  # upstream `sqlite` engine archive: the database file at the tar root; the manifest records no original path
+        import sqlite3, tempfile
+        tf = os.path.join(tempfile.mkdtemp(), "app.db"); c = sqlite3.connect(tf); c.execute("create table ledger(id integer primary key, payload text)"); c.executemany("insert into ledger values(?,?)", [(i, hashlib.md5(str(i).encode()).hexdigest()) for i in range(200)]); c.commit(); c.close()
+        dbb = open(tf, "rb").read(); rows_sha = hashlib.sha256(dbb).hexdigest()
+        pg_tgz, pg_format, db_engine = tgz([("app.db", dbb)]), None, "sqlite"
     if case == "fd-poison":  # inner -Fd archive with a traversal member (hostile archive inside a valid outer one)
         pg_tgz, pg_format = tgz([(f"{gid}.tar.gz", tgz([("../evil", b"x")]))]), "pg_directory"
     label = "/srv/pbr app"
     names = {"compose": f"compose: {label}", "bind": f"bind: {label}/data", "volume": "volume: pbrtest_appdata", "db": "db: db"}
+    if case == "sqlite-engine": names["db"] = "db: ledger"
     if case == "manual-role": names["compose"] = f"manual: {label}"
     if case == "inject-dollar": names["bind"] = "bind: /srv/$(touch " + os.path.join(out, "CANARY") + ")"
     if case == "inject-backtick": names["bind"] = "bind: /srv/`touch " + os.path.join(out, "CANARY") + "`"
@@ -204,7 +211,7 @@ def main():
     t = lambda name: case.replace("tampered-", "") == name and case.startswith("tampered-")
     add_archive("compose", compose_tgz, "files", "backups/proj/compose.tar.gz.enc")
     add_archive("volume", vol_tgz, "docker-volume", "backups/proj/volume.tar.gz.enc", tamper="flip" if case == "tampered-archive" else "flip-consistent" if case == "tampered-consistent" else "truncate-consistent" if case == "truncated-consistent" else "bad-plain-hash" if case == "bad-plaintext-hash" else None)
-    add_archive("db", pg_tgz, "postgresql", "backups/proj/db.tar.gz.enc", dump_format="pg_directory" if case == "dump-format-mismatch" else pg_format)
+    add_archive("db", pg_tgz, db_engine, "backups/proj/db.tar.gz.enc", dump_format="pg_directory" if case == "dump-format-mismatch" else pg_format)
     # restic artifact repo (bind path)
     rdir = os.path.join(folder, "restic", gid); os.makedirs(os.path.dirname(rdir), exist_ok=True)
     pwf = os.path.join(out, "pw.restic"); open(pwf, "w").write(hkdf(master, f"portabase/restic/v1/{gid}").hex())
