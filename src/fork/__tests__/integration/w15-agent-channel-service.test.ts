@@ -224,11 +224,14 @@ describe("task round trip + isolation (ADR-007 D1/D3/D4/D7/D8)", () => {
         const again = (await leaseTask(t.db, e, {capabilities: CAPS, leaseSeconds: 60, now: NOW}))!;
         expect(again.task_id).toBe(t1.taskId); expect(again.lease_id).not.toBe(l1.lease_id);
         expect(await heartbeatTask(t.db, e, {taskId: t1.taskId, leaseId: l1.lease_id, leaseSeconds: 60, now: NOW})).toMatchObject({ok: false, status: 409}); // stale lease id
-        // past not_after nothing starts: both expire and their payload is purged
+        // past not_after nothing NEW starts (W17-i G9: `not_after` limits STARTING): the never-started t2 expires and its payload is purged, but t1, which the agent
+        // already accepted (attempts ≥ 1), is handed out again so the agent can re-report its stored outcome instead of the result being lost to an expiry
         NOW = new Date(NOW.getTime() + 11 * 60_000);
-        expect(await leaseTask(t.db, e, {capabilities: CAPS, leaseSeconds: 60, now: NOW})).toBeNull();
+        const resumed = (await leaseTask(t.db, e, {capabilities: CAPS, leaseSeconds: 60, now: NOW}))!;
+        expect(resumed.task_id).toBe(t1.taskId);
         const rows = await q("select status, payload_enc from fork_agent_task where agent_id=$1 order by seq", [agentId]);
-        expect(rows.map((r) => r.status)).toEqual(["expired", "expired"]); expect(rows.every((r) => r.payload_enc === null)).toBe(true);
+        expect(rows.map((r) => r.status)).toEqual(["leased", "expired"]); expect(rows[0].payload_enc).not.toBeNull(); expect(rows[1].payload_enc).toBeNull();
+        expect(await submitResult(t.db, e, {taskId: t1.taskId, body: {lease_id: resumed.lease_id, status: "succeeded", result: {}}, organizationId: org, now: NOW})).toMatchObject({ok: true});
         // attempts are bounded: a task whose lease is lost 5 times fails
         const t3 = await enqueueTask(deps(admin, "admin", {now: () => NOW}), {agentId, type: "noop", payload: {echo: "t3"}}) as {taskId: string; seq: number};
         expect(t3.seq).toBe(3);

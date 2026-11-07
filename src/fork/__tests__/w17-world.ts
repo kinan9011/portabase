@@ -20,7 +20,7 @@ export type W17 = World & {key: ReturnType<typeof testKeypair>; manifestJson: st
 
 export const deps = (t: W04Db, kek: string, key: ReturnType<typeof testKeypair>, userId: string | null, p: {role?: string; memberships?: [string, string][]; now?: () => Date; over?: Partial<ChannelDeps>} = {}): ChannelDeps => ({
     db: t.db, principal: userId ? {userId, systemRole: p.role ?? null, memberships: (p.memberships ?? []).map(([organizationId, role]) => ({organizationId, role}))} : null,
-    kekDir: kek, now: p.now ?? (() => new Date()), serverUrl: () => "https://dash.example.test", env: () => ENV,
+    kekDir: kek || undefined, now: p.now ?? (() => new Date()), serverUrl: () => "https://dash.example.test", env: () => ENV,
     keys: {master: async () => Buffer.alloc(32), signing: async () => ({privateKeyPem: key.privateKey, publicKeyPem: key.publicKey})}, configAllowed: async () => true, ...p.over});
 
 export async function adminUser(pool: Pool): Promise<string> {
@@ -31,12 +31,15 @@ export async function adminUser(pool: Pool): Promise<string> {
 }
 export const newKek = () => mkdtempSync(path.join(tmpdir(), "w17-kek-"));
 
-export async function seedW17World(t: W04Db, kek: string, key: ReturnType<typeof testKeypair>, admin: string, o: {org: string; hostRole?: "production" | "test"; extraManifestArtifacts?: number; caps?: string[]}): Promise<W17> {
+export async function seedW17World(t: W04Db, kek: string, key: ReturnType<typeof testKeypair>, admin: string, o: {org: string; hostRole?: "production" | "test"; extraManifestArtifacts?: number; caps?: string[]; roots?: string[];
+    /** live lab: replace the fake artifact hashes with the real plaintext hashes of the served objects (keys = member names of seedWorld) */
+    plain?: Record<string, {sha: string; size: number; dump?: "pg_custom"}>; enrolDeps?: Partial<ChannelDeps>}): Promise<W17> {
     const pool = t.pool;
-    const w = await seedWorld(pool, {org: o.org, hostRole: o.hostRole ?? "test", caps: o.caps});
+    const w = await seedWorld(pool, {org: o.org, hostRole: o.hostRole ?? "test", caps: o.caps, roots: o.roots});
+    for (const [name, p] of Object.entries(o.plain ?? {})) await pool.query("update fork_recovery_point_artifact set plaintext_sha256=$3, plaintext_size=$4, dump_format=$5, path_or_snapshot_id=$6, generated_id=$6 where rp_id=$1 and source_name=$2", [w.rp, name, p.sha, p.size, p.dump ?? null, `lab/${name}`]);
     // real enrolment (task key + credential) instead of the stub row of seedWorld
     await pool.query("delete from fork_agent_enrollment where agent_id=$1", [w.agent]);
-    const r = await enrolAgent(deps(t, kek, key, admin, {role: "admin"}), {agentId: w.agent, password: PASSWORD});
+    const r = await enrolAgent({...deps(t, kek, key, admin, {role: "admin"}), ...o.enrolDeps}, {agentId: w.agent, password: PASSWORD});
     if (!r.ok) throw new Error(`enrol: ${r.code}`);
     await pool.query("update fork_agent_enrollment set capabilities=$2 where agent_id=$1", [w.agent, o.caps ?? ["channel.v1", "noop.v1", "restore.target.v1"]]);
     // real signed manifest over the seeded RP + artifacts
