@@ -336,17 +336,18 @@ def _outside(root, base_dir, target):
 
 
 def _targets(node, key):
+    """String targets of `key` (string | list of strings/{path}); non-string values are returned as-is so _outside() can refuse them."""
     v = node.get(key)
     if v is None:
         return []
     items = v if isinstance(v, list) else [v]
     out = []
     for it in items:
-        if isinstance(it, str):
-            out.append(it)
-        elif isinstance(it, dict):
+        if isinstance(it, dict):
             p = it.get("path")
             out.extend(p if isinstance(p, list) else [p] if p is not None else [])
+        else:
+            out.append(it)
     return out
 
 
@@ -375,42 +376,93 @@ def _strict_loader(yaml):
     return Strict
 
 
+MAX_DEPTH = 8
+MAX_FILES = 64
+
+
+def _load_one(yaml, path):
+    raw = read_small(path, MAX_YAML)
+    if raw.count(b"*") > MAX_ALIASES * 20 and len(re.findall(rb"(?m)[:\-]\s+\*[A-Za-z0-9_-]+", raw)) > MAX_ALIASES:
+        raise Fail("compose file has too many YAML aliases")
+    try:
+        docs = list(yaml.load_all(raw.decode("utf-8", "strict"), Loader=_strict_loader(yaml)))  # noqa: S506 (SafeLoader subclass)
+    except (yaml.YAMLError, UnicodeDecodeError):
+        raise Fail("compose file is not valid YAML (refused, fail closed)")
+    if len(docs) != 1 or not isinstance(docs[0], dict):
+        raise Fail("compose file must be exactly one YAML mapping")
+    return docs[0]
+
+
 def compose_scan(root, files):
+    """Raw read-scope scan (rule file v2 raw_read_scope; semantics = vault ADR-015 D-3). Every env_file / include / extends.file / label_file /
+    secrets.*.file / configs.*.file target must stay inside root; included and extended files INSIDE the root are scanned recursively
+    (depth <= MAX_DEPTH, <= MAX_FILES files). `$`/`~` targets and include.project_directory are refused (fail closed)."""
     try:
         import yaml
     except ImportError:
         raise SystemExit(_missing_yaml())
-    violations = []
-    for f in files:
-        raw = read_small(f, MAX_YAML)
-        if raw.count(b"*") > MAX_ALIASES * 20 and len(re.findall(rb"(?m)[:\-]\s+\*[A-Za-z0-9_-]+", raw)) > MAX_ALIASES:
-            raise Fail("compose file has too many YAML aliases")
-        try:
-            docs = list(yaml.load_all(raw.decode("utf-8", "strict"), Loader=_strict_loader(yaml)))  # noqa: S506 (SafeLoader subclass)
-        except (yaml.YAMLError, UnicodeDecodeError):
-            raise Fail("compose file is not valid YAML (refused, fail closed)")
-        if len(docs) != 1 or not isinstance(docs[0], dict):
-            raise Fail("compose file must be exactly one YAML mapping")
-        doc, base = docs[0], os.path.dirname(os.path.abspath(f))
-        for t in _targets(doc, "include"):
-            if _outside(root, base, t):
-                violations.append({"kind": "include", "service": None, "target": t})
+    violations = set()
+    visited = set()
+    queue = [(os.path.normpath(os.path.abspath(f)), 0) for f in files]
+    root_n = os.path.normpath(root)
+
+    def add(kind, service, target):
+        violations.add((kind, service or "", target if isinstance(target, str) else repr(target)))
+
+    def follow(base, depth, target, kind, service):
+        """target of an include / extends.file: refused when outside, queued when inside (missing files are a violation)."""
+        if _outside(root_n, base, target):
+            add(kind, service, target)
+            return
+        full = os.path.normpath(os.path.join(base, target))
+        if depth + 1 > MAX_DEPTH:
+            raise Fail("compose include/extends chain is too deep")
+        queue.append((full, depth + 1))
+
+    while queue:
+        path, depth = queue.pop(0)
+        if path in visited:
+            continue
+        if len(visited) >= MAX_FILES:
+            raise Fail("compose file set is too large")
+        visited.add(path)
+        if not os.path.isfile(path):
+            add("missing", None, path)
+            continue
+        doc, base = _load_one(yaml, path), os.path.dirname(path)
+        inc = doc.get("include")
+        for it in (inc if isinstance(inc, list) else [inc] if inc is not None else []):
+            if isinstance(it, dict):
+                p = it.get("path")
+                for t in (p if isinstance(p, list) else [p] if p is not None else []):
+                    follow(base, depth, t, "include", None)
+                ef = it.get("env_file")
+                for t in (ef if isinstance(ef, list) else [ef] if ef is not None else []):
+                    if _outside(root_n, base, t):
+                        add("include_env_file", None, t)
+                if it.get("project_directory") is not None:  # the base-directory change is not modelled: fail closed
+                    add("include_project_directory", None, it["project_directory"])
+            else:
+                follow(base, depth, it, "include", None)
         for sec in ("secrets", "configs"):
             for name, spec in (doc.get(sec) or {}).items() if isinstance(doc.get(sec), dict) else []:
-                if isinstance(spec, dict) and "file" in spec and _outside(root, base, spec["file"]):
-                    violations.append({"kind": f"{sec[:-1]}_file", "service": str(name), "target": spec["file"]})
+                if isinstance(spec, dict) and "file" in spec and _outside(root_n, base, spec["file"]):
+                    add(f"{sec[:-1]}_file", str(name), spec["file"])
         for svc, spec in (doc.get("services") or {}).items() if isinstance(doc.get("services"), dict) else []:
             if not isinstance(spec, dict):
                 continue
             for t in _targets(spec, "env_file"):
-                if _outside(root, base, t):
-                    violations.append({"kind": "env_file", "service": str(svc), "target": t})
+                if _outside(root_n, base, t):
+                    add("env_file", str(svc), t)
+            lf = spec.get("label_file")
+            for t in (lf if isinstance(lf, list) else [lf] if lf is not None else []):
+                if _outside(root_n, base, t):
+                    add("label_file", str(svc), t)
             ext = spec.get("extends")
-            if isinstance(ext, dict) and ext.get("file") is not None and _outside(root, base, ext["file"]):
-                violations.append({"kind": "extends", "service": str(svc), "target": ext["file"]})
-            elif isinstance(ext, dict) and "service" in ext and "file" not in ext:
-                pass  # same-file extends: nothing outside is read
-    return violations
+            if isinstance(ext, dict) and ext.get("file") is not None:
+                follow(base, depth, ext["file"], "extends", str(svc))
+            # same-file extends (service only, no file): nothing outside is read
+    return [{"kind": k, "service": (sv or None), "target": t} for k, sv, t in sorted(violations)]
 
 
 def _missing_yaml():

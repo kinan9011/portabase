@@ -513,27 +513,63 @@ find_rules() {
   elif [ -f "$HERE/compose-deny.json" ]; then DENY="$HERE/compose-deny.json"
   elif [ -f "$HERE/../../../src/fork/policy/compose-deny.json" ]; then DENY="$HERE/../../../src/fork/policy/compose-deny.json"
   else die 5 "compose deny-list rules (compose-deny.json) not found next to this script"; fi
-  jq -e '.version==1 and (.rules|length>0)' "$DENY" >/dev/null || die 5 "compose deny-list rule file is invalid"
+  jq -e '.version==2 and (.rules|length>0) and (.hard_refusals|length>0)' "$DENY" >/dev/null || die 5 "compose deny-list rule file is invalid"
 }
 
-# evaluate the MERGED compose config (JSON on stdin) against the shared rules; prints findings as JSON lines {service,rule,detail}
+# evaluate the MERGED compose config (JSON on stdin) against the shared rules (rule file v2, W20a; normative semantics: vault ADR-015, oracle:
+# src/fork/policy/compose-policy-vectors.json). Prints findings as JSON lines {service,rule,detail}; `rule` is a rules[] id (overridable) or a
+# hard_refusals[] id (never overridable); service may be null. A jq error (odd types) makes the caller refuse.
 evaluate_deny() {
   jq -c --slurpfile r "$DENY" --arg root "$RESTORE_ROOT" '
-    ($r[0]) as $R
-    | (.services // {}) | to_entries[] | .key as $svc | .value as $s
-    | (
-        (if $s.privileged == true then {rule:"privileged", detail:"privileged: true"} else empty end),
-        (if ($s.network_mode // "") == "host" then {rule:"network_mode_host", detail:"network_mode: host"} else empty end),
-        (if ($s.pid // "") == "host" then {rule:"pid_host", detail:"pid: host"} else empty end),
-        (if ($s.ipc // "") == "host" then {rule:"ipc_host", detail:"ipc: host"} else empty end),
-        (if (($s.devices // []) | length) > 0 then {rule:"devices", detail:"devices"} else empty end),
-        (($s.cap_add // [])[] | ascii_upcase | sub("^CAP_";"") | select(. as $c | ($R.cap_add_allowlist | index($c)) == null) | {rule:"cap_add", detail:("cap_add: " + .)}),
-        (($s.volumes // [])[] | select(.type == "bind") | .source as $p
-            | (if (($R.docker_socket_paths | index($p)) != null) or ($p | endswith("/" + $R.docker_socket_basename)) then {rule:"docker_sock", detail:("volumes: " + $p)} else empty end),
-              (if ($p == $root or ($p | startswith($root + "/"))) then empty else {rule:"bind_outside_root", detail:("volumes: " + $p)} end))
-      ) | {service:$svc, rule:.rule, detail:.detail}'
+    ($r[0]) as $R | [$root] as $roots | . as $doc
+    | def canon: type == "string" and startswith("/") and length <= 1024 and (test("[\u0000-\u001f\u007f$]") | not)
+          and (test("(^|/)\\.\\.?(/|$)") | not) and (test("//") | not) and ((length > 1 and endswith("/")) | not);
+      def under($p): any($roots[]; . as $q | $p == $q or ($p | startswith($q + "/")));
+      def sock($p): ($p | endswith("/" + $R.docker_socket_basename)) or $p == "/" or any($R.docker_socket_paths[]; . == $p or startswith($p + "/"));
+      def truthy: . != null and . != false;
+      def f($s; $id; $d): {service: $s, rule: $id, detail: ($d | tostring | gsub("[^A-Za-z0-9_./:=-]"; "?") | .[0:128])};
+      def hostpath($s; $p; $w): if ($p | canon | not) then f($s; "path_ambiguous"; $w)
+          else (if sock($p) then f($s; "docker_sock"; $w + ": " + $p) else empty end), (if under($p) then empty else f($s; "bind_outside_root"; $w + ": " + $p) end) end;
+      def readpath($s; $p; $w): if ($p | canon | not) then f($s; "path_ambiguous"; $w) elif under($p) then empty else f($s; "read_outside_root"; $w + ": " + $p) end;
+      def ns($s; $k; $v; $hostrule): if $v == null then empty elif $v == "host" then f($s; $hostrule; $k + ": host")
+          elif ($v | type) == "string" and ($v | startswith("service:")) and ($doc.services | has($v[8:])) then empty
+          elif ($v | type) == "string" and ($R.namespace_values_ok | index($v)) != null then empty else f($s; "shared_namespace"; $k) end;
+      if ($doc | type) != "object" or (($doc.services // null) | type) != "object" then f(null; "shape_invalid"; "services") else
+        ( $doc | keys[] | select((startswith("x-") or (. as $k | $R.top_level_keys | index($k)) != null) | not) | f(null; "top_level_unknown"; .) ),
+        ( (($doc.secrets // {}), ($doc.configs // {})) | to_entries[] | select((.value | type) == "object" and .value.file != null) | readpath(null; .value.file; "file") ),
+        ( $doc.services | to_entries[] | .key as $svc | .value as $s
+          | if ($svc | test("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$") | not) then f(null; "service_name"; "service")
+            elif ($s | type) != "object" then f($svc; "shape_invalid"; "service") else
+              ( $s | keys[] | select((startswith("x-") or (. as $k | $R.service_keys_known | index($k)) != null) | not) | f($svc; "unknown_directive"; .) ),
+              ( if ($s.privileged | truthy) then f($svc; "privileged"; "privileged") else empty end ),
+              ( if ($s.use_api_socket | truthy) then f($svc; "docker_sock"; "use_api_socket") else empty end ),
+              ns($svc; "network_mode"; $s.network_mode; "network_mode_host"), ns($svc; "pid"; $s.pid; "pid_host"), ns($svc; "ipc"; $s.ipc; "ipc_host"),
+              ( if (($s.devices // []) | length) > 0 then f($svc; "devices"; "devices") else empty end ),
+              ( if (($s.deploy.resources.reservations.devices // []) | length) > 0 then f($svc; "devices"; "deploy devices") else empty end ),
+              ( ($s.cap_add // [])[] | if type != "string" then f($svc; "shape_invalid"; "cap_add") else (ascii_upcase | sub("^CAP_"; "")) as $c
+                  | if ($R.cap_add_allowlist | index($c)) != null then empty else f($svc; "cap_add"; "cap_add: " + $c) end end ),
+              ( if $s.security_opt == null then empty elif ($s.security_opt | type) == "array" and all($s.security_opt[]; type == "string" and (. as $o | $R.security_opt_ok | index($o)) != null) then empty else f($svc; "unknown_directive"; "security_opt") end ),
+              ( if $s.env_file == null then empty else ($s.env_file | if type == "array" then .[] else . end | if type == "object" then .path else . end) as $p | readpath($svc; $p; "env_file") end ),
+              ( ($s.networks // {}) | (if type == "array" then .[] else keys[] end) as $n | ($doc.networks // {})[$n] as $nd
+                  | if $nd == null then f($svc; "shape_invalid"; "network")
+                    elif ($nd.name // "") == "host" or ($nd.driver // "") == "host" then f($svc; "network_mode_host"; "networks: " + $n)
+                    elif ($R.network_drivers_ok | index($nd.driver // "bridge")) != null then empty else f($svc; "unknown_directive"; "network driver") end ),
+              ( ($s.volumes // [])[] as $m
+                  | if ($m | type) != "object" then f($svc; "shape_invalid"; "volumes")
+                    elif $m.type == "bind" then hostpath($svc; $m.source; "volumes")
+                    elif $m.type == "volume" then
+                      ( if ($m.source // "") == "" then empty else ($doc.volumes // {})[$m.source] as $def
+                        | if $def == null then f($svc; "shape_invalid"; "volume")
+                          elif ($def.driver // "local") != "local" then f($svc; "unknown_directive"; "volume driver")
+                          elif $def.driver_opts == null then empty
+                          elif $def.driver_opts.type == "tmpfs" then empty
+                          elif ($def.driver_opts.device | type) == "string" and ($def.driver_opts.device | startswith("/")) then hostpath($svc; $def.driver_opts.device; "volume device")
+                          else f($svc; "unknown_directive"; "volume driver_opts") end end )
+                    elif $m.type == "tmpfs" then empty else f($svc; "unknown_directive"; "volume type") end )
+            end )
+      end'
 }
-plain_of() { jq -r --arg id "$1" '.rules[] | select(.id==$id) | .plain' "$DENY"; }
+plain_of() { jq -r --arg id "$1" '(.rules[], .hard_refusals[]) | select(.id==$id) | .plain' "$DENY"; }
 
 restore_compose_policy() {
   step "$S_POLICY"
@@ -552,16 +588,22 @@ restore_compose_policy() {
   dc config --format json >"$W/compose.json" 2>"$W/compose.err" || die 4 "docker compose could not render the restored project: $(head -c 300 "$W/compose.err" | tr '\n' ' ')"
   local svc; while IFS= read -r svc; do [[ $svc =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]] || die 4 "a service name in the Compose file has unexpected characters"; done < <(jq -r '.services|keys[]' "$W/compose.json")
   remap_binds
-  local findings; findings="$(evaluate_deny <"$W/compose.json")"
+  local findings; findings="$(evaluate_deny <"$W/compose.json")" || die 4 "the rendered Compose file could not be checked; refusing (not overridable)"
   if [ -n "$findings" ]; then
-    local ok=1 f s rule detail plain
+    local ok=1 f s rule detail plain hard_hit=0 h is_hard
     local -A seen=()
-    while IFS= read -r f; do
-      s="$(jq -r .service <<<"$f")"; rule="$(jq -r .rule <<<"$f")"; detail="$(jq -r .detail <<<"$f")"; plain="$(plain_of "$rule")"
+    local -a hard_ids svcs=(); mapfile -t hard_ids < <(jq -r '.hard_refusals[].id' "$DENY")
+    while IFS= read -r f; do  # pass 1: show everything; a hard refusal ends the run BEFORE any override question is asked
+      s="$(jq -r '.service // "-"' <<<"$f")"; rule="$(jq -r .rule <<<"$f")"; detail="$(jq -r .detail <<<"$f")"; plain="$(plain_of "$rule")"
       printf '   RISK: service "%s" %s (%s)\n' "$s" "$plain" "$detail" >&2
+      is_hard=0; for h in "${hard_ids[@]}"; do [ "$h" = "$rule" ] && is_hard=1; done
+      if [ "$is_hard" = 1 ]; then hard_hit=1; else svcs+=("$s"); fi
+    done <<<"$findings"
+    [ "$hard_hit" = 0 ] || die 4 "the Compose file uses settings Portabase cannot accept at all (not overridable)"
+    for s in "${svcs[@]}"; do  # pass 2: per-service override (typed ALLOW <svc> or --allow-privileged=<svc>)
       [ -n "${seen[$s]:-}" ] && continue
       if allowed "$s"; then seen[$s]=1; note "service $s: risky settings allowed by you"; else ok=0; seen[$s]=0; fi
-    done <<<"$findings"
+    done
     if [ "$ok" != 1 ]; then die 4 "the Compose file asks for powers a recovery should not grant. Refusing. To allow ONE service anyway: --allow-privileged=<service> (only if you trust it)"; fi
   fi
   note "Compose files restored from recovery point sequence $SEQ (sha256 $(cat -- "${COMPOSE_FILES[@]}" | sha256sum | cut -c1-16)); the manifest records no later compose hash"
@@ -680,4 +722,4 @@ main() {
     restore) cmd_restore;;
   esac
 }
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi

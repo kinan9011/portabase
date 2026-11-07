@@ -102,12 +102,12 @@ if t compose; then
   run restore --yes --root "$D/full" "${C[@]}"; expect "restore refuses a non-empty restore folder" 1 'not empty'
   run restore --yes --root / "${C[@]}"; expect "restore refuses '/' as root" 2 'too broad'
   mkdir -p "$D/kitdir"; cp "$D/kit.pbkit" "$D/kitdir/"; run restore --yes --root "$D/kitdir" --kit "$D/kitdir/kit.pbkit" --passphrase-file "$D/pass.txt" --rclone-config "$D/rclone.conf" --storage-root "local:$S"; expect "restore refuses a root that is not empty (kit inside)" 1 'not empty'
-  for n in privileged host-net pid-host ipc-host devices cap-add docker-sock bind-outside; do
+  for n in privileged host-net pid-host ipc-host devices cap-add docker-sock bind-outside vol-driver-bind net-host-external api-socket unknown-key; do
     new_case "c-$n" "$n" || continue
     run restore --yes --root "$D/restore" "${C[@]}"; expect "deny list: $n refused by default (exit 4)" 4 'RISK|risky|asks for powers'
     if [ "$docker_ok" = 1 ]; then docker volume inspect pbrtest_appdata >/dev/null 2>&1 && bad "$n: a volume was created before the policy check" || ok "$n: no docker volume created before the policy check"; fi
   done
-  for n in env-file-outside include-outside extends-outside secret-file-outside dup-key env-file-var; do
+  for n in env-file-outside include-outside extends-outside secret-file-outside dup-key env-file-var include-inside-env-outside label-file-outside; do
     new_case "c-$n" "$n" || continue
     run restore --yes --root "$D/restore" "${C[@]}"; expect "read-scope: $n refused on the RAW yaml before rendering (exit 4)" 4 'before it is rendered'
   done
