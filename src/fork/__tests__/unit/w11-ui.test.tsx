@@ -13,10 +13,11 @@ vi.mock("next/navigation", () => ({useRouter: () => ({refresh}), notFound: () =>
 const activateAction = vi.fn();
 const previewAction = vi.fn();
 vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: vi.fn(), cancelStackRunAction: vi.fn()}));
+vi.mock("@/fork/actions/stack-schedule.action", () => ({updateStackScheduleAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-policy.action", () => ({activateStackPolicyAction: (...a: unknown[]) => activateAction(...a), previewStackPolicyAction: (...a: unknown[]) => previewAction(...a)}));
 
 import {ConfigureForm} from "@/fork/ui/stacks/wizard/configure-form.client";
-import {ScheduleTab} from "@/fork/ui/stacks/schedule-tab";
+import {ScheduleTab} from "@/fork/ui/stacks/schedule/schedule-tab";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 import type {ConfigureView} from "@/fork/stack-policy/configure-view";
 

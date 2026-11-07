@@ -1,9 +1,9 @@
 import {describe, expect, it} from "vitest";
-import {evaluateConditions, nextEpisode} from "@/fork/notifications/conditions";
+import {evaluateConditions, nextEpisode, type ConditionInputs} from "@/fork/notifications/conditions";
 import {backoffMs, BACKOFF_MINUTES} from "@/fork/notifications/vocab";
 
-const base = {primary: "awaiting_first_backup" as const, hoursSinceVerified: null, hoursSinceActivation: 1, staleAfterHours: 36, minHours: 12};
-const get = (o: Partial<typeof base>, kind: string) => evaluateConditions({...base, ...o}).find((c) => c.kind === kind)!;
+const base: ConditionInputs = {primary: "awaiting_first_backup", hoursSinceVerified: null, hoursSinceActivation: 1, staleAfterHours: 36, minHours: 12};
+const get = (o: Partial<ConditionInputs>, kind: string) => evaluateConditions({...base, ...o}).find((c) => c.kind === kind)!;
 
 describe("alert conditions (§4.7, D43)", () => {
     it("drift to Partial: only the primary state Partial", () => {

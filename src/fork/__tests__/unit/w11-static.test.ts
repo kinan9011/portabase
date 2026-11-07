@@ -22,7 +22,7 @@ const UPSTREAM_IMPORT = /from\s+["']@\/(db\/schema\/(0\d|1\d)_|features\/|lib\/(
 
 describe("W11 structure", () => {
     it("finds the files", () => {
-        expect(POLICY.map((f) => path.basename(f)).sort()).toEqual(["activate.ts", "channels.ts", "configure-view.ts", "input.ts", "policy-schema.ts", "policy-view.ts", "preview-service.ts", "preview.ts", "size-estimate.ts", "validate-selection.ts"]);
+        expect(POLICY.map((f) => path.basename(f)).sort()).toEqual(["activate.ts", "channels.ts", "configure-view.ts", "input.ts", "policy-schema.ts", "policy-view.ts", "preview-service.ts", "preview.ts", "size-estimate.ts", "update-schedule.ts", "validate-selection.ts"]);
         expect(SCHEDULE.map((f) => path.basename(f)).sort()).toEqual(["cron-expr.ts", "schedule.ts"]);
         expect(WIZARD.map((f) => path.basename(f)).sort()).toEqual(["configure-form.client.tsx", "consistency-section.tsx", "model.ts", "outcome.ts", "resources-section.tsx", "review-section.tsx"]);
     });
@@ -59,7 +59,7 @@ describe("W11 structure", () => {
     });
 
     it("no hard-coded colours, no title=/tooltips in the new UI; copy comes from labels.ts (no sentence-length literal in components)", () => {
-        for (const f of [...WIZARD, ...COPIES, path.join(ROOT, "src/fork/ui/stacks/schedule-tab.tsx"), PAGE]) {
+        for (const f of [...WIZARD, ...COPIES, path.join(ROOT, "src/fork/ui/stacks/schedule/schedule-tab.tsx"), PAGE]) {
             const c = code(f);
             expect(c, f).not.toMatch(/#[0-9a-fA-F]{6}\b|\brgb\(|\bhsl\(|\boklch\(/);
             expect(c, f).not.toMatch(/<(?:div|span|a|button|section|li|p|abbr|td|th|input|select)\b[^>]*\btitle=|Tooltip|data-tooltip|onMouseEnter/);

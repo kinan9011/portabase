@@ -12,10 +12,10 @@ import {loadStackDetail} from "@/fork/stacks/queries";
 import {STACKS_EMPTY, STACKS_PAGE} from "@/fork/ui/labels";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
 import {StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";
-import {parseTab} from "@/fork/ui/stacks/tabs";
+import {parseRp, parseTab} from "@/fork/ui/stacks/tabs";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 
-// Stack Details (W08 + W09): header + Overview + Resources + Configuration. Resource-scoped authorisation (SEC-12) BEFORE anything is read.
+// Stack Details (W08 + W09 + W13): header + Overview + Resources + Configuration + Backups + Schedule + Activity. Resource-scoped authorisation (SEC-12) BEFORE anything is read.
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {title: STACKS_PAGE.title};
 
@@ -36,9 +36,10 @@ export default async function StackDetailsPage(props: {params: Promise<{stackId:
         throw e;
     }
 
+    const search = await props.searchParams;
     let detail: StackDetail | null;
     try {
-        detail = await loadStackDetail(db, organizationId, stackId, {configLocked: mode.mode === "locked"});
+        detail = await loadStackDetail(db, organizationId, stackId, {configLocked: mode.mode === "locked", rp: parseRp(search.rp)});
     } catch {
         return <Page><PageContent><StateNotice testId="load-error" tone="danger" alert title={STACKS_EMPTY.loadError.title} body={STACKS_EMPTY.loadError.body}/></PageContent></Page>;
     }
@@ -51,7 +52,7 @@ export default async function StackDetailsPage(props: {params: Promise<{stackId:
             <PageContent>
                 <StatusAnnouncer>
                     {locked && <p role="note" data-testid="locked-note" className="mb-4 rounded-lg border p-3 text-sm">{STACKS_EMPTY.locked}</p>}
-                    <StackDetailsClient detail={detail} initialTab={parseTab((await props.searchParams).tab)} canConfigure={forkCan(actor, "stacks.backup.manage")} configLocked={locked !== null} canRun={forkCan(actor, "backup.run")}/>
+                    <StackDetailsClient detail={detail} initialTab={parseTab(search.tab)} canConfigure={forkCan(actor, "stacks.backup.manage")} configLocked={locked !== null} canRun={forkCan(actor, "backup.run")}/>
                 </StatusAnnouncer>
             </PageContent>
         </Page>

@@ -725,7 +725,7 @@ export const SCHEDULE_TAB = {
     retention: (r: {keep_last: number; daily: number; weekly: number; monthly: number; yearly: number}) =>
         `newest ${r.keep_last}, then ${r.daily} daily, ${r.weekly} weekly, ${r.monthly} monthly, ${r.yearly} yearly`,
     local: "lives on the dashboard host",
-    note: "This tab shows the configured policy and the latest run. The full run history arrives in a later step of this release.",
+    note: "Times are shown in the schedule's timezone. Run history is in the Activity tab, recovery points in the Backups tab.",
 } as const;
 
 /** W12: runs, plain words. Nothing here promises more than the data says: a finished backup is "backed up, verifying", never "verified" (D43). */
@@ -846,4 +846,145 @@ export const NOTIFY = {
     } as Record<string, string>,
     noGoodBackupHours: (h: number) => `No verified backup for ${h} h.`,
     noChannelNote: {title: "Alerts are not delivered", body: "No notification channel is set as the default in the instance settings, so backup alerts are recorded but not sent."},
+} as const;
+
+// ================================================================================================================
+// W13 — Backups / Activity tabs, the "Am I safe?" strip and the schedule editor. Honest by construction: a recovery point that is only
+// "Backed up · verifying" is never called verified or protected; verification, restore and mirrors are visibly not available yet.
+// ================================================================================================================
+export const BACKUPS = {
+    tab: "Backups",
+    heading: "Recovery points",
+    none: {title: "No recovery points yet", body: "A recovery point is created when a backup run finishes. Start one with Back up now, or wait for the schedule."},
+    count: (shown: number, total: number) => (shown < total ? `Showing the newest ${shown} of ${total} recovery points.` : `${total} recovery point${total === 1 ? "" : "s"}.`),
+    runNow: "Back up now",
+    verify: {label: "Verify", reason: "Verification arrives with the verify job in a later step of this release. Until then a finished backup stays \"Backed up · verifying\"."},
+    restore: {label: "Restore", reason: "Restoring from the dashboard is planned for release R2."},
+    mirror: {label: "Create test mirror", reason: "Test mirrors are not part of this release."},
+    columns: {id: "Recovery point", time: "Created", consistency: "Consistency", destinations: "Stored in", size: "Size", duration: "Took", verification: "Verification", status: "Status"},
+    consistency: {
+        crash_consistent_files: "Files copied while running", engine_dump: "Database saved safely", mixed: "Database dump plus files copied while running", unknown: "Not recorded",
+    } as const,
+    verification: {
+        verified: (when: string) => `Verified ${when}`,
+        pending_verification: "Not verified yet — waiting for the verify job",
+        incomplete: "Not verifiable: incomplete",
+        failed: "Not verified: the backup failed",
+    },
+    reasons: {
+        fk_null: "A backup file is no longer linked.", artifact_missing: "A backup file is missing.", count_mismatch: "Fewer backup files exist than were required.",
+        retention_partial: "Cleaning up old backups did not finish; some files remain.", stack_removed: "The stack was removed.", verify_failed: "Verification failed.",
+        plaintext_hash_mismatch: "The verification checksum did not match.", validator_blocked: "Some required resources were not covered.",
+        member_failed: "At least one part of the stack could not be backed up.", member_timeout: "An agent did not start or finish a backup in time.",
+        unencrypted: "A backup file is not encrypted.", checksum_unavailable: "A backup checksum could not be computed.", run_cancelled: "The run was cancelled.",
+        run_not_started: "No part of the stack could be started.", run_error: "The run stopped because of an internal error.",
+    } as const,
+    trigger: {manual: "Started by an administrator", schedule: "Started by the schedule"},
+    detail: {
+        heading: (n: number) => `Recovery point #${n}`,
+        close: "Close details",
+        open: "Show details",
+        coverage: "Coverage",
+        coverageValue: (present: number, required: number) => `${present} of ${required} required backup file${required === 1 ? "" : "s"} present`,
+        inventory: "Inventory version",
+        warnings: "Warnings",
+        noWarnings: "No warnings.",
+        artifacts: "Backup files",
+        noArtifacts: "No backup file was recorded for this recovery point.",
+        artifactColumns: {source: "Source", kind: "Kind", stored: "Stored in", size: "Size", encrypted: "Encrypted", checksum: "Checksum", presence: "Present"},
+        kind: {archive_enc: "Encrypted archive", archive_plain: "Plain archive", restic_snapshot: "Repository snapshot"} as const,
+        presence: {present: "Yes", missing: "Missing", unknown: "Not confirmed"} as const,
+        yes: "Yes", no: "No",
+        checksumNone: "Not recorded (a repository snapshot is identified by its snapshot id)",
+        integrity: "Integrity checks",
+        integrityRows: {
+            encrypted: (all: boolean) => (all ? "Every backup file is encrypted." : "At least one backup file is not encrypted."),
+            checksum: (n: number, of: number) => `${n} of ${of} archive file${of === 1 ? "" : "s"} have a recorded checksum.`,
+            presence: (n: number, of: number) => `${n} of ${of} backup file${of === 1 ? "" : "s"} confirmed present.`,
+            signature: "Signed manifest and restore verification: not available yet (arrives with the verify job).",
+        },
+        removedChannel: "Removed storage channel",
+    },
+} as const;
+
+export const ACTIVITY = {
+    tab: "Activity",
+    heading: "Backup activity",
+    none: {title: "No backup activity yet", body: "Runs appear here with their stages once the first backup starts."},
+    count: (shown: number, total: number) => (shown < total ? `Showing the newest ${shown} of ${total} runs.` : `${total} run${total === 1 ? "" : "s"}.`),
+    runLabel: "Reference",
+    reference: "Quote this reference when asking for help",
+    stagesHeading: "Stages",
+    itemsHeading: "Parts of the stack",
+    noItems: "No part of the stack was started in this run.",
+    stage: {
+        refresh_inventory: "Discover: refresh the stack inventory", validate: "Validate: check what is covered", trigger: "Start the member backups",
+        track: "Database dump, file copy and upload (run by the agent)", hash: "Checksums of the stored files", finalize: "Commit the recovery point",
+    } as const,
+    verifyStage: "Verify: not available yet (arrives with the verify job)",
+    stepStatus: {pending: "Waiting", running: "In progress", done: "Done", failed: "Failed"} as const,
+    attempts: (n: number) => `checked ${n} time${n === 1 ? "" : "s"}`,
+    itemState: {queued: "Queued", running: "In progress", succeeded: "Backed up", failed: "Failed", skipped: "Skipped"} as const,
+    required: "required",
+    optional: "optional",
+    dbms: {files: "Files", "docker-volume": "Docker volume"} as Record<string, string>,
+    dbmsFallback: "Database dump",
+    started: "Started",
+    finished: "Finished",
+    announce: (stage: string) => `Backup stage: ${stage}`,
+    rp: (seq: number) => `Recovery point #${seq}`,
+    openBackups: "Open in Backups",
+} as const;
+
+export const STRIP = {
+    heading: "Am I safe?",
+    intro: "One line per stack. Only a stack with a verified recovery point and a verified recovery kit can be Safe.",
+    buckets: {
+        safe: {label: "Safe", tone: "success", empty: "No stack is Safe yet."},
+        needs_attention: {label: "Needs attention", tone: "warning", empty: "Nothing needs attention."},
+        not_protected: {label: "Not protected", tone: "neutral", empty: "Every stack has a backup configured."},
+    } as const,
+    reasons: {
+        failed: {label: "Latest backup failed", fix: "Open Activity"},
+        partial: {label: "Part of the stack is not covered", fix: "See what is missing"},
+        stale: {label: "Last good backup is too old", fix: "Open Activity"},
+        kit_not_verified: {label: "Recovery kit not verified", fix: "Open Backups"},
+        host_compromise: {label: "Backups may be deletable from the source host", fix: "Review storage"},
+        paused: {label: "Backups are paused", fix: "Re-authorise the backup"},
+        inventory_stale: {label: "Stack list is out of date (Arcane unreachable)", fix: "Open Integrations"},
+        config_locked: {label: "Configuration is locked", fix: "Open the stack"},
+        agent_poll_failing: {label: "The agent is not answering", fix: "Open Agents"},
+        unprotected: {label: "No backup configured", fix: "Configure backup"},
+        awaiting_first_backup: {label: "Waiting for the first verified backup", fix: "Configure backup"},
+        no_inventory: {label: "No readable inventory yet", fix: "Open the stack"},
+    } as const,
+    agentIssue: (agent: string) => `Agent poll failing: ${agent}`,
+    agentIssueBody: (n: number) => `This agent is not answering, which affects ${n} stack${n === 1 ? "" : "s"}:`,
+    capped: (shown: number, total: number) => `Only the first ${shown} of ${total} stacks are evaluated here.`,
+    noChannel: {title: "Alerts are not delivered", body: "No notification channel is set as the default in the instance settings, so backup alerts are recorded but not sent."},
+    countsLabel: (safe: number, attention: number, not: number) => `${safe} safe, ${attention} need attention, ${not} not protected`,
+} as const;
+
+export const SCHEDULE_EDIT = {
+    heading: "Edit schedule and retention",
+    open: "Edit schedule",
+    cancel: "Cancel",
+    save: "Save schedule",
+    saving: "Saving…",
+    saved: "Schedule saved. The next runs below use the new schedule.",
+    savedPaused: "Schedule saved, but backups are still paused: a system administrator must activate the policy again.",
+    unchanged: "Nothing changed.",
+    retentionNote: "Retention applies to verified recovery points. Until the verify job ships, nothing is deleted except incomplete and failed recovery points by age.",
+    reasons: {
+        member: "Only a system administrator can change the schedule.",
+        locked: "Configuration is locked until the single-organization check passes.",
+    },
+    outcome: {
+        forbidden: "Only a system administrator can change the schedule.",
+        not_found: "Stack not found.",
+        locked: "Configuration is locked until the single-organization check passes.",
+        rate_limited: "Too many attempts. Wait a moment and try again.",
+        invalid_input: "Check the schedule and retention values.",
+        refused: "This stack has no active backup policy to edit. Configure and activate one first.",
+    } as Record<string, string>,
 } as const;
