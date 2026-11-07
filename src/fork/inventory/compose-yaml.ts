@@ -46,7 +46,7 @@ function parseOne(text: string): {ok: true; value: unknown} | {ok: false; reason
     if (Buffer.byteLength(text, "utf8") > COMPOSE_YAML_LIMITS.maxBytes) return {ok: false, reason: "too_large"};
     if (nestingTooDeep(text)) return {ok: false, reason: "too_deep"};
     try {
-        const doc = parseDocument(text, {maxAliasCount: COMPOSE_YAML_LIMITS.maxAliasCount, uniqueKeys: true, merge: true, version: "1.2", schema: "core", prettyErrors: false});
+        const doc = parseDocument(text, {uniqueKeys: true, merge: true, version: "1.2", schema: "core", prettyErrors: false});
         if (doc.errors.length) return {ok: false, reason: doc.errors.some((e) => e.code === "DUPLICATE_KEY") ? "duplicate_key" : "syntax"};
         if (doc.warnings.length) return {ok: false, reason: "unsupported"}; // unresolved/custom tag
         let nodes = 0;

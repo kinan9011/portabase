@@ -32,6 +32,8 @@ export type NormalizeInput = {
     projects: readonly DiscoveredProject[];
     /** tier 2 only: parsed compose per compose project (names/paths only). */
     compose?: ReadonlyMap<string, ParsedCompose>;
+    /** tier 2: compose text that the SEC-17 limits refused → that stack stays `compose_read: "none"` with a warning. */
+    composeRejected?: ReadonlyMap<string, string>;
 };
 
 export type NormalizedStack = {
@@ -302,7 +304,11 @@ function buildStack(input: NormalizeInput, project: string, group: DiscoveredCon
         for (const s of compose.services) for (const f of s.envFiles) (refs.get(f) ?? refs.set(f, new Set()).get(f)!).add(s.name);
         for (const [path_hint, by] of [...refs].sort(([a], [b]) => a.localeCompare(b))) envFiles.push({path_hint, key_names: [], referenced_by: uniqSorted(by)});
         prov["/env_files"] = "arcane_compose";
-    } else warn("compose-definition-not-read", "info", "compose-definition-not-read");
+    } else {
+        const why = input.composeRejected?.get(project);
+        if (why) warn("compose-yaml-rejected", "warn", `compose-yaml-${why}`);
+        else warn("compose-definition-not-read", "info", "compose-definition-not-read");
+    }
 
     const state = runtimeOf(services, arcane);
     const inv = parseInventoryStrict({
