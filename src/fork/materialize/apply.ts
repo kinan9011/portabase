@@ -131,26 +131,28 @@ export async function materializeStack(d: MaterializeDeps, raw: unknown): Promis
     if (!(await channelsAvailableTo(d.db, organizationId, input.storageChannelIds))) return deny("channels_unavailable", "A selected storage channel is not available to this organization.");
 
     const plan = planStack(ctx.inventory, input.selection, ctx.allowedRoots);
-    const existing = await d.db.select().from(forkStackSource).where(eq(forkStackSource.stackId, input.stackId));
-    const byKey = new Map(existing.map((l) => [l.resourceKey, l]));
-
-    // Method is fixed after creation upstream: a different engine for an existing member is a conflict the operator must resolve.
-    for (const s of plan.sources) {
-        const cur = byKey.get(s.resourceKey);
-        if (cur && cur.status !== "planned" && cur.databaseId && cur.engine !== s.engine) return deny("method_change", "The backup method of an existing source cannot be changed. Remove the source first (only possible before its first backup).");
-    }
-    // Secrets only for sources that will be CREATED now (an existing member keeps its stored credential).
-    const needSecret = plan.sources.filter((s) => s.needsSecret && s.secretFor && !byKey.get(s.resourceKey)?.databaseId && input.secrets[s.secretFor] === undefined);
-    if (needSecret.length) return deny("secret_required", "A database credential is required for the selected database source.", "refused", {services: needSecret.map((s) => s.secretFor as string)});
-
     const masterKey = await (d.masterKey ?? upstreamMasterKey)();
-    const evidence = await dockerAccessEvidence(d.db, agent.id, existing.flatMap((l) => (l.databaseId && l.status === "canary" ? [l.databaseId] : [])));
     const deferred: Deferred[] = [];
     const counts = {created: 0, updated: 0, unchanged: 0, orphaned: 0};
     const now = d.now?.() ?? new Date();
 
+    let canaryUsed = false;
     try {
         const out = await withForkLock(d.db, `materialize:${input.stackId}`, async (tx) => {
+            // Everything that decides what to write is read INSIDE the lock (the drift job holds the same lock): no stale view of the links.
+            const existing = await tx.select().from(forkStackSource).where(eq(forkStackSource.stackId, input.stackId));
+            const byKey = new Map(existing.map((l) => [l.resourceKey, l]));
+            // Method is fixed after creation upstream: a different engine for an existing member is a conflict the operator must resolve.
+            for (const s of plan.sources) {
+                const cur = byKey.get(s.resourceKey);
+                if (cur && cur.status !== "planned" && cur.databaseId && cur.engine !== s.engine) throw new Abort(refuse("refused", "The backup method of an existing source cannot be changed. Remove the source first (only possible before its first backup).", {reason: "method_change"}));
+            }
+            // Secrets only for sources that will be CREATED now (an existing member keeps its stored credential).
+            const needSecret = plan.sources.filter((s) => s.needsSecret && s.secretFor && !byKey.get(s.resourceKey)?.databaseId && input.secrets[s.secretFor] === undefined);
+            if (needSecret.length) throw new Abort(refuse("refused", "A database credential is required for the selected database source.", {reason: "secret_required", services: needSecret.map((s) => s.secretFor as string)}));
+            const evidence = await dockerAccessEvidence(tx, agent.id, existing.flatMap((l) => (l.databaseId && l.status === "canary" ? [l.databaseId] : [])), now);
+            canaryUsed = input.confirmDockerAccess && !evidence;
+
             // ---- Project (stack-owned, no cron, no retention: D30/D33) --------------------------------------------------------
             let projectId = ctx.projectId && (await getProjectName(tx, ctx.projectId)) ? ctx.projectId : null;
             if (!projectId) {
@@ -221,7 +223,7 @@ export async function materializeStack(d: MaterializeDeps, raw: unknown): Promis
 
             const noop = counts.created + counts.updated + counts.orphaned + channels.added + channels.removed === 0;
             // names only: no config, no credential, no secret-bearing key (redaction also applies)
-            await audit("success", {planHash: plan.planHash, ...counts, deferred: deferred.length, skipped: plan.skipped.length, channels: input.storageChannelIds.length, canary: input.confirmDockerAccess && !evidence, dockerEvidence: evidence, noop}, tx);
+            await audit("success", {planHash: plan.planHash, ...counts, deferred: deferred.length, skipped: plan.skipped.length, channels: input.storageChannelIds.length, canary: canaryUsed, noop}, tx);
             return {result, noop};
         });
         return {ok: true, planHash: plan.planHash, ...counts, deferred, skipped: plan.skipped, sources: out.result, noop: out.noop};

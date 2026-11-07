@@ -28,8 +28,10 @@ export function registerMaterializeDriftJob(): void {
                     if (running) return;
                     running = true;
                     try {
-                        if ((await currentForkMode()).mode === "off") return;
-                        const r = await materializeTick({db: await appDb()});
+                        const mode = (await currentForkMode()).mode;
+                        if (mode === "off") return;
+                        // `locked` (D21 / flags off with active policies): protective work only, nothing new is created (ADR-010)
+                        const r = await materializeTick({db: await appDb(), allowConfig: mode === "on"});
                         if (r.reverted + r.drifted + r.rolledBack + r.promoted + r.failed > 0) log.info(r, "Materialize drift tick");
                     } catch (error) {
                         log.error({error: error instanceof Error ? error.name : "unknown"}, "Materialize drift tick failed");

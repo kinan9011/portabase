@@ -232,6 +232,7 @@ describe("probes (P-2) and the coverage/probe feed into the W09 views", () => {
 });
 
 describe("Docker gate: canary, promotion, rollback, one finding per agent (CH-22c)", () => {
+    const depsAt = () => ({...deps(), now: () => NOW}); // canary start = NOW (the tests drive the clock)
     const fresh = async () => {
         const ag = await seedAgent(pool, org, `ag-${randomUUID().slice(0, 6)}`);
         await q("update agents set version='1.25.2' where id=$1", [ag]); await contact("agents", ag, NOW);
@@ -243,7 +244,7 @@ describe("Docker gate: canary, promotion, rollback, one finding per agent (CH-22
     it("canary confirmed by the agent's first contact → active, and the other planned docker-volume members are created", async () => {
         const {ag, e} = await fresh();
         const id = await mkStack(twoVolumes(), e);
-        const r = await materializeStack(deps(), {stackId: id, confirmDockerAccess: true});
+        const r = await materializeStack(depsAt(), {stackId: id, confirmDockerAccess: true});
         expect(r).toMatchObject({ok: true, deferred: [{key: "volume:app_data2", reason: "waiting_for_canary"}]});
         const canary = await link(id, "volume:app_data");
         expect(canary).toMatchObject({status: "canary"});
@@ -260,7 +261,7 @@ describe("Docker gate: canary, promotion, rollback, one finding per agent (CH-22
     it("no contact after the canary within the timeout → the canary WE created is rolled back (poll unblocked) and the agent finding appears once", async () => {
         const {ag, e} = await fresh();
         const id = await mkStack(twoVolumes(), e);
-        await materializeStack(deps(), {stackId: id, confirmDockerAccess: true});
+        await materializeStack(depsAt(), {stackId: id, confirmDockerAccess: true});
         const canary = await link(id, "volume:app_data");
         await q("update fork_stack_source set last_probe_at=$2 where id=$1", [canary.id, NOW]); // canary start
         await contact("agents", ag, ago(1000)); // last contact BEFORE the canary start, then silence
@@ -274,10 +275,53 @@ describe("Docker gate: canary, promotion, rollback, one finding per agent (CH-22
         expect(mat.sourceIssues.filter((i) => i.reason === "agent_poll_failing")).toHaveLength(1);
         expect((await audits("fork.materialize.canary.rolled_back")).at(-1).details).toMatchObject({reason: "agent_poll_failing"});
     });
+    it("a poll that arrived right after the canary and then silence is still a rollback (the blocked poll leaves `last_contact` AFTER the canary's creation)", async () => {
+        const {ag, e} = await fresh();
+        const id = await mkStack(w10Inventory(), e);
+        await materializeStack(depsAt(), {stackId: id, confirmDockerAccess: true});
+        const canary = await link(id, "volume:app_data");
+        await q("update fork_stack_source set last_probe_at=$2 where id=$1", [canary.id, utc(NOW)]);
+        await contact("agents", ag, new Date(NOW.getTime() + 2000)); // poll N (carried the new source in its response), poll N+1 never came
+        const later = new Date(NOW.getTime() + CANARY_TIMEOUT_MS + 5000);
+        expect((await run(id, later)).rolledBack).toBe(1);
+        expect(await link(id, "volume:app_data")).toMatchObject({status: "blocked", database_id: null});
+    });
+    it("canary never answered its own ping (volume missing = false, not an error) but the agent kept reporting for a whole timeout → Docker access is evidenced, canary confirmed", async () => {
+        const {ag, e} = await fresh();
+        const inv = w10Inventory(); inv.volumes.push({name: "app_data2", driver: "local", in_use_by: ["web"], ownership: "stack_owned"});
+        const id = await mkStack(inv, e);
+        await materializeStack(depsAt(), {stackId: id, confirmDockerAccess: true});
+        const canary = await link(id, "volume:app_data");
+        await q("update fork_stack_source set last_probe_at=$2 where id=$1", [canary.id, utc(NOW)]);
+        const later = new Date(NOW.getTime() + CANARY_TIMEOUT_MS + 5000);
+        await contact("agents", ag, later);
+        const s = await run(id, later);
+        expect(s.promoted).toBe(2); // canary + the other planned member
+        expect(await link(id, "volume:app_data")).toMatchObject({status: "active", last_probe: null});
+        expect((await audits("fork.materialize.canary.confirmed")).at(-1).details).toMatchObject({own_contact: false});
+    });
+    it("evidence must be RECENT: an old successful docker-volume contact does not unlock docker-volume creation", async () => {
+        const {ag, e} = await fresh();
+        await q("insert into databases (name, dbms, agent_id, config, created_at, last_contact) values ('old-ev','docker-volume',$1,'{\"volume_name\":\"zz9\"}',$2,$3)", [ag, utc(ago(7_200_000)), utc(ago(3_600_000))]);
+        const id = await mkStack(w10Inventory(), e);
+        const r = await materializeStack(depsAt(), {stackId: id});
+        expect(r).toMatchObject({ok: true, deferred: [{key: "volume:app_data", reason: "docker_access_unconfirmed"}]});
+    });
+    it("locked mode (allowConfig=false) still reverts policies and detects drift but creates NOTHING (no promotion of planned members)", async () => {
+        const {ag, e} = await fresh();
+        const id = await mkStack(w10Inventory(), e);
+        await materializeStack(depsAt(), {stackId: id});
+        await q("insert into databases (name, dbms, agent_id, config, created_at, last_contact) values ('ev','docker-volume',$1,'{\"volume_name\":\"zz8\"}',$2,$3)", [ag, utc(ago(3_600_000)), utc(NOW)]);
+        await q("update projects set backup_policy='9 9 * * *' where id=$1", [await projectOf(id)]);
+        const s = await driftStack({db: t.db, now: () => NOW, allowConfig: false}, id);
+        expect(s).toMatchObject({reverted: 1, promoted: 0});
+        expect(await link(id, "volume:app_data")).toMatchObject({status: "planned", database_id: null});
+        expect((await driftStack({db: t.db, now: () => NOW}, id)).promoted).toBe(1);
+    });
     it("planned docker-volume members are promoted once Docker access is evidenced (no operator word needed)", async () => {
         const {ag, e} = await fresh();
         const id = await mkStack(w10Inventory(), e);
-        await materializeStack(deps(), {stackId: id});
+        await materializeStack(depsAt(), {stackId: id});
         expect(await link(id, "volume:app_data")).toMatchObject({status: "planned", database_id: null});
         await q("insert into databases (name, dbms, agent_id, config, created_at, last_contact) values ('ev','docker-volume',$1,'{\"volume_name\":\"zz3\"}',$2,$3)", [ag, utc(ago(3_600_000)), utc(NOW)]);
         expect((await run(id)).promoted).toBe(1);
@@ -287,7 +331,7 @@ describe("Docker gate: canary, promotion, rollback, one finding per agent (CH-22
         const {ag, e} = await fresh();
         await q("insert into databases (name, dbms, agent_id, config, created_at, last_contact) values ('ev','docker-volume',$1,'{\"volume_name\":\"zz4\"}',$2,$3)", [ag, utc(ago(3_600_000)), utc(NOW)]);
         const a = await mkStack(twoVolumes(), e, "stack-a"); const b = await mkStack(w10Inventory(), e, "stack-b");
-        await materializeStack(deps(), {stackId: a}); await materializeStack(deps(), {stackId: b});
+        await materializeStack(depsAt(), {stackId: a}); await materializeStack(depsAt(), {stackId: b});
         await contact("agents", ag, ago(600_000)); // agent stopped reporting
         const envId = e;
         const ma = await loadMaterializedContext(t.db, {id: a, environmentId: envId}, NOW);

@@ -55,8 +55,10 @@ export async function loadMaterializedContext(db: ForkDb, stack: {id: string; en
         if (!a) issues.push({key: `agent:${agentId}`, kind: "agent", name: "Agent", reason: "agent_unavailable", status: "unsupported", severity: "blocker"});
         else {
             const stalled = a.lastContact === null || now.getTime() - a.lastContact.getTime() > AGENT_FRESH_MS;
-            const culprits = links.filter((l) => docker(l) && ((l.databaseId && ["active", "canary"].includes(l.status)) || l.driftReason === "agent_poll_failing")).map((l) => l.memberName);
-            if (culprits.length && (stalled || links.some((l) => l.driftReason === "agent_poll_failing" && l.status === "blocked"))) {
+            // Culprits: this stack's docker-volume members (the only kind whose ping can ERROR and stop the agent's reports, ADR-001 §G) —
+            // live ones, plus a canary we just rolled back while the agent is still silent.
+            const culprits = links.filter((l) => docker(l) && ((l.databaseId && ["active", "canary"].includes(l.status)) || (l.status === "blocked" && l.driftReason === "agent_poll_failing"))).map((l) => l.memberName);
+            if (culprits.length && stalled) {
                 // ONE finding per agent (P-2): the other stacks behind the same agent are listed, not repeated as separate blockers.
                 const others = await db.execute(sql`
                     select distinct s.display_name from fork_stack_source l join fork_stack s on s.id = l.stack_id join fork_arcane_environment e on e.id = s.environment_id

@@ -52,13 +52,14 @@ export async function channelsAvailableTo(db: ForkDb, organizationId: string, id
 
 /**
  * Evidence that this agent can use Docker (CH-22c, no agent-side probe exists in R1): a live docker-volume source of the SAME agent that
- * the agent has reported contact for (`last_contact` is set only when the ping succeeded) newer than its creation, excluding `exceptIds`
- * (the sources we are about to create/judge).
+ * the agent has reported contact for (`last_contact` is set only when the ping succeeded) newer than its creation AND recent (the agent is
+ * reporting NOW: a stale contact proves nothing about today's socket), excluding `exceptIds` (the sources we are about to create/judge).
  */
-export async function dockerAccessEvidence(db: ForkDb, agentId: string, exceptIds: readonly string[] = []): Promise<boolean> {
+export const DOCKER_EVIDENCE_MAX_AGE_MS = 5 * 60_000;
+export async function dockerAccessEvidence(db: ForkDb, agentId: string, exceptIds: readonly string[] = [], now: Date = new Date()): Promise<boolean> {
     const rows = await db.select({id: database.id, created: database.createdAt, last: database.lastContact}).from(database)
         .where(and(eq(database.agentId, agentId), eq(database.dbms, "docker-volume"), isNull(database.deletedAt)));
-    return rows.some((r) => !exceptIds.includes(r.id) && r.last !== null && r.last.getTime() > r.created.getTime());
+    return rows.some((r) => !exceptIds.includes(r.id) && r.last !== null && r.last.getTime() > r.created.getTime() && now.getTime() - r.last.getTime() <= DOCKER_EVIDENCE_MAX_AGE_MS);
 }
 
 export async function agentsLastContact(db: ForkDb, ids: readonly string[]): Promise<Map<string, {lastContact: Date | null; version: string | null; name: string}>> {

@@ -35,7 +35,8 @@ export const CANARY_TIMEOUT_MS = 180_000;
 export type TickSummary = {stacks: number; reverted: number; drifted: number; cleared: number; probed: number; promoted: number; rolledBack: number; orphaned: number; inventoryChanged: number; failed: number};
 const zero = (): TickSummary => ({stacks: 0, reverted: 0, drifted: 0, cleared: 0, probed: 0, promoted: 0, rolledBack: 0, orphaned: 0, inventoryChanged: 0, failed: 0});
 
-export type DriftDeps = {db: ForkDb; now?: () => Date};
+/** `allowConfig=false` (mode `locked`): only protective work runs (policy revert, drift detection, probes, canary rollback); nothing is CREATED. */
+export type DriftDeps = {db: ForkDb; now?: () => Date; allowConfig?: boolean};
 
 export async function materializeTick(d: DriftDeps): Promise<TickSummary> {
     const out = zero();
@@ -145,12 +146,16 @@ export async function driftStack(d: DriftDeps, stackId: string): Promise<TickSum
             const contactFresh = row.lastContact !== null && now.getTime() - row.lastContact.getTime() <= MEMBER_STALE_MS;
             if (l.status === "canary") {
                 const started = l.lastProbeAt ?? l.createdAt;
-                if (agentFresh && row.lastContact !== null && row.lastContact.getTime() > started.getTime()) {
-                    await tx.update(forkStackSource).set({status: "active", lastProbe: "readable", lastProbeAt: now, updatedAt: now}).where(eq(forkStackSource.id, l.id));
-                    await aud("fork.materialize.canary.confirmed", {resourceKey: l.resourceKey});
+                const pastTimeout = now.getTime() - started.getTime() > CANARY_TIMEOUT_MS;
+                const ownContact = row.lastContact !== null && row.lastContact.getTime() > started.getTime();
+                // Positive evidence of Docker access: the agent pinged THIS source successfully, or it kept reporting for a whole timeout after the
+                // source existed (a docker-volume ping that errors stops the agent's reports; a 404 "no such volume" answers false and is not an error).
+                if (agentFresh && (ownContact || (pastTimeout && lc !== null && lc.getTime() > started.getTime()))) {
+                    await tx.update(forkStackSource).set({status: "active", lastProbe: ownContact ? "readable" : null, lastProbeAt: now, updatedAt: now}).where(eq(forkStackSource.id, l.id));
+                    await aud("fork.materialize.canary.confirmed", {resourceKey: l.resourceKey, own_contact: ownContact});
                     sum.promoted++; promoteQueued = true; l.status = "active";
-                } else if (now.getTime() - started.getTime() > CANARY_TIMEOUT_MS && (lc === null || lc.getTime() < started.getTime())) {
-                    // The agent stopped reporting right after this docker-volume source appeared: it blocks every backup on that agent (CH-22c). Roll back what WE created.
+                } else if (pastTimeout && !agentFresh) {
+                    // The agent is silent after this docker-volume source appeared: it blocks every backup on that agent (CH-22c). Roll back what WE created.
                     if ((await backupCount(tx, l.databaseId)) === 0) await removeMemberSource(tx, l.databaseId);
                     await tx.update(forkStackSource).set({status: "blocked", driftReason: "agent_poll_failing", databaseId: null, lastProbeAt: now, updatedAt: now}).where(eq(forkStackSource.id, l.id));
                     await aud("fork.materialize.canary.rolled_back", {resourceKey: l.resourceKey, reason: "agent_poll_failing"});
@@ -168,7 +173,7 @@ export async function driftStack(d: DriftDeps, stackId: string): Promise<TickSum
         }
         // planned docker-volume members: created only once Docker access is evidenced (never on the operator's word alone, never blindly).
         const planned = links.filter((l) => l.status === "planned" && l.dbms === "docker-volume" && !l.databaseId);
-        if (planned.length && ctx.projectId && planKeys && (promoteQueued || (await dockerAccessEvidence(tx, ctx.agentId)))) {
+        if (d.allowConfig !== false && planned.length && ctx.projectId && planKeys && (promoteQueued || (await dockerAccessEvidence(tx, ctx.agentId, [], now)))) {
             for (const l of planned) {
                 const s = planKeys.get(l.resourceKey);
                 if (!s) continue;

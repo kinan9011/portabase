@@ -75,6 +75,20 @@ describe("E4 D21 self-check matrix (real Postgres, real queries)", () => {
         expect(await evaluateSelfCheck(w.db, OK_ENV)).toMatchObject({ok: false, failed: "agent-foreign-org"});
     });
 
+    it("C4 also covers the channels of a stack POLICY (W10: fork_stack_policy.storage_channel_ids)", async () => {
+        await q("delete from fork_recovery_point_artifact");
+        await q("delete from fork_stack_policy");
+        const other = await seedOrg(w.pool, "pol-other");
+        await q("update organization set deleted_at=now() where id=$1", [other]);
+        const stack = await seedStack(w.pool, org, null, "s4pol");
+        const own = await seedChannel(w.pool, org); const foreign = await seedChannel(w.pool, other);
+        await q("insert into fork_stack_policy (stack_id, storage_channel_ids) values ($1, $2)", [stack, [own]]);
+        expect((await evaluateSelfCheck(w.db, OK_ENV)).ok).toBe(true);
+        await q("update fork_stack_policy set storage_channel_ids = $2 where stack_id=$1", [stack, [own, foreign]]);
+        expect(await evaluateSelfCheck(w.db, OK_ENV)).toMatchObject({ok: false, failed: "storage-foreign-org"});
+        await q("delete from fork_stack_policy");
+    });
+
     it("C4 storage-foreign-org: same matrix for channels referenced by RP artifacts (column and m:n)", async () => {
         const other = await seedOrg(w.pool, "other-org");
         await q("update organization set deleted_at=now() where id=$1", [other]);
