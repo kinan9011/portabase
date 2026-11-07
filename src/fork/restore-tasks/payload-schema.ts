@@ -5,11 +5,13 @@ import {z} from "zod";
  * pin both sides. Pure module (no I/O). Payloads travel only inside `payload_enc`; nothing here is ever persisted in clear or audited.
  */
 const uuid = z.uuid();
+/** control characters, `$` and `~` (a function, not a regex: biome forbids control characters in regex literals) */
+const bad = (p: string) => [...p].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 || c === "$" || c === "~");
 const hex64 = z.string().regex(/^[0-9a-f]{64}$/);
 /** Absolute path in the agent's canonical grammar: no `$`, `~`, control chars, `//`, `.`/`..` segments, trailing `/`; ≤ 1024 (the agent re-checks, D-2 `canon`). */
-export const absPath = z.string().min(2).max(1024).refine((p) => p.startsWith("/") && !p.endsWith("/") && !p.includes("//") && !/[\u0000-\u001f\u007f$~]/.test(p)
+export const absPath = z.string().min(2).max(1024).refine((p) => p.startsWith("/") && !p.endsWith("/") && !p.includes("//") && !bad(p)
     && !p.split("/").slice(1).some((s) => s === "." || s === ".."), "path");
-const relPath = z.string().min(1).max(1024).refine((p) => !p.startsWith("/") && !p.endsWith("/") && !p.includes("//") && !/[\u0000-\u001f\u007f$~]/.test(p)
+const relPath = z.string().min(1).max(1024).refine((p) => !p.startsWith("/") && !p.endsWith("/") && !p.includes("//") && !bad(p)
     && !p.split("/").some((s) => s === "." || s === ".."), "relative path");
 const volumeName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$/);
 const project = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);

@@ -26,8 +26,8 @@ const SECRET_QS = "X-Amz-Signature=SECRETSIG123&X-Amz-Credential=AKIACANARY";
 const url = (n: string) => `https://minio.example.test/bucket/${n}?${SECRET_QS}`;
 const urls = async (id: string) => url(id);
 const q = async (s: string, a: unknown[] = []) => (await pool.query(s, a)).rows as Record<string, any>[];
-const principal = (id: string, role: string | null, org2?: string): RestoreTaskDeps => chDeps(t, kek, key, id, {role, memberships: org2 ? [[org2, role === "admin" ? "member" : (role ?? "member")]] : [], now: () => NOW, over: {artifactUrl: urls}});
-const asAdmin = (over: Partial<RestoreTaskDeps> = {}): RestoreTaskDeps => ({...chDeps(t, kek, key, admin, {role: "user", memberships: [[org, "admin"]], now: () => NOW, over: {artifactUrl: urls}}), ...over});
+const principal = (id: string, role: string | null, org2?: string): RestoreTaskDeps => ({...chDeps(t, kek, key, id, {role: role ?? undefined, memberships: org2 ? [[org2, role === "admin" ? "member" : (role ?? "member")]] : [], now: () => NOW}), artifactUrl: urls});
+const asAdmin = (over: Partial<RestoreTaskDeps> = {}): RestoreTaskDeps => ({...chDeps(t, kek, key, admin, {role: "user", memberships: [[org, "admin"]], now: () => NOW}), artifactUrl: urls, ...over});
 
 beforeAll(async () => {
     t = await freshForkDb(); pool = t.pool; kek = newKek(); org = await seedOrg(pool);

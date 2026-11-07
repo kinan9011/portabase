@@ -13,7 +13,7 @@ const RID = u(900), PLAN = u(901);
 const planOf = (mut?: Parameters<typeof planInput>[0]) => planRestore(planInput((i) => { i.mappings = {...i.mappings, restore_root: "/srv/restore"}; mut?.(i); }));
 const bi = (plan: ReturnType<typeof planOf>["plan"], approvals: BuildInput["approvals"] = ["production_target"]): BuildInput => {
     const indexOf = new Map<string, number>();
-    plan.actions.filter((a) => a.op !== "skip" && a.artifact_ids[0]).forEach((a, ix) => indexOf.set(a.artifact_ids[0], ix));
+    plan.actions.filter((a) => a.op !== "skip" && a.artifact_ids[0]).forEach((a, ix) => { indexOf.set(a.artifact_ids[0], ix); });
     return {restoreId: RID, planId: PLAN, planHash: "a".repeat(64), plan, approvals, indexOf};
 };
 
