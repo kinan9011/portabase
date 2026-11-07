@@ -4,6 +4,7 @@ import {appDb} from "@/fork/db/handle";
 import type {MaterializeDeps} from "@/fork/materialize/apply";
 import {getForkPrincipal} from "@/fork/principal";
 import {activateStackPolicy} from "@/fork/stack-policy/activate";
+import {previewStackPolicy} from "@/fork/stack-policy/preview-service";
 import {userAction} from "@/lib/safe-actions/actions";
 import {z} from "zod";
 
@@ -16,3 +17,6 @@ import {z} from "zod";
 const deps = async (): Promise<MaterializeDeps> => ({db: await appDb(), principal: await getForkPrincipal()});
 
 export const activateStackPolicyAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => activateStackPolicy(await deps(), parsedInput));
+
+/** Read-only "what would be protected" for the Review section: same authorisation as the mutation, writes nothing, carries no password field. */
+export const previewStackPolicyAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => previewStackPolicy(await deps(), parsedInput));

@@ -209,7 +209,7 @@ describe("W11 authorization (D21, D31, SEC-12)", () => {
 
     it("D21: while the self-check fails (locked) ⇒ locked, nothing written", async () => {
         const id = await mkStack();
-        const r = fail(await activateStackPolicy(deps(undefined, {assertConfigAllowed: async () => { throw new ForkLockedError("locked", "self-check"); }}), base(id)));
+        const r = fail(await activateStackPolicy(deps(undefined, {assertConfigAllowed: async () => { throw new ForkLockedError("locked", "self-check-failed"); }}), base(id)));
         expect(r.code).toBe("locked");
         await nothingWritten(id);
     });
