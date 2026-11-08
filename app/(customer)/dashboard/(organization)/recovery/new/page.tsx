@@ -66,7 +66,7 @@ export default async function NewRestorePage(props: {searchParams: Promise<Recor
             data.choices = all.map((c) => ({
                 stackId: c.stackId, name: c.name, environmentName: c.environmentName, runtime: c.runtime, verifiedCount: c.verifiedCount, pendingCount: c.pendingCount,
                 lastGood: c.lastGood.hoursAgo === null ? FACET_COPY.lastGood.never : FACET_COPY.lastGood.ago(c.lastGood.hoursAgo),
-                testRestore: c.testRestoreDaysAgo === null ? FACET_COPY.testRestore.never : FACET_COPY.testRestore.ago(c.testRestoreDaysAgo),
+                testRestore: FACET_COPY.testRestore.value(c.testRestoreDaysAgo, c.testRestoreStale === true),
             }));
         } else if (pts) {
             data.points = pts.points.map((x) => {

@@ -24,6 +24,10 @@ const KIND_META: Record<DeliverableKind, {level: NotifyLevel; event: NotifyEvent
     "restore.finished": {level: "info", event: "success_backup_recovered", stackScoped: true},
     "restore.failed": {level: "critical", event: "error_backup", stackScoped: true},
     "restore.needs_approval": {level: "warning", event: "error_backup", stackScoped: true},
+    "test_restore.failed": {level: "critical", event: "error_backup", stackScoped: true},
+    "test_restore.wipe_failed": {level: "critical", event: "error_backup", stackScoped: true},
+    "test_restore.skipped": {level: "warning", event: "error_backup", stackScoped: true},
+    "stack.test_restore_stale": {level: "warning", event: "error_backup", stackScoped: true},
     "quiesce.failed": {level: "critical", event: "error_backup", stackScoped: true},
     "stack.quiesce_stopped": {level: "critical", event: "error_backup", stackScoped: true},
 };

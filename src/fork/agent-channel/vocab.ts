@@ -24,18 +24,22 @@ export const COMPOSE_TASK_TYPES = ["compose_render", "restore_db", "compose_up"]
 /** W17b adds the composite quiesce task and its journal-bound "Start now" retry (ADR-007 A15, capability `quiesce.v1`). Targeted, never public: only `quiesce/enqueue.ts` builds them. */
 export const QUIESCE_CAPABILITY = "quiesce.v1";
 export const QUIESCE_TASK_TYPES = ["quiesce", "quiesce_start"] as const;
-export const TASK_TYPES = ["noop", "pin_add", "pin_revoke", "rotate_credential", ...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES] as const;
+/** W-TR (ADR-007 A16): one targeted integrity-check type for data-only test restores (capability `test-restore.v1`). Never public, never maint; only `restore-tasks/enqueue.ts` builds it. */
+export const TEST_RESTORE_CAPABILITY = "test-restore.v1";
+export const TEST_RESTORE_TASK_TYPES = ["restore_verify"] as const;
+export const TASK_TYPES = ["noop", "pin_add", "pin_revoke", "rotate_credential", ...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 export const PUBLIC_TASK_TYPES = ["noop"] as const;
 export const MAINT_TASK_TYPES = ["pin_add", "pin_revoke", "rotate_credential"] as const;
 /** Types whose envelope must name the executing agent in `target_agent_id` (ADR-007 D8b, DD2). The agent enforces the same list. */
-export const TARGETED_TASK_TYPES: readonly TaskType[] = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES];
+export const TARGETED_TASK_TYPES: readonly TaskType[] = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES];
 export const isTargetedType = (t: string): boolean => (TARGETED_TASK_TYPES as readonly string[]).includes(t);
 export const TASK_REQUIRES: Readonly<Record<TaskType, readonly string[]>> = {
     noop: ["noop.v1"], pin_add: [MAINT_CAPABILITY], pin_revoke: [MAINT_CAPABILITY], rotate_credential: [MAINT_CAPABILITY],
     restore_probe: [RESTORE_CAPABILITY], restore_stage: [RESTORE_CAPABILITY], restore_apply: [RESTORE_CAPABILITY], restore_cleanup: [RESTORE_CAPABILITY],
     compose_render: [RESTORE_CAPABILITY, COMPOSE_CAPABILITY], restore_db: [RESTORE_CAPABILITY, COMPOSE_CAPABILITY], compose_up: [RESTORE_CAPABILITY, COMPOSE_CAPABILITY],
     quiesce: [QUIESCE_CAPABILITY], quiesce_start: [QUIESCE_CAPABILITY],
+    restore_verify: [RESTORE_CAPABILITY, TEST_RESTORE_CAPABILITY],
 };
 /** Pinned dashboard keys per agent (agent enforces the same bound), PEM size bound, kid grammar (first 12 hex of SHA-256(SPKI DER)). */
 export const MAX_PINS = 8;
@@ -43,7 +47,7 @@ export const PIN_PEM_MAX = 4096;
 export const KID_RE = /^[0-9a-f]{12}$/;
 
 /** Capabilities a fork agent may report (ADR-007 D6). Unknown strings that match the grammar are stored but never satisfy a `requires`. */
-export const KNOWN_CAPABILITIES = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "compose.render.v1", "restore.target.v1", "quiesce.v1", "sweep.v1"] as const;
+export const KNOWN_CAPABILITIES = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "compose.render.v1", "restore.target.v1", "quiesce.v1", "sweep.v1", "test-restore.v1"] as const;
 export const CAPABILITY_RE = /^[a-z][a-z0-9-]{0,31}(\.[a-z][a-z0-9-]{0,31})*\.v[0-9]{1,2}$/;
 export const MAX_CAPABILITIES = 32;
 

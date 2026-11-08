@@ -6,13 +6,15 @@ import type {ForkDb} from "@/fork/db/handle";
 import type {StackInventoryV1} from "@/fork/inventory/schema";
 import {isKitVerified} from "@/fork/kit/service";
 import {loadMaterializedContext} from "@/fork/materialize/context";
+import {testRestoreFacet} from "@/fork/test-restore/facet";
+import {lastTestRestoreVerifiedAt, staleAfterDaysOf} from "@/fork/test-restore/load";
 
 /**
  * Gathers the inputs of the protection model for ONE stack (already authorised and org-scoped by the caller) and returns the
  * browser views. The ONLY part of W09 that touches Postgres.
  *
  * Coverage, probes and source/agent/policy findings come from the materializer's persisted state (W10, `materialize/context.ts`). Inputs that no wave feeds yet are passed as "unknown", never invented:
- * kit state (W14: `isKitVerified`, fails closed), storage-channel deletion checks (F4/W14P), test-restore age (R2). `ctxOverride` lets tests and later waves inject real coverage.
+ * kit state (W14: `isKitVerified`, fails closed), storage-channel deletion checks (F4/W14P), test-restore age (W-TR: fed here). `ctxOverride` lets tests and later waves inject real coverage.
  */
 const HOUR = 3_600_000;
 
@@ -49,6 +51,8 @@ export async function loadProtectionViews(
     const hoursSince = r.last_verified ? Math.max(0, (now.getTime() - new Date(r.last_verified).getTime()) / HOUR) : null;
     const verifying = r.last_pending !== null && (r.last_verified === null || new Date(r.last_pending).getTime() > new Date(r.last_verified).getTime());
 
+    // W-TR (D-7): the facet is fed by a verified-wipe, data-verified test restore only; same `now` as the rest of this function
+    const trFacet = testRestoreFacet({lastVerifiedAt: await lastTestRestoreVerifiedAt(db, stack.id), now, staleAfterDays: await staleAfterDaysOf(db, stack.id)});
     const protection = toProtectionView(
         report,
         {
@@ -57,7 +61,7 @@ export async function loadProtectionViews(
             staleAfterHours: o.staleAfterHours ?? mat.staleAfterHours, kitVerified,
         },
         {
-            hasActivePolicy, hoursSinceLastVerified: hoursSince, verifying, daysSinceTestRestore: null, channelDeletable: [],
+            hasActivePolicy, hoursSinceLastVerified: hoursSince, verifying, daysSinceTestRestore: trFacet.daysAgo, testRestoreStale: trFacet.stale, channelDeletable: [],
             pausedAfterReauthorization: stack.protectionState === "paused", inventoryStale: stack.staleSince !== null, configLocked: o.configLocked,
         },
     );

@@ -6,7 +6,7 @@ import {describe, expect, it} from "vitest";
 import {verifyEnvelope, type Envelope} from "@/fork/agent-channel/envelope";
 import {encryptPayload, payloadSha256} from "@/fork/agent-channel/payload";
 import {validatePayload} from "@/fork/agent-channel/tasks";
-import {COMPOSE_TASK_TYPES, QUIESCE_TASK_TYPES, RESTORE_TASK_TYPES, SIGN_DOMAIN, TASK_REQUIRES, TARGETED_TASK_TYPES} from "@/fork/agent-channel/vocab";
+import {COMPOSE_TASK_TYPES, QUIESCE_TASK_TYPES, RESTORE_TASK_TYPES, SIGN_DOMAIN, TEST_RESTORE_TASK_TYPES, TASK_REQUIRES, TARGETED_TASK_TYPES} from "@/fork/agent-channel/vocab";
 import {canonicalJson} from "@/fork/canonical";
 import {buildManifest} from "@/fork/manifest/build";
 import {signManifest} from "@/fork/manifest/sign";
@@ -40,8 +40,10 @@ const samples = {
     compose_render: {...header(), manifest_sha256: HEX("b"), compose: composeRef()},
     restore_db: {...header(), manifest_sha256: HEX("b"), compose: composeRef(), compose_sha256: HEX("c"), approval: null, dbs: [{index: 1, service: "db"}]},
     compose_up: {...header(), manifest_sha256: HEX("b"), compose: composeRef(), compose_sha256: HEX("c"), approval: null, volumes: ["app_appdata"]},
+    // W-TR (ADR-007 A16): engine integrity checks of a data-only TEST restore
+    restore_verify: {...header({purpose: "test_restore", mode: "new_stack"}), manifest_sha256: HEX("b"), checks: [{index: 0, engine: "sqlite"}, {index: 1, engine: "postgresql"}]},
 } as const;
-const ALL_TYPES = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES] as const;
+const ALL_TYPES = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES] as const;
 
 type PCase = {type: string; name: string; payload: unknown; schema_valid: boolean; agent: string};
 function payloadCases(): PCase[] {
@@ -89,6 +91,14 @@ function payloadCases(): PCase[] {
     bad("restore_db", "db_missing_compose_sha", (({compose_sha256: _m, ...rest}) => rest)(s.restore_db));
     bad("compose_up", "up_unknown_key", {...s.compose_up, extra: 1});
     bad("compose_up", "up_volume_with_slash", {...s.compose_up, volumes: ["a/b"]});
+    // ---- W-TR restore_verify ----
+    bad("restore_verify", "verify_unknown_key", {...s.restore_verify, extra: 1});
+    bad("restore_verify", "verify_engine_mysql", {...s.restore_verify, checks: [{index: 0, engine: "mysql"}]});
+    bad("restore_verify", "verify_empty_checks", {...s.restore_verify, checks: []});
+    bad("restore_verify", "verify_check_unknown_key", {...s.restore_verify, checks: [{index: 0, engine: "sqlite", path: "/x"}]});
+    bad("restore_verify", "verify_missing_manifest_sha", (({manifest_sha256: _m, ...rest}) => rest)(s.restore_verify));
+    bad("restore_verify", "verify_purpose_restore", {...s.restore_verify, purpose: "restore", mode: "selective"}, true, "mode_unsupported");
+    bad("restore_verify", "verify_duplicate_index", {...s.restore_verify, checks: [{index: 0, engine: "sqlite"}, {index: 0, engine: "postgresql"}]}, true, "payload_invalid");
     bad("compose_up", "up_missing_approval_key", (({approval: _m, ...rest}) => rest)(s.compose_up));
     return out;
 }
@@ -96,7 +106,7 @@ function payloadCases(): PCase[] {
 function buildVectors() {
     const k = testKeypair(), other = testKeypair();
     const taskKey = randomBytes(32);
-    const own = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "restore.target.v1", "compose.render.v1"];
+    const own = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "restore.target.v1", "compose.render.v1", "test-restore.v1"];
     let n = 100;
     const mk = (type: string, o: Partial<Envelope> & {omitTarget?: boolean} = {}, plaintext = Buffer.from(JSON.stringify(samples[type as keyof typeof samples] ?? {}))) => {
         const {omitTarget, ...rest} = o;
@@ -119,6 +129,8 @@ function buildVectors() {
     cases.push({name: "compose_up_without_target", expect: "target_mismatch", ...mk("compose_up", {omitTarget: true})});
     cases.push({name: "compose_render_without_target", expect: "target_mismatch", ...mk("compose_render", {omitTarget: true})});
     cases.push({name: "compose_up_targeted_at_another_agent", expect: "target_mismatch", ...mk("compose_up", {target_agent_id: OTHER_AGENT})});
+    cases.push({name: "restore_verify_targeted_ok", expect: "ok", ...mk("restore_verify")});
+    cases.push({name: "restore_verify_without_target", expect: "target_mismatch", ...mk("restore_verify", {omitTarget: true})});
     cases.push({name: "compose_down_unknown_type", expect: "unsupported_type", ...mk("compose_down", {requires: ["compose.render.v1"], target_agent_id: AGENT}, Buffer.from("{}"))});
 
     // ---- manifest cases (RSA PKCS#1 v1.5 / SHA-256 over the RAW bytes, no domain prefix) ----
@@ -204,7 +216,7 @@ describe("W17-i cross-language vectors", () => {
         const v = load();
         expect(v.codes).toEqual([...RESTORE_REASONS]);
         expect(Object.keys(v.types).sort()).toEqual([...ALL_TYPES, ...QUIESCE_TASK_TYPES].sort()); // W17b: the agent compares this key set with its `TARGETED` list
-        expect(v.targeted).toEqual([...ALL_TYPES, ...QUIESCE_TASK_TYPES]);
-        expect(v.codes).toHaveLength(45); // 34 + the 11 W17b quiesce codes (appended, agent order)
+        expect(v.targeted).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES]);
+        expect(v.codes).toHaveLength(47); // 34 + the 11 W17b quiesce codes + the 2 W-TR codes (appended, agent order)
     });
 });

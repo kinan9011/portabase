@@ -39,7 +39,7 @@ import {toConfigurationView, toProtectionView} from "@/fork/completeness/view";
 import {inventoryViewFrom} from "@/fork/stacks/dto";
 
 const PRIMARY: PrimaryInputs = {hasActivePolicy: false, lastRunFailed: false, coverageGap: false, verifiedRpCount: 0, pendingRpCount: 0, hoursSinceLastVerified: null, staleAfterHours: null, kitVerified: false};
-const FACETS: FacetInputs = {hasActivePolicy: false, hoursSinceLastVerified: null, verifying: false, daysSinceTestRestore: null, channelDeletable: [], pausedAfterReauthorization: false, inventoryStale: false, configLocked: false};
+const FACETS: FacetInputs = {hasActivePolicy: false, hoursSinceLastVerified: null, verifying: false, daysSinceTestRestore: null, testRestoreStale: false, channelDeletable: [], pausedAfterReauthorization: false, inventoryStale: false, configLocked: false};
 
 /** Builds the `inventory: {state:"ok", …}` value of a StackDetail without a database (same pure functions the loader uses). */
 export function okState(inv: StackInventoryV1, o: {ctx?: Partial<CompletenessContext>; primary?: Partial<PrimaryInputs>; facets?: Partial<FacetInputs>; version?: number; hash?: string | null} = {}) {

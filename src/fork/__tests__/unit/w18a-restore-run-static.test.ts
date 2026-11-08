@@ -53,7 +53,7 @@ describe("W18a static guards (orchestrator: one task builder, pure vocabulary, h
         for (const n of ["vocab.ts", "derive.ts"]) {
             const c = code(only(n));
             expect(c, n).not.toMatch(/new Date\(|Date\.now|process\.env|forkEnv|node:|@\/fork\/db|drizzle-orm|\bfetch\(|@\/fork\/agent-channel|@\/fork\/(keys|kek)\b|@\/lib\/logger|Math\.random/);
-            for (const m of c.matchAll(/(?:from\s+)["']([^"']+)["']/g)) expect(["zod", "./vocab", "@/fork/restore/schema"], `${n} imports ${m[1]}`).toContain(m[1]);
+            for (const m of c.matchAll(/(?:from\s+)["']([^"']+)["']/g)) expect(["zod", "./vocab", "@/fork/restore/schema", "@/fork/restore-tasks/build"], `${n} imports ${m[1]}`).toContain(m[1]);
         }
     });
     it("only enqueueRestoreTask builds tasks: no insertSignedTask / enqueueTask, no agent version", () => {

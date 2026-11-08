@@ -47,6 +47,12 @@ export const ApplyPayload = RestoreHeader.extend({
     unpack: z.array(z.strictObject({index, service})).max(100),
 });
 
+/** W-TR (ADR-007 A16): engine integrity checks over staged artifacts of a TEST plan. `index` = artifact index into the manifest. */
+export const VerifyPayload = RestoreHeader.extend({
+    manifest_sha256: hex64,
+    checks: z.array(z.strictObject({index, engine: z.enum(["sqlite", "postgresql"])})).min(1).max(100),
+});
+
 export const CleanupPayload = RestoreHeader.extend({workspace_remove: z.boolean(), volumes: z.boolean(), networks: z.boolean(), containers: z.boolean()});
 
 // --- W17-ii compose types (ADR-007 A14) ---

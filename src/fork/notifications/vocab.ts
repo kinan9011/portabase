@@ -7,13 +7,14 @@ export const DELIVERABLE_KINDS = [
     "stack.partial", "stack.no_good_backup", "kit.unverified", "kit.key_rotated",
     "fork.selfcheck.failed", "fork.selfcheck.recovered",
     "restore.finished", "restore.failed", "restore.needs_approval", // W18a
+    "test_restore.failed", "test_restore.wipe_failed", "test_restore.skipped", "stack.test_restore_stale", // W-TR (plan D-13): fixed sentences, no reason text
     "quiesce.failed", "stack.quiesce_stopped", // W17b: the app could not be paused / restarted safely; containers still stopped ("Start now")
 ] as const;
 export type DeliverableKind = (typeof DELIVERABLE_KINDS)[number];
 export const isDeliverableKind = (k: string): k is DeliverableKind => (DELIVERABLE_KINDS as readonly string[]).includes(k);
 
 /** Alert conditions this release evaluates itself (the others are produced by the run engine / self-check / W14). */
-export const ALERT_KINDS = ["stack.partial", "stack.no_good_backup", "stack.quiesce_stopped"] as const;
+export const ALERT_KINDS = ["stack.partial", "stack.no_good_backup", "stack.quiesce_stopped", "stack.test_restore_stale"] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 
 export const DELIVERY_ERROR_CODES = ["no_channel", "provider_error", "render_error"] as const;

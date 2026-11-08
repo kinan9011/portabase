@@ -178,6 +178,7 @@ export const HEADLINE = {
     awaiting_approval: {text: COPY_DECK["run.awaiting"], tone: "warning" as Tone},
     started: {text: "Restore finished — the app was started. All its services were running right after start.", tone: "success" as Tone},
     data_only: {text: "Restore finished — the data was restored. The app was not started.", tone: "success" as Tone},
+    data_verified: {text: "Test restore finished — the data was read back and checked. The app was not started.", tone: "success" as Tone},
     succeeded: {text: "Restore finished.", tone: "success" as Tone},
     incomplete: (names: string[]) => ({
         text: `Finished with problems — the data is restored, but some services were not running right after start${names.length ? `: ${names.join(", ")}` : ""}. Some services stop on purpose after a one-time job (for example a database migration); check whether that is expected for these.`,
@@ -193,7 +194,7 @@ export const STATE_CHIP: Record<RestoreRunState, string> = {
 // ---- table T: step labels + status words -----------------------------------------------------------------------------------------------------
 export const STEP_TEXT: Record<RestoreStep | "cleanup", string> = {
     verify_manifest: "Check that the backup is genuine", probe: "Check the machine", stage: "Download the backup", apply: "Put files and volumes back", render: "Prepare the app's settings",
-    restore_db: "Restore the databases", compose_up: "Start the app", check_services: "Check that the app's services are running", cleanup: COPY_DECK["run.cleanup"],
+    restore_db: "Restore the databases", compose_up: "Start the app", check_services: "Check that the app's services are running", integrity: "Check the restored data with its database engine", cleanup: COPY_DECK["run.cleanup"],
 };
 export const STEP_STATUS = {
     done: "Done", waiting: "Waiting", inProgress: "In progress", failed: "Failed", notRun: COPY_DECK["step.notRun"],
@@ -337,6 +338,8 @@ export const FAILURE_GROUPS = [
     g(["task_cancelled", "cancelled"], {tone: "neutral", text: () => "Cancelled."}),
     g(["override_conflict", "overrides_changed", "render_missing"], {tone: "danger", text: () => "The values for this restore changed while it ran. Make a new plan."}),
     g(["plan_tampered", "hash_mismatch"], {tone: "danger", text: () => integrity}),
+    g(["integrity_failed"], {tone: "danger", text: () => "The restored data failed the database's own integrity check."}),
+    g(["engine_unavailable"], {tone: "danger", text: (m) => `${m} could not run the database check.`}),
     g(["host_role_mismatch", "mode_unsupported", "approval_missing"], {tone: "danger", text: () => "The machine refused this restore for its role or a missing approval."}),
     g(["forbidden", "locked", "rate_limited", "invalid_input", "not_found", "plan_blocked"], {tone: "danger", text: () => "The restore was refused when its next step was prepared. Make a new plan and try again."}),
     g(["bad_signature", "unknown_kid", "bad_envelope", "agent_mismatch", "enroll_mismatch", "not_yet_valid", "replayed", "seq_rollback", "unsupported_type", "capability_missing", "payload_hash", "payload_invalid",

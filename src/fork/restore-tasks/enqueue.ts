@@ -28,7 +28,7 @@ import {artifactDownloadUrl} from "@/fork/upstream/storage-read";
 import {canonicalJson} from "@/fork/canonical";
 import {checkPolicyApproval} from "@/fork/policy/approval";
 import {checkRawCompose} from "@/fork/policy/raw";
-import {BuildError, artifactIndexes, buildApplyPayload, buildCleanupPayload, buildComposeRef, buildDbPayload, buildProbePayload, buildRenderPayload, buildStagePayload, buildUpPayload, workspaceOf, type BuildInput} from "./build";
+import {BuildError, artifactIndexes, buildApplyPayload, buildCleanupPayload, buildComposeRef, buildDbPayload, buildProbePayload, buildRenderPayload, buildStagePayload, buildUpPayload, buildVerifyPayload, workspaceOf, type BuildInput} from "./build";
 import {latestRender, renderVerdict} from "./render";
 
 /**
@@ -65,6 +65,7 @@ const RestoreEnqueueInput = z.discriminatedUnion("type", [
     z.strictObject({type: z.literal("restore_probe"), agentId: uuid, workspace: z.string().max(1024).optional()}),
     z.strictObject({type: z.literal("restore_stage"), ...Plan, manifest: Manifest}),
     z.strictObject({type: z.literal("restore_apply"), ...Plan, manifest: Manifest}),
+    z.strictObject({type: z.literal("restore_verify"), ...Plan, manifest: Manifest}), // W-TR (ADR-007 A16)
     z.strictObject({type: z.literal("compose_render"), ...Plan, manifest: Manifest, overrides: Overrides}),
     z.strictObject({type: z.enum(["restore_db", "compose_up"]), ...Plan, manifest: Manifest, approval: z.unknown().nullable(), overrides: Overrides}),
     z.strictObject({type: z.literal("restore_cleanup"), ...Plan, cleanup: z.strictObject({workspace: z.boolean(), volumes: z.boolean(), networks: z.boolean(), containers: z.boolean()})}),
@@ -132,7 +133,7 @@ export async function enqueueRestoreTask(d: RestoreTaskDeps, raw: unknown): Prom
         if (plan.mode === "existing_stack") return deny("mode_unsupported", {reason2: "existing_stack"});
         const bi: BuildInput = {restoreId, planId: row.id, planHash: row.planHash, plan, approvals: approvalsOf(row), indexOf: new Map()};
         try {
-            if (input.type === "restore_stage" || input.type === "restore_apply" || input.type === "compose_render" || input.type === "restore_db" || input.type === "compose_up") {
+            if (input.type === "restore_stage" || input.type === "restore_apply" || input.type === "restore_verify" || input.type === "compose_render" || input.type === "restore_db" || input.type === "compose_up") {
                 const rm = await resolveManifest(d, plan, input.manifest);
                 if ("code" in rm) return deny(rm.code, rm.detail ? {detail: rm.detail} : {});
                 const withIndex: BuildInput = {...bi, indexOf: rm.indexOf};
@@ -174,6 +175,8 @@ export async function enqueueRestoreTask(d: RestoreTaskDeps, raw: unknown): Prom
                     }
                 } else if (input.type === "restore_apply") {
                     plaintext = Buffer.from(JSON.stringify(buildApplyPayload(withIndex, rm.sha256)), "utf8");
+                } else if (input.type === "restore_verify") {
+                    plaintext = Buffer.from(JSON.stringify(buildVerifyPayload(withIndex, rm.sha256)), "utf8");
                 } else {
                     const urls = new Map<number, string>();
                     for (const ix of artifactIndexes(withIndex)) {

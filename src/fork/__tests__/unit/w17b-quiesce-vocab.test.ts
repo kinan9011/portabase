@@ -28,11 +28,14 @@ describe("W17b vocabulary mirrors", () => {
         expect(RP_DOWNGRADE_REASONS).toContain("quiesce_unconfirmed");
     });
     it("the migration is the next in the ledger and defaults to OFF", () => {
-        expect(LEDGER.at(-1)?.tag).toBe("0015_quiesce");
+        expect(LEDGER.map((l) => l.tag)).toContain("0015_quiesce"); // later waves append (W-TR: 0016)
         expect(sql).toMatch(/"quiesce_enabled" boolean DEFAULT false NOT NULL/);
     });
     it("RESTORE_REASONS ends with the quiesce agent codes, in the agent's order; no duplicates", () => {
-        expect([...RESTORE_REASONS].slice(-QUIESCE_AGENT_CODES.length)).toEqual([...QUIESCE_AGENT_CODES]);
+        // W-TR appends its two codes AFTER the quiesce block (agent order)
+        const tail = [...RESTORE_REASONS].slice(-(QUIESCE_AGENT_CODES.length + 2), -2);
+        expect(tail).toEqual([...QUIESCE_AGENT_CODES]);
+        expect([...RESTORE_REASONS].slice(-2)).toEqual(["integrity_failed", "engine_unavailable"]);
         expect(new Set(RESTORE_REASONS).size).toBe(RESTORE_REASONS.length);
         expect(new Set(QUIESCE_REASONS).size).toBe(QUIESCE_REASONS.length);
     });

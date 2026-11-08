@@ -10,12 +10,12 @@ import {enqueueForkNotification} from "@/fork/notify";
 import {checkPolicyApproval} from "@/fork/policy/approval";
 import {RULES_SHA256} from "@/fork/policy/rules";
 import {done, fail, wait, type Handlers, type StepOutcome} from "@/fork/runs/engine";
-import {workspaceOf} from "@/fork/restore-tasks/build";
+import {engineCheckCount, workspaceOf} from "@/fork/restore-tasks/build";
 import {enqueueRestoreTask, resolveManifest, type RestoreTaskDeps} from "@/fork/restore-tasks/enqueue";
 import {latestRender, renderVerdict} from "@/fork/restore-tasks/render";
 import type {PlanRow} from "@/fork/restore/service";
 import type {RestorePlanV1} from "@/fork/restore/schema";
-import {checkDb, checkProbe, checkServices, checkStage, parseServices, type Check} from "./derive";
+import {checkDb, checkProbe, checkServices, checkStage, checkVerify, parseServices, type Check} from "./derive";
 import type {RestoreRunDeps} from "./deps";
 import {defaultManifestFetch, type ManifestBundle} from "./manifest";
 import {MAX_EXPIRED_REENQUEUES, REASON_RE, STEP_TASK_TYPE, TRANSIENT_REFUSALS, type JournalStep, type RestoreStep} from "./vocab";
@@ -36,7 +36,7 @@ export const ACTIVE = ["running", "awaiting_approval"] as const;
 export const MANIFEST_FETCH_ATTEMPTS = 30;
 
 export type JournalRow = {
-    runId: string; step: string; attempt: number; taskId: string | null; overrideRevision: number | null;
+    runId: string; step: string; attempt: number; taskId: string | null; overrideRevision: number | null; createdAt: Date;
     task: {status: string; attempts: number; result: unknown; notAfter: Date} | null;
 };
 
@@ -45,7 +45,7 @@ export async function journalRows(db: ForkDb, runId: string, step: JournalStep):
     const rows = await db.select({j: forkRestoreRunTask, t: {status: forkAgentTask.status, attempts: forkAgentTask.attempts, result: forkAgentTask.result, notAfter: forkAgentTask.notAfter}})
         .from(forkRestoreRunTask).leftJoin(forkAgentTask, eq(forkAgentTask.id, forkRestoreRunTask.taskId))
         .where(and(eq(forkRestoreRunTask.runId, runId), eq(forkRestoreRunTask.step, step))).orderBy(desc(forkRestoreRunTask.attempt));
-    return rows.map((r) => ({runId, step, attempt: r.j.attempt, taskId: r.j.taskId, overrideRevision: r.j.overrideRevision, task: r.t && r.t.status ? r.t : null}));
+    return rows.map((r) => ({runId, step, attempt: r.j.attempt, taskId: r.j.taskId, overrideRevision: r.j.overrideRevision, createdAt: r.j.createdAt, task: r.t && r.t.status ? r.t : null}));
 }
 
 /** Task deps for one enqueue: acts as the run's STARTER and writes the journal row in the enqueue transaction. */
@@ -75,7 +75,7 @@ async function manifestOf(ctx: RunCtx): Promise<ManifestBundle | null> {
 }
 
 type TaskStepOpts = {
-    step: Exclude<JournalStep, "cleanup">;
+    step: Exclude<JournalStep, "cleanup" | "wipe" | "wipe_check">;
     /** Input of the enqueue (the manifest bundle is passed when `manifest: true`). */
     input: (manifest: ManifestBundle | null) => unknown;
     manifest: boolean;
@@ -212,6 +212,20 @@ export function handlers(ctx: RunCtx): Handlers<RestoreStep, RunCtx> {
                 await c.d.db.update(forkRestoreRun).set({services, updatedAt: c.now}).where(eq(forkRestoreRun.id, c.run.id));
                 c.run = {...c.run, services};
                 return {ok: true};
+            },
+        }),
+        // W-TR (ADR-007 A16): engine integrity check of a data-only test restore; the counts (never output) are kept on the run row
+        integrity: (c) => taskStep(c, {
+            step: "integrity", manifest: true,
+            input: (m) => ({type: STEP_TASK_TYPE.integrity, ...header, ...withManifest(m)}),
+            check: async (result) => {
+                const counts = engineCheckCount(c.plan);
+                const chk = checkVerify(result, counts.checkable);
+                if (!chk.ok) return chk;
+                const integrity = {checked: counts.checkable, failed: 0, not_supported: counts.notSupported};
+                await c.d.db.update(forkRestoreRun).set({integrity, updatedAt: c.now}).where(eq(forkRestoreRun.id, c.run.id));
+                c.run = {...c.run, integrity};
+                return chk;
             },
         }),
         check_services: async (c) => {

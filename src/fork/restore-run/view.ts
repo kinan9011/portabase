@@ -36,11 +36,16 @@ export const RestoreRunView = z.strictObject({
     overrides: z.strictObject({applicable: z.boolean(), missingRequired: z.number(), frozen: z.boolean()}),
     cleanup: z.strictObject({status: z.string(), reason: z.string().nullable(), attempts: z.number()}).nullable(),
     nextSteps: z.array(z.enum(["reattach_backups"])),
+    /** W-TR: how the run was started, the engine-check counts of a test restore, and the verified wipe of its scratch copy (codes and states only). */
+    trigger: z.enum(["manual", "schedule"]),
+    integrity: z.strictObject({checked: z.number(), failed: z.number(), notSupported: z.number()}).nullable(),
+    wipe: z.strictObject({state: z.string(), reason: z.string().nullable(), finishedAt: iso.nullable()}).nullable(),
 });
 export type RestoreRunView = z.infer<typeof RestoreRunView>;
 
 export const RestoreRunSummary = z.strictObject({
     id: z.string(), stackId: z.string(), state: z.string(), createdAt: iso, finishedAt: iso.nullable(), targetAgentName: z.string(), rpSequence: z.number(), verification: z.string().nullable(),
+    purpose: z.string(), trigger: z.enum(["manual", "schedule"]),
 });
 export type RestoreRunSummary = z.infer<typeof RestoreRunSummary>;
 
@@ -58,6 +63,11 @@ export async function journalOfRun(db: RestoreRunDeps["db"], runId: string): Pro
     return rows.map((r) => ({step: r.j.step, attempt: r.j.attempt, status: r.t?.status ?? null, reason: r.t?.status && (r.t.status === "failed" || r.t.status === "rejected") ? reasonOf(r.t.result) : null, attempts: r.t?.attempts ?? null}));
 }
 
+const integrityOf = (v: unknown): RestoreRunView["integrity"] => {
+    const r = z.object({checked: z.number(), failed: z.number(), not_supported: z.number()}).safeParse(v);
+    return r.success ? {checked: r.data.checked, failed: r.data.failed, notSupported: r.data.not_supported} : null;
+};
+
 export function toRestoreRunView(run: RunRow, journal: readonly JournalView[], extra: {awaiting: RestoreRunView["awaiting"]; overrides: RestoreRunView["overrides"]; targetProject: string | null}): RestoreRunView {
     const newest = (step: string) => journal.find((j) => j.step === step) ?? null; // journal is newest-attempt first
     const steps = (run.steps as StepRecord[]).map((s) => {
@@ -71,7 +81,10 @@ export function toRestoreRunView(run: RunRow, journal: readonly JournalView[], e
         createdAt: run.createdAt.toISOString(), deadlineAt: run.deadlineAt.toISOString(), finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null, cancelRequested: run.cancelRequestedAt !== null,
         steps, awaiting: extra.awaiting, services: parseServices({services: run.services}) ?? [], overrides: extra.overrides,
         cleanup: c?.status ? {status: c.status, reason: c.reason, attempts: c.attempts ?? 0} : null,
-        nextSteps: run.state === "succeeded" ? ["reattach_backups"] : [],
+        nextSteps: run.state === "succeeded" && run.purpose !== "test_restore" ? ["reattach_backups"] : [],
+        trigger: run.trigger === "schedule" ? "schedule" : "manual",
+        integrity: integrityOf(run.integrity),
+        wipe: run.wipeState ? {state: run.wipeState, reason: run.wipeReason, finishedAt: run.wipeFinishedAt ? run.wipeFinishedAt.toISOString() : null} : null,
     });
 }
 
@@ -130,5 +143,5 @@ export async function listRestoreRuns(d: RestoreRunDeps, raw: unknown): Promise<
         where = eq(forkRestoreRun.organizationId, org);
     }
     const rows = await d.db.select().from(forkRestoreRun).where(where).orderBy(desc(forkRestoreRun.createdAt)).limit(20);
-    return {ok: true, runs: rows.map((r) => RestoreRunSummary.parse({id: r.id, stackId: r.stackId, state: r.state, createdAt: r.createdAt.toISOString(), finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null, targetAgentName: r.targetAgentName, rpSequence: r.rpSequence, verification: r.verification}))};
+    return {ok: true, runs: rows.map((r) => RestoreRunSummary.parse({id: r.id, stackId: r.stackId, state: r.state, createdAt: r.createdAt.toISOString(), finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null, targetAgentName: r.targetAgentName, rpSequence: r.rpSequence, verification: r.verification, purpose: r.purpose, trigger: r.trigger === "schedule" ? "schedule" : "manual"}))};
 }

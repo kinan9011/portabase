@@ -9,7 +9,7 @@ const view = (primary: ProtectionView["primary"], f: Partial<ProtectionView["fac
     counts: {total: 1, captured: 1, gaps: 0, blockers: 0, warnings: 0, external: 0, excluded: 0, accepted: 0},
     recoveryPoints: {verified: 0, pending: 0},
     facets: {
-        lastGoodBackup: {hoursAgo: null, verifying: false}, testRestore: {daysAgo: null}, deletable: "no", hostCompromise: false, consistency: [],
+        lastGoodBackup: {hoursAgo: null, verifying: false}, testRestore: {daysAgo: null, stale: false}, deletable: "no", hostCompromise: false, consistency: [],
         pausedAfterReauthorization: false, inventoryStale: false, configLocked: false, ...f,
     },
 });
@@ -43,7 +43,7 @@ describe("warning facets (3/4, 6, 7, configuration locked) move ONLY a Protected
         expect(classifyStack(view("partial", f)).reasons).toEqual(["partial", reason]);
     });
     it("informational facets never move a stack: consistency (5), last good (1), test restore (2), deletable 'no'", () => {
-        const v = view("protected", {consistency: [{member: "db", level: "files_copied_running"}], lastGoodBackup: {hoursAgo: 3, verifying: true}, testRestore: {daysAgo: 400}, deletable: "no"});
+        const v = view("protected", {consistency: [{member: "db", level: "files_copied_running"}], lastGoodBackup: {hoursAgo: 3, verifying: true}, testRestore: {daysAgo: 400, stale: false}, deletable: "no"});
         expect(classifyStack(v).bucket).toBe("safe");
     });
     it("all warnings together are all listed, in a stable order", () => {

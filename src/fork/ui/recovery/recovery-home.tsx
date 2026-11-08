@@ -13,9 +13,9 @@ export const LINK_PRIMARY = "bg-primary text-primary-foreground inline-flex h-9 
 export const LINK_PLAIN = "text-sm font-medium underline underline-offset-4";
 
 /** Facet text from the SHARED labels (never re-declared: "Not tested" comes from `FACET_COPY`). */
-export function FacetLines({c}: {c: Pick<RestoreChoice, "lastGood" | "testRestoreDaysAgo">}) {
+export function FacetLines({c}: {c: Pick<RestoreChoice, "lastGood" | "testRestoreDaysAgo" | "testRestoreStale">}) {
     const lg = c.lastGood.hoursAgo === null ? FACET_COPY.lastGood.never : FACET_COPY.lastGood.ago(c.lastGood.hoursAgo);
-    const tr = c.testRestoreDaysAgo === null ? FACET_COPY.testRestore.never : FACET_COPY.testRestore.ago(c.testRestoreDaysAgo);
+    const tr = FACET_COPY.testRestore.value(c.testRestoreDaysAgo, c.testRestoreStale === true);
     return (
         <>
             <span>{FACET_COPY.lastGood.label}: {lg}</span>

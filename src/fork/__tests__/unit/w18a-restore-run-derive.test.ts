@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {planRestore} from "@/fork/restore/plan";
 import type {RestorePlanV1} from "@/fork/restore/schema";
-import {checkDb, checkProbe, checkServices, checkStage, deriveSteps, expectedServices, neededBytes, needsCompose, needsDb, parseServices} from "@/fork/restore-run/derive";
+import {checkDb, checkProbe, checkServices, checkStage, checkVerify, deriveSteps, expectedServices, neededBytes, needsCompose, needsDb, parseServices} from "@/fork/restore-run/derive";
 import {REASON_RE, restoreConfirmPhrase} from "@/fork/restore-run/vocab";
 import {kumaInput, planInput} from "@/fork/__tests__/w16-fixtures";
 
@@ -105,5 +105,29 @@ describe("W18a vocabulary", () => {
         for (const ok of ["stale", "agent_offline", "a".repeat(64)]) expect(REASON_RE.test(ok)).toBe(true);
         for (const bad of ["", "Stale", "a-b", "a1", "a".repeat(65), "has space"]) expect(REASON_RE.test(bad)).toBe(false);
         expect(restoreConfirmPhrase("shop")).toBe("RESTORE shop");
+    });
+});
+
+describe("W-TR integrity step + checkVerify", () => {
+    const testEnv = [{id: "00000000-0000-4000-8000-000000000070", name: "scratch", host_role: "test" as const, allowed_path_roots: [], facts_fresh: true}];
+    const testPlan = (mut?: Parameters<typeof planInput>[0]) => planOf((i) => { i.purpose = "test_restore"; i.target.environments = testEnv; mut?.(i); });
+    it("test restore with a PostgreSQL dump ⇒ …apply, integrity (and never a compose step)", () => {
+        expect(deriveSteps(testPlan())).toEqual(["verify_manifest", "probe", "stage", "apply", "integrity"]);
+    });
+    it("test restore with sqlite ⇒ integrity; files only ⇒ none; purpose restore never gets it", () => {
+        const sqlite = planRestore(kumaInput((i) => { i.purpose = "test_restore"; i.target.environments = testEnv; })).plan;
+        expect(deriveSteps(sqlite).at(-1)).toBe("integrity");
+        expect(deriveSteps(testPlan((i) => { i.artifacts = i.artifacts.slice(0, 2); }))).toEqual(["verify_manifest", "probe", "stage", "apply"]);
+        expect(deriveSteps(planOf())).not.toContain("integrity");
+    });
+    it("checkVerify: exactly the expected number of ok checks", () => {
+        const ok = {checks: [{index: 1, engine: "postgresql", status: "ok"}]};
+        expect(checkVerify(ok, 1)).toEqual({ok: true});
+        expect(checkVerify(ok, 2)).toEqual({ok: false, code: "integrity_failed"});
+        expect(checkVerify({checks: []}, 1)).toEqual({ok: false, code: "integrity_failed"});
+        expect(checkVerify({checks: [{index: 1, engine: "postgresql", status: "failed"}]}, 1)).toEqual({ok: false, code: "integrity_failed"});
+        expect(checkVerify({checks: [{index: 1, engine: "mysql", status: "ok"}]}, 1)).toEqual({ok: false, code: "integrity_failed"});
+        expect(checkVerify(null, 1)).toEqual({ok: false, code: "integrity_failed"});
+        expect(checkVerify("x", 0)).toEqual({ok: false, code: "integrity_failed"});
     });
 });

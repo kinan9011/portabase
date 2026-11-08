@@ -12,3 +12,4 @@ export * from "./restore";
 export * from "./compose-render";
 export * from "./restore-override";
 export * from "./restore-run";
+export * from "./test-restore";

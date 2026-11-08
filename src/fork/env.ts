@@ -123,6 +123,9 @@ const schema = z.object({
     /** W18a: hard cap of one restore run (hours, 1..48) and the orchestrator tick period (seconds, 1..300; `0` = the job never ticks: LIVE LAB ONLY). */
     FORK_RESTORE_RUN_MAX_HOURS: intRange(1, 48, 12),
     FORK_RESTORE_TICK_SECONDS: intRangeExplicit(0, 300, 10),
+    /** W-TR: scheduler + verified-wipe tick (seconds; `0` = this process never ticks: LIVE LAB ONLY) and the default decay age of the test-restore facet (days). */
+    FORK_TEST_RESTORE_TICK_SECONDS: intRangeExplicit(0, 300, 60),
+    FORK_TEST_RESTORE_STALE_DAYS: intRange(1, 90, 14),
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -164,6 +167,8 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_RESTORE_PLAN_TTL_HOURS: source.FORK_RESTORE_PLAN_TTL_HOURS,
         FORK_RESTORE_RUN_MAX_HOURS: source.FORK_RESTORE_RUN_MAX_HOURS,
         FORK_RESTORE_TICK_SECONDS: source.FORK_RESTORE_TICK_SECONDS,
+        FORK_TEST_RESTORE_TICK_SECONDS: source.FORK_TEST_RESTORE_TICK_SECONDS,
+        FORK_TEST_RESTORE_STALE_DAYS: source.FORK_TEST_RESTORE_STALE_DAYS,
     });
 }
 
