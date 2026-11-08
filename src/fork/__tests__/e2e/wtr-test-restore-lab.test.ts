@@ -312,7 +312,7 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
             }
         }});
         check("T1", r.state === "succeeded" && r.verification === "data_verified", `state=${r.state} verification=${r.verification}`);
-        check("T1", JSON.stringify(r.integrity) === JSON.stringify({checked: 1, failed: 0, not_supported: 0}), `integrity=${JSON.stringify(r.integrity)}`);
+        check("T1", r.integrity?.checked === 1 && r.integrity?.failed === 0 && r.integrity?.not_supported === 0, `integrity=${JSON.stringify(r.integrity)}`);
         check("T1", r.wipe_state === "verified", `wipe_state=${r.wipe_state}`);
         check("T1", !rexists(workspace()), `scratch workspace gone on the host (${path.basename(workspace())})`);
         check("T1", helpers() === "", "no helper container left behind");
