@@ -39,6 +39,7 @@ const LAB = process.env.FORK_LAB === "1";
 const IMAGE = process.env.W17_AGENT_IMAGE ?? "portabase-agent-fork:w17b-lab";
 const BASE_IMAGE = process.env.W17LIVE_BASE_IMAGE ?? "portabase-agent-fork-base:1.25.2-fork-c4d58fdd226c";
 const STOCK_IMAGE = "ghcr.io/portabase/agent:1.25.2@sha256:e8f2b52eb4e59ed652d63d853a6bf517c31e9d41e3556115a2534ecbdde9df9f";
+const KUMA_IMAGE = "w17live-kuma:lab"; // a local `docker commit` of the stock agent image (sqlite3 inside): the agent's D29 guard protects containers that run the AGENT'S OWN image, a real app image never is
 const PG_IMAGE = "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b";
 const PAD = Number(process.env.W17LIVE_PAD_ROWS ?? 1_500_000);
 const NET = "w17live-lab-net", SUBNET = "172.31.253.0/24", GW = "172.31.253.1";
@@ -158,7 +159,7 @@ const COMPOSE = `services:
     volumes: ["./web/serve.sh:/app/serve.sh:ro", "./web/handle.sh:/app/handle.sh:ro", "data:/appdata"]
     networks: [internal]
   kuma:
-    image: ${STOCK_IMAGE}
+    image: ${KUMA_IMAGE}
     user: "1000:1000"
     entrypoint: ["sleep", "infinity"]
     volumes: [kumadata:/data]
@@ -263,6 +264,8 @@ describe.skipIf(!LAB)("W17-live: live restore proof (-Fc + -Fd, sqlite in WAL vo
         } finally { try { docker(["rm", "-f", gen]); } catch { /* gone */ } }
         const outer = readFileSync(path.join(tmp, "outer.tgz"));
 
+        try { docker(["rm", "-f", "w17live-kuma-img"]); } catch { /* none */ }
+        docker(["create", "--name", "w17live-kuma-img", "--entrypoint", "true", STOCK_IMAGE]); docker(["commit", "-c", "LABEL w17live.kuma=1", "w17live-kuma-img", KUMA_IMAGE]); docker(["rm", "-f", "w17live-kuma-img"]);
         // kuma: volume artifact (stale WAL of T1) + sqlite artifact (consistent dump of T2) from ONE sqlite3 session in the stock image
         const kumaTar = dockerBuf(["run", "--rm", "-i", "--entrypoint", "sh", STOCK_IMAGE, "-s"], process.env, Buffer.from(KUMA_SCRIPT));
         const kd = path.join(tmp, "kuma"); mkdirSync(kd, {recursive: true}); execFileSync("tar", ["-xf", "-", "-C", kd], {input: kumaTar});
@@ -320,6 +323,7 @@ describe.skipIf(!LAB)("W17-live: live restore proof (-Fc + -Fd, sqlite in WAL vo
         try { for (const n of docker(["network", "ls", "-q", "--filter", "label=com.portabase.fork.agent_id"]).split("\n").filter(Boolean)) docker(["network", "rm", n]); } catch { /* none */ }
         for (const v of [ST_CLEAN, ST_VPS, ST_STOCK, REF_VOL, REF_KUMA]) { try { docker(["volume", "rm", "-f", v]); } catch { /* gone */ } }
         try { docker(["network", "rm", NET]); } catch { /* gone */ }
+        try { docker(["rmi", KUMA_IMAGE]); } catch { /* gone */ }
         if (madeProxy) { try { docker(["network", "rm", "lab_proxy"]); } catch { /* gone */ } }
         server?.close(); child?.kill("SIGTERM"); await sleep(500); if (child?.exitCode === null) child?.kill("SIGKILL");
         await t?.drop();
