@@ -489,7 +489,7 @@ describe.skipIf(!LAB)("W18b live: Flow C through the real server job, MinIO mani
             } else if (cmd === "drop-object") { const o = await find(a, b); await mc.removeObject(BUCKET, o.key);
             } else if (cmd === "pause-agent") docker(["pause", CLEAN]);
             else if (cmd === "resume-agent") docker(["unpause", CLEAN]);
-            else if (cmd === "expire-plans") await q("update fork_restore_plan set expires_at = now() - interval '1 minute' where id not in (select plan_id from fork_restore_run)");
+            else if (cmd === "expire-plans") await q("update fork_restore_plan set created_at = least(created_at, now() - interval '2 minutes'), expires_at = now() - interval '1 minute' where id not in (select plan_id from fork_restore_run)"); // created_at moves back too: fork_restore_plan_expiry_ck needs expires_at > created_at, so a plan younger than a minute could not expire
             else if (cmd === "hygiene") {
                 for (const r of await q("select r.id, p.id plan_id, p.plan_hash from fork_restore_run r join fork_restore_plan p on p.id=r.plan_id where r.state in ('succeeded','incomplete')")) { if (cleaned.has(r.id)) continue; await hygiene({planId: r.plan_id, planHash: r.plan_hash}, r.id); cleaned.add(r.id); runIds.push(r.id); }
             } else throw new Error("unknown");
