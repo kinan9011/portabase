@@ -90,6 +90,17 @@ describe("B1 loadRestoreTargets", () => {
         expect(out.find((x) => x.id === srcAgent)).toMatchObject({wasSource: true, lastRestoreRoot: null});
     });
 
+    it("D2 lastRestoreRoot skips a newer plan whose folder was rejected (null root): the folder last used is not forgotten", async () => {
+        const w = await seedWorld(pool, {org});
+        const plan = async (root: string | null, ageDays: number) => pool.query(
+            `insert into fork_restore_plan (organization_id, stack_id, rp_sequence, target_agent_id, target_agent_name, purpose, mode, plan_version, plan, plan_hash, inputs_digest, outcome, created_by, created_at, expires_at)
+             values ($1,$2,1,$3,'n','restore','new_stack',1,$4,$5,$5,'ready','u', now() - ($6 || ' days')::interval, now() + interval '1 day')`,
+            [org, w.stack, w.agent, JSON.stringify({target: {restore_root: root}}), hex(), String(ageDays)]);
+        await plan("/kept/root", 2); await plan(null, 0);
+        const out = await loadRestoreTargets(t.db, owner(), org, {now: new Date(), stackId: w.stack});
+        expect(out.find((x) => x.id === w.agent)?.lastRestoreRoot).toBe("/kept/root");
+    });
+
     it("statusAt matches upstream getAgentStatus at the boundaries (injected clock)", () => {
         const now = new Date();
         const ago = (ms: number) => new Date(now.getTime() - ms);

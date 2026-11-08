@@ -81,7 +81,7 @@ export async function loadRestoreTargets(db: ForkDb, principal: ForkPrincipal | 
     }
     const last = await db.execute(sql`
         select distinct on (target_agent_id) target_agent_id, plan->'target'->>'restore_root' as root
-          from fork_restore_plan where organization_id = ${organizationId} and target_agent_id in (${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)})
+          from fork_restore_plan where organization_id = ${organizationId} and plan->'target'->>'restore_root' is not null and target_agent_id in (${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)})
          order by target_agent_id, created_at desc, id`);
     const rootOf = new Map((last.rows as {target_agent_id: string; root: string | null}[]).map((r) => [r.target_agent_id, r.root]));
 
