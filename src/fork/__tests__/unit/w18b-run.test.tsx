@@ -156,6 +156,27 @@ describe("W18b run page: polling", () => {
 
 describe("W18b run page: awaiting approval (ALLOW)", () => {
     const aw = (o: Partial<RestoreRunView> = {}) => view({state: "awaiting_approval", awaiting, steps: [step("verify_manifest", "done"), step("probe", "done"), step("stage", "done"), step("apply", "done"), step("render", "done")], ...o});
+    it("D4 after ALLOW ok the panel unmounts and focus lands on the run heading (not <body>); D5 the heading also takes focus on arrival", async () => {
+        h.allow.mockResolvedValue({data: {ok: true}});
+        h.get.mockResolvedValue(ok(view({state: "running"})));
+        ui(aw());
+        expect(document.activeElement?.id).toBe("run-h");
+        (screen.getByLabelText("Type ALLOW traefik to allow") as HTMLInputElement).value = "ALLOW traefik";
+        (document.activeElement as HTMLElement).blur();
+        await act(async () => { fireEvent.click(screen.getByRole("button", {name: RECOVERY.run.allowButton})); });
+        expect(screen.queryByTestId("allow-panel")).toBeNull();
+        expect(document.activeElement?.id).toBe("run-h");
+    });
+    it("D4 cancel ok: the Cancel control unmounts and focus lands on the run heading", async () => {
+        h.cancel.mockResolvedValue({data: {ok: true}});
+        h.get.mockResolvedValue(ok(view({cancelRequested: true})));
+        ui(view());
+        fireEvent.click(screen.getByTestId("cancel-run"));
+        (document.activeElement as HTMLElement | null)?.blur?.();
+        await act(async () => { fireEvent.click(screen.getByRole("button", {name: "Cancel restore"})); });
+        expect(screen.queryByTestId("cancel-run")).toBeNull();
+        expect(document.activeElement?.id).toBe("run-h");
+    });
     it("m11 the alert region never outlives its state: awaiting -> succeeded and awaiting -> running clear it, the status region still announces", async () => {
         const done = [step("verify_manifest", "done"), step("probe", "done"), step("stage", "done"), step("apply", "done"), step("render", "done")];
         h.get.mockResolvedValueOnce(ok(aw())).mockResolvedValueOnce(ok(view({state: "succeeded", verification: "started", finishedAt: now.toISOString(), steps: done})));

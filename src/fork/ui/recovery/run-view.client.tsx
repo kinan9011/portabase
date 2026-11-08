@@ -41,6 +41,9 @@ export function RunView({initial, appName, canExecute, canApproveProduction, loc
         } catch { setPollFailed(true); }
     }, []);
 
+    // the heading takes focus on arrival (router.push leaves it on <body>), like the wizard steps (W18b-f2 D5)
+    React.useEffect(() => { document.getElementById("run-h")?.focus(); }, []);
+
     const active = isPolling(view);
     React.useEffect(() => {
         if (!active) return;
@@ -151,7 +154,7 @@ function AllowPanel({view, canApprove, locked, refreshNow}: {view: RestoreRunVie
         for (const s of aw.services) { const el = refs.current[s.service]; confirmations[s.service] = el?.value ?? ""; if (el) el.value = ""; } // read once, clear at once: the typed text never outlives the click
         try {
             const v = verdict(await approveRestorePolicyAction({runId: view.id, confirmations}));
-            if (v.ok) { announce("Allowed. The restore continues."); await refreshNow(); }
+            if (v.ok) { announce("Allowed. The restore continues."); await refreshNow(); document.getElementById("run-h")?.focus(); }
             else { const t = textOf(POLICY_REFUSAL_TEXT, v.code); setErr(t); announce(t); if (v.code === "hard_refusal") setHard(true); }
         } catch { setErr(RECOVERY.page.loadError.body); } finally { setBusy(false); }
     };
@@ -183,7 +186,7 @@ function CancelControl({runId, machine, locked, refreshNow}: {runId: string; mac
         setErr(null);
         try {
             const v = verdict(await cancelRestoreRunAction({runId}));
-            if (v.ok) { announce(RECOVERY.run.cancelling); await refreshNow(); } else { const t = textOf(CANCEL_REFUSAL_TEXT, v.code); setErr(t); announce(t); }
+            if (v.ok) { announce(RECOVERY.run.cancelling); await refreshNow(); document.getElementById("run-h")?.focus(); } else { const t = textOf(CANCEL_REFUSAL_TEXT, v.code); setErr(t); announce(t); }
         } catch { setErr(RECOVERY.page.loadError.body); }
     };
     return (
@@ -207,7 +210,7 @@ function CleanupControl({view, locked, refreshNow}: {view: RestoreRunView; locke
         setErr(null);
         try {
             const v = verdict(await cleanupRestoreRunAction({runId: view.id}));
-            if (v.ok) { announce(RECOVERY.run.cleanupRunning); await refreshNow(); } else { const t = textOf(CLEANUP_REFUSAL_TEXT, v.code); setErr(t); announce(t); }
+            if (v.ok) { announce(RECOVERY.run.cleanupRunning); await refreshNow(); document.getElementById("run-h")?.focus(); } else { const t = textOf(CLEANUP_REFUSAL_TEXT, v.code); setErr(t); announce(t); }
         } catch { setErr(RECOVERY.page.loadError.body); }
     };
     const retry = c !== null;
