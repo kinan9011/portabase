@@ -2,6 +2,7 @@ import {randomUUID} from "node:crypto";
 import {rmSync} from "node:fs";
 import type {Pool} from "pg";
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from "vitest";
+import type {ForkPrincipal} from "@/fork/acl";
 import {verifyAuditChain} from "@/fork/audit";
 import {setRestoreOverrides} from "@/fork/config/service";
 import {enqueueRestoreTask} from "@/fork/restore-tasks/enqueue";
@@ -215,7 +216,7 @@ describe("W18a start: typed confirmation bound to the plan hash, refusals, IDOR"
         const outsider = {userId: (await h.user("member")).userId, systemRole: "user", memberships: [{organizationId: otherOrg, role: "owner"}]};
         const member = await h.user("member");
         const random = randomUUID();
-        const each = async (p: typeof outsider, id: string, planId: string) => [
+        const each = async (p: ForkPrincipal, id: string, planId: string) => [
             await startRestoreRun(h.deps(w, p), {planId, planHash: c.planHash}),
             await approveRestorePolicy(h.deps(w, p), {runId: id, confirmations: {}}),
             await cancelRestoreRun(h.deps(w, p), {runId: id}),
