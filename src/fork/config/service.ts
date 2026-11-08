@@ -169,7 +169,7 @@ export async function setRestoreOverrides(d: OverrideDeps, raw: unknown): Promis
                 const ws = workspaceOf(g.plan);
                 const file = `${ws}/.portabase/secret/override.yml`;
                 const raw = checkRawCompose({root: ws, entry: [file], files: [{path: file, text: built.overrideYml}]});
-                if (raw.refused) throw new Refused({ok: false, code: "override_raw_refused", violations: raw.violations.map((v) => ({kind: v.kind, service: v.service}))}, {violations: raw.violations.map((v) => `${v.kind}:${v.service ?? "-"}`).slice(0, 16)});
+                if (raw.refused) throw new Refused({ok: false, code: "override_raw_refused", violations: raw.violations.map((v) => ({kind: v.kind, service: v.service}))}, {violation_kinds: [...new Set(raw.violations.map((v) => v.kind))]});
             }
             const cleared = (await tx.update(forkRestorePlan).set({approvals: []}).where(and(eq(forkRestorePlan.id, g.planId), sql`jsonb_array_length(${forkRestorePlan.approvals}) > 0`)).returning({id: forkRestorePlan.id})).length;
             const names = next.env.map(({service, key}) => ({service, key}));
