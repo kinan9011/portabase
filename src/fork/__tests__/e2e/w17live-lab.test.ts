@@ -315,6 +315,7 @@ describe.skipIf(!LAB)("W17-live: live restore proof (-Fc + -Fd, sqlite in WAL vo
             writeFileSync(path.join(evidence, "w17live-agent-clean.log"), SNAPS.join("\n=====\n") + "\n=====\n" + stripAnsi(logsAll(CLEAN))); writeFileSync(path.join(evidence, "w17live-agent-vps.log"), stripAnsi(logsAll(VPS)));
             writeFileSync(path.join(evidence, "dashboard-fork-w17live.log"), out.split("\n").filter((l) => /[Ff]ork|agent-channel/.test(l) && !/Received POST/.test(l)).join("\n"));
             writeFileSync(path.join(evidence, "lab-run-w17live.txt"), RUN.join("\n") + "\n");
+            try { writeFileSync(path.join(evidence, "proc-sampler.txt"), readFileSync(path.join(tmp, "proc-sampler.txt"))); } catch { /* N14 did not run */ }
         } else if (evidence) writeFileSync(path.join(tmp, "NOT-WRITTEN"), "canary found a secret in a log: evidence withheld");
         for (const n of [CLEAN, VPS, "w17live-refpg", "w17live-gen-pg"]) { try { docker(["rm", "-f", n]); } catch { /* gone */ } }
         try { for (const id of docker(["ps", "-aq", "--filter", "label=com.portabase.fork.helper=true"]).split("\n").filter(Boolean)) docker(["rm", "-f", id]); } catch { /* none */ }
