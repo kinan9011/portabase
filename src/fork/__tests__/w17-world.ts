@@ -5,13 +5,14 @@ import path from "node:path";
 import type {Pool} from "pg";
 import {enrolAgent} from "@/fork/agent-channel/admin";
 import type {ChannelDeps} from "@/fork/agent-channel/deps";
+import type {StackInventoryV1} from "@/fork/inventory/schema";
 import {registerLiveAnchor} from "@/fork/manifest/anchors";
 import {buildManifest} from "@/fork/manifest/build";
 import {signManifest} from "@/fork/manifest/sign";
 import {createRestorePlan, approveRestorePlan} from "@/fork/restore/service";
 import {seedBackup, type W04Db} from "@/fork/__tests__/w04-helpers";
 import type {testKeypair} from "@/fork/__tests__/w14-fixtures";
-import {P, req, seedUser, seedWorld, type World} from "@/fork/__tests__/w16-world";
+import {P, req, seedUser, seedWorld, type ExtraSource, type World} from "@/fork/__tests__/w16-world";
 
 /** W17 test world: a plannable world (w16-world) whose RP has a REAL signed manifest and whose target agent is REALLY enrolled on the channel (task key, credential). */
 export const PASSWORD = `pw-${randomUUID()}`;
@@ -33,9 +34,11 @@ export const newKek = () => mkdtempSync(path.join(tmpdir(), "w17-kek-"));
 
 export async function seedW17World(t: W04Db, kek: string, key: ReturnType<typeof testKeypair>, admin: string, o: {org: string; hostRole?: "production" | "test"; extraManifestArtifacts?: number; caps?: string[]; roots?: string[];
     /** live lab: replace the fake artifact hashes with the real plaintext hashes of the served objects (keys = member names of seedWorld) */
-    plain?: Record<string, {sha: string; size: number; dump?: "pg_custom"}>; enrolDeps?: Partial<ChannelDeps>}): Promise<W17> {
+    plain?: Record<string, {sha: string; size: number; dump?: "pg_custom" | "pg_directory"}>; enrolDeps?: Partial<ChannelDeps>;
+    /** W17-live: more sources/artifacts and a custom pinned inventory (defaults unchanged) */
+    extra?: ExtraSource[]; inventory?: StackInventoryV1}): Promise<W17> {
     const pool = t.pool;
-    const w = await seedWorld(pool, {org: o.org, hostRole: o.hostRole ?? "test", caps: o.caps, roots: o.roots});
+    const w = await seedWorld(pool, {org: o.org, hostRole: o.hostRole ?? "test", caps: o.caps, roots: o.roots, extra: o.extra, inventory: o.inventory});
     for (const [name, p] of Object.entries(o.plain ?? {})) await pool.query("update fork_recovery_point_artifact set plaintext_sha256=$3, plaintext_size=$4, dump_format=$5, path_or_snapshot_id=$6, generated_id=$6 where rp_id=$1 and source_name=$2", [w.rp, name, p.sha, p.size, p.dump ?? null, `lab/${name}`]);
     // real enrolment (task key + credential) instead of the stub row of seedWorld
     await pool.query("delete from fork_agent_enrollment where agent_id=$1", [w.agent]);
@@ -49,7 +52,7 @@ export async function seedW17World(t: W04Db, kek: string, key: ReturnType<typeof
         pathOrSnapshotId: a.path_or_snapshot_id, generatedId: a.generated_id, sizeBytes: a.size_bytes === null ? null : Number(a.size_bytes), ciphertextSha256: a.ciphertext_sha256, plaintextSha256: a.plaintext_sha256, plaintextSize: a.plaintext_size === null ? null : Number(a.plaintext_size), required: a.required}));
     for (let i = 0; i < (o.extraManifestArtifacts ?? 0); i++) facts.push({...facts[0], sourceName: `pad_${i}`, pathOrSnapshotId: "p".repeat(1000)});
     await registerLiveAnchor(t.db, key.publicKey);
-    const m = buildManifest({id: w.rp, stackId: w.stack, stackName: "app", sequence: Number(rp.sequence), createdAt: rp.created_at, finalizedAt: rp.created_at, consistencyLevel: "mixed", inventoryVersion: 1, inventoryHash: rp.inventory_hash, requiredArtifactCount: 3}, facts, null,
+    const m = buildManifest({id: w.rp, stackId: w.stack, stackName: "app", sequence: Number(rp.sequence), createdAt: rp.created_at, finalizedAt: rp.created_at, consistencyLevel: "mixed", inventoryVersion: 1, inventoryHash: rp.inventory_hash, requiredArtifactCount: arts.filter((a) => a.required).length}, facts, null,
         {kid: key.kid, signedAt: new Date("2026-11-07T10:10:00Z"), verifiedAt: new Date("2026-11-07T10:09:00Z")});
     const signed = signManifest(m, key.privateKey);
     const manifestSha = createHash("sha256").update(signed.json).digest("hex");
@@ -59,4 +62,4 @@ export async function seedW17World(t: W04Db, kek: string, key: ReturnType<typeof
     return {...w, key, manifestJson: signed.json, manifestSig: signed.sig.toString("base64"), manifestSha, agentBundle: r.bundle};
 }
 
-export {P, req, approveRestorePlan, createRestorePlan};
+export {type ExtraSource, P, req, approveRestorePlan, createRestorePlan};

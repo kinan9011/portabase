@@ -108,6 +108,29 @@ jobs:
       - run: pnpm test:fork:unit
       - run: pnpm test:fork:integration
 
+  # #147 (W17-live): the policy corpus the agent embeds must equal the dashboard's source files. One direction only (dashboard CI checks out the agent repo);
+  # the agent's own CI asserts its copy against SOURCE.json. Corpus changes therefore merge in the agent repo FIRST, then here.
+  corpus-drift:
+    name: policy corpus drift vs portabase-agent@main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: kinan9011/portabase-agent
+          ref: main
+          path: agent-clone
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: W17_AGENT_CLONE="$GITHUB_WORKSPACE/agent-clone" pnpm exec vitest run --project unit w17-agent-corpus
+
   recover-cli:
     name: portabase-recover CLI (ShellCheck + shell tests, W14b)
     runs-on: ubuntu-latest
