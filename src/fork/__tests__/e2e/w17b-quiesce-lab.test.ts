@@ -231,6 +231,7 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
         try { child?.kill("SIGTERM"); } catch { /* gone */ }
         cleanup();
         try { await t?.drop(); } catch { /* ignore */ }
+        dockerTry(["run", "--rm", "-v", `${tmp}:/x`, "busybox", "sh", "-c", "rm -rf /x/oracle"]); // the oracle files were extracted by a root-owned container
         rmSync(tmp, {recursive: true, force: true});
     }, 180_000);
 
