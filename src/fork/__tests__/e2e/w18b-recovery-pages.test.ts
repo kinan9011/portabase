@@ -131,7 +131,7 @@ describe("W18b recovery pages (real build)", () => {
         expect(visible(await (await get(base, `/dashboard/recovery/plans/${planA.planId}`, admin)).text())).toContain("Before the restore can start");
 
         // E3 no existence oracle: random and foreign ids show the same visible content; a foreign stack in the wizard is dropped with the same sentence
-        const ghost = async (p: string) => visible(await (await get(base, p, admin)).text());
+        const ghost = async (p: string) => { const h = await (await get(base, p, admin)).text(); const body = h.slice(h.indexOf('<main class="h-full">')); return `${body.includes("NEXT_HTTP_ERROR_FALLBACK")}|${visible(body)}`; }; // page body only (the head carries request-specific ids); the not-found marker must match too
         const randomPlan = await ghost(`/dashboard/recovery/plans/${randomUUID()}`);
         expect(await ghost(`/dashboard/recovery/plans/${foreignPlan.planId}`)).toBe(randomPlan);
         const randomRun = await ghost(`/dashboard/recovery/runs/${randomUUID()}`);
@@ -139,6 +139,7 @@ describe("W18b recovery pages (real build)", () => {
         expect(await ghost(`/dashboard/recovery/new?stack=${fw.stack}`)).toContain(GONE);
         expect(await ghost(`/dashboard/recovery/new?stack=${randomUUID()}`)).toContain(GONE);
         expect(randomPlan).not.toContain(planA.planId);
+        expect(randomPlan.startsWith("true|"), "random id ⇒ the not-found page").toBe(true);
 
         // E4 roles: a member sees the page without Restores and the R-role text on /new; an org admin who is not owner cannot confirm a production restore
         const mHome = visible(await (await get(base, "/dashboard/recovery", memberCk)).text());
