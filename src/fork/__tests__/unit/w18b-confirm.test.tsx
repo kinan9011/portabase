@@ -35,6 +35,17 @@ describe("W18b B5 DangerousActionConfirm typed mode", () => {
         expect([...dialog.querySelectorAll("[tabindex]")].filter((e) => Number(e.getAttribute("tabindex")) > 0)).toEqual([]);
     });
 
+    it("D3b the confirm button meets AA in both themes: fork-local #b91c1c (not the upstream destructive token, 2.89:1 in dark), white text >= 4.5:1", () => {
+        render(<Host onConfirm={vi.fn()}/>); openIt();
+        const cls = confirmBtn().className;
+        expect(cls).toContain("bg-[#b91c1c]");
+        expect(cls).not.toContain("bg-destructive");
+        expect(cls).not.toContain("bg-primary"); // tailwind-merge removed the upstream default-variant background
+        const lin = (c: number) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+        const lum = (n: number) => 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+        expect((lum(0xffffff) + 0.05) / (lum(0xb91c1c) + 0.05)).toBeGreaterThanOrEqual(4.5);
+    });
+
     it("confirm is aria-disabled until the exact phrase; a click while mismatched does NOT confirm and keeps the dialog open; a visible reason is shown", () => {
         const onConfirm = vi.fn();
         render(<Host onConfirm={onConfirm}/>); openIt();

@@ -185,6 +185,11 @@ describe("W18b plan page (Screens 4 + 5)", () => {
         await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
         await waitFor(() => expect(document.activeElement).toBe(go()));
     });
+    it("D5 arriving on the plan page moves focus to its heading (router.push leaves it on <body>)", async () => {
+        await mount();
+        expect(document.activeElement?.id).toBe("plan-h");
+        expect(document.getElementById("plan-h")?.getAttribute("tabindex")).toBe("-1");
+    });
     it("page states: tampered plan ⇒ alert; foreign / missing / malformed id ⇒ not found; flag off ⇒ not found; member of another org ⇒ R-role notice", async () => {
         h.view.mockResolvedValue({ok: false, code: "plan_tampered"});
         let r = await mount(); expect(screen.getByTestId("plan-tampered").textContent).toContain(RECOVERY.plan.tampered); r.unmount();

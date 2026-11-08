@@ -3,6 +3,7 @@
 import * as React from "react";
 import {Input} from "@/components/ui/input";
 import {AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger} from "@/components/ui/alert-dialog";
+import {DESTRUCTIVE_AA} from "@/fork/ui/recovery/style";
 
 /**
  * Controlled copy-and-own confirm (D31, `DangerousActionConfirm` of the UI map) over Radix AlertDialog: focus trap, Escape
@@ -75,7 +76,7 @@ export function DangerousActionConfirm({title, description, confirmLabel, onConf
                     <AlertDialogAction
                         aria-disabled={typed ? !match : undefined}
                         onClick={(e) => { if (!match) { e.preventDefault(); return; } const t = typed ? value.trim() : undefined; setValue(""); onConfirm(t); }}
-                        className={`bg-destructive hover:bg-destructive/90 text-white${match ? "" : " cursor-not-allowed opacity-50"}`}
+                        className={`${DESTRUCTIVE_AA} text-white${match ? "" : " cursor-not-allowed opacity-50"}`}
                     >{confirmLabel}</AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

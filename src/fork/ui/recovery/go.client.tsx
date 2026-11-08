@@ -12,6 +12,7 @@ import {listRestoreRunsAction, startRestoreRunAction} from "@/fork/actions/resto
 import type {RestoreOverridesView} from "@/fork/config/view";
 import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 import {HOST_ROLE_LABELS} from "@/fork/ui/labels";
 import {verdict} from "@/fork/ui/recovery/call";
 import {PLAN_REFUSAL_TEXT, RECOVERY, START_REFUSAL_TEXT} from "@/fork/ui/recovery/labels";
@@ -22,9 +23,15 @@ import {useAnnounce} from "@/fork/ui/status-announcer";
 const text = (code: string, project: string, machine: string) => Object.hasOwn(START_REFUSAL_TEXT, code) ? START_REFUSAL_TEXT[code as keyof typeof START_REFUSAL_TEXT]({machine, project}) : Object.hasOwn(PLAN_REFUSAL_TEXT, code) ? PLAN_REFUSAL_TEXT[code as keyof typeof PLAN_REFUSAL_TEXT] : RECOVERY.page.loadError.body;
 
 /** "Continue": moves focus and the viewport to the Go section of the same page (Step 5). */
+/** Moves focus to the heading `id` when the page arrives by router.push (it would stay on <body>); W18b-f2 D5. */
+export function FocusOnMount({id}: {id: string}) {
+    React.useEffect(() => { document.getElementById(id)?.focus(); }, [id]);
+    return null;
+}
+
 export function ContinueButton({reason}: {reason: string | null}) {
     return (
-        <ReasonButton reason={reason} className="w-full sm:w-auto" onClick={() => { const el = document.getElementById("go-h"); el?.scrollIntoView?.({block: "start"}); el?.focus(); }}>{RECOVERY.plan.continue}</ReasonButton>
+        <ReasonButton reason={reason} className={`w-full sm:w-auto ${PRIMARY_AA}`} onClick={() => { const el = document.getElementById("go-h"); el?.scrollIntoView?.({block: "start"}); el?.focus(); }}>{RECOVERY.plan.continue}</ReasonButton>
     );
 }
 
@@ -52,11 +59,14 @@ export function UseNameButton({plan, name}: {plan: PlanUi; name: string}) {
 /** The embedded W16b panel, unmodified, inside a collapsed section. `onChanged` only refreshes the page (approvals are re-read there); it never receives a value. */
 export function PlanValues({planId, planHash, view, canEdit, rateLimited}: {planId: string; planHash: string; view: RestoreOverridesView | null; canEdit: boolean; rateLimited: boolean}) {
     const router = useRouter();
+    // a save / clear re-renders the panel and drops focus on <body>: bring it back to the toggle once the refresh is done (W18b-f2 K1)
+    const [pending, start] = React.useTransition(); const was = React.useRef(false);
+    React.useEffect(() => { if (was.current && !pending) document.querySelector<HTMLElement>("[data-testid=values-toggle]")?.focus(); was.current = pending; }, [pending]);
     return (
         <Collapsible>
             <CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm" data-testid="values-toggle">{RECOVERY.plan.values}</Button></CollapsibleTrigger>
             <CollapsibleContent className="mt-3">
-                {view ? <RestoreOverridesPanel planId={planId} planHash={planHash} view={view} canEdit={canEdit} onChanged={() => router.refresh()}/>
+                {view ? <RestoreOverridesPanel planId={planId} planHash={planHash} view={view} canEdit={canEdit} onChanged={() => start(() => router.refresh())}/>
                     : <p role="note" className="text-sm">{rateLimited ? RECOVERY.plan.valuesRateLimited : RECOVERY.plan.valuesLocked}</p>}
             </CollapsibleContent>
         </Collapsible>
@@ -118,7 +128,7 @@ export function GoSection({plan, appName, backupLabel, missingRequired, canExecu
                 </div>
             )}
             <div>
-                <ReasonButton data-testid="go-button" className="w-full sm:w-auto" reason={g.reason} aria-busy={busy || undefined} onClick={() => setOpen(true)}>
+                <ReasonButton data-testid="go-button" className={`w-full sm:w-auto ${PRIMARY_AA}`} reason={g.reason} aria-busy={busy || undefined} onClick={() => setOpen(true)}>
                     {prod ? RECOVERY.go.prodButton(machine) : RECOVERY.go.testButton}
                 </ReasonButton>
             </div>

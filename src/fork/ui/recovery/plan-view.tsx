@@ -5,7 +5,7 @@ import {ToneBadge} from "@/fork/ui/tone-badge";
 import {fmtBytes} from "@/fork/ui/stacks/format";
 import {ACTION_KIND_TEXT, ACTION_OP_TEXT, PLAN_REASON_TEXT, PRECONDITION_TEXT, RECOVERY, RULE_TEXT, UNKNOWN_RULE} from "@/fork/ui/recovery/labels";
 import {blockingItems, goState, groupByPhase, newPlanHref, type Item, type PlanUi} from "@/fork/ui/recovery/model";
-import {ContinueButton, GoSection, PlanValues, UseNameButton} from "@/fork/ui/recovery/go.client";
+import {ContinueButton, FocusOnMount, GoSection, PlanValues, UseNameButton} from "@/fork/ui/recovery/go.client";
 import {StepIndicator} from "@/fork/ui/recovery/wizard-steps.client";
 import type {Tone} from "@/fork/ui/tone";
 
@@ -37,7 +37,7 @@ export function PlanScreen(p: PlanViewProps) {
     return (
         <div>
             <StepIndicator current={4} links={{app: "/dashboard/recovery/new?step=app", backup: stackBack, machine: newPlanHref(plan)}}/>
-            <PageHeader><h1 className="mb-4 text-2xl font-bold">{RECOVERY.steps.plan}</h1></PageHeader>
+            <PageHeader><h1 id="plan-h" tabIndex={-1} className="mb-4 text-2xl font-bold outline-none">{RECOVERY.steps.plan}</h1><FocusOnMount id="plan-h"/></PageHeader>
             <p data-testid="plan-summary" className="mb-4 max-w-3xl text-sm break-words">{RECOVERY.plan.summary(p.appName, p.backupLabel, machine, plan.target.project, plan.target.restoreRoot)}</p>
 
             {p.usedRunId && <p role="note" data-testid="plan-used" className="mb-3 rounded-md border p-3 text-sm">{RECOVERY.plan.used} <Link href={`/dashboard/recovery/runs/${p.usedRunId}`} className="underline underline-offset-4">{RECOVERY.plan.usedLink}</Link></p>}

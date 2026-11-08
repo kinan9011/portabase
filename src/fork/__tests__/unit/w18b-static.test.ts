@@ -89,4 +89,23 @@ describe("W18b static guards", () => {
         for (const a of [/spellCheck=\{false\}/, /autoComplete="off"/, /data-gramm="false"/, /data-1p-ignore/]) expect(run).toMatch(a);
         for (const f of SCOPE) expect(src(f), rel(f)).not.toMatch(/router\.(push|replace)\([^)]*(confirm|typed|secret|value)=/i);
     });
+    it("10. primary actions meet AA in both themes: no upstream bg-primary in ui/recovery; every default-variant ReasonButton and LINK_PRIMARY use PRIMARY_AA; the colours are >= 4.5:1 with white", () => {
+        const lin = (c: number) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+        const lum = (hex: string) => { const n = parseInt(hex.slice(1), 16); return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255); };
+        const contrast = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+        const rec = SCOPE.filter((f) => rel(f).startsWith("src/fork/ui/recovery/"));
+        expect(rec.length).toBeGreaterThan(5);
+        let defaultButtons = 0;
+        for (const f of rec) {
+            const code = src(f);
+            expect(code, rel(f)).not.toMatch(/bg-primary/);
+            for (const m of code.matchAll(/<ReasonButton\b([^>]*?)(?:\/?>)/g)) if (!/variant=/.test(m[1])) { defaultButtons++; expect(m[1], `${rel(f)}: ${m[0].slice(0, 60)}`).toContain("PRIMARY_AA"); }
+        }
+        expect(defaultButtons).toBeGreaterThanOrEqual(7);
+        expect(src(path.join(ROOT, "src/fork/ui/recovery/recovery-home.tsx"))).toMatch(/LINK_PRIMARY = `\$\{PRIMARY_AA\}/);
+        const style = readFileSync(path.join(ROOT, "src/fork/ui/recovery/style.ts"), "utf8");
+        expect([...new Set(style.match(/#[0-9a-f]{6}/gi))].sort()).toEqual(["#991b1b", "#9a3412", "#b91c1c", "#c2410c"]);
+        expect(contrast("#ffffff", "#c2410c")).toBeGreaterThanOrEqual(4.5);
+        expect(contrast("#ffffff", "#9a3412")).toBeGreaterThanOrEqual(4.5);
+    });
 });

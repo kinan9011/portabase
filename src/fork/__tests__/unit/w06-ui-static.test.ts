@@ -41,7 +41,7 @@ describe("W06 UI static guards", () => {
     it("every form posts (never GET) so a key can not reach a URL before hydration", () => {
         for (const f of ui) for (const m of read(f).matchAll(/<form\b[^>]*>/g)) expect(m[0], f).toContain('method="post"');
     });
-    it("hard-coded colours only in the one tone map", () => {
-        for (const f of ui.filter((x) => !x.endsWith("tone.ts"))) expect(read(f), f).not.toMatch(/#[0-9a-fA-F]{6}\b/);
+    it("hard-coded colours only in the one tone map (and the W18b-f2 AA overrides in recovery/style.ts)", () => {
+        for (const f of ui.filter((x) => !x.endsWith("tone.ts") && !x.endsWith("recovery/style.ts"))) expect(read(f), f).not.toMatch(/#[0-9a-fA-F]{6}\b/);
     });
 });

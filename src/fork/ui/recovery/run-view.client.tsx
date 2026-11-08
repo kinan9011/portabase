@@ -8,6 +8,7 @@ import {approveRestorePolicyAction, cancelRestoreRunAction, cleanupRestoreRunAct
 import type {RestoreRunView} from "@/fork/restore-run/view";
 import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 import {SERVICE_STATE_LABELS} from "@/fork/ui/labels";
 import {verdict} from "@/fork/ui/recovery/call";
 import {CANCEL_REFUSAL_TEXT, CLEANUP_REFUSAL_TEXT, POLICY_REFUSAL_TEXT, RECOVERY, RULE_TEXT, R_PROD, STATE_CHIP, STEP_TEXT, UNKNOWN_RULE} from "@/fork/ui/recovery/labels";
@@ -40,6 +41,9 @@ export function RunView({initial, appName, canExecute, canApproveProduction, loc
         } catch { setPollFailed(true); }
     }, []);
 
+    // the heading takes focus on arrival (router.push leaves it on <body>), like the wizard steps (W18b-f2 D5)
+    React.useEffect(() => { document.getElementById("run-h")?.focus(); }, []);
+
     const active = isPolling(view);
     React.useEffect(() => {
         if (!active) return;
@@ -60,8 +64,10 @@ export function RunView({initial, appName, canExecute, canApproveProduction, loc
         if (first.current) { first.current = false; return; }
         const h = runHeadline(view);
         announce(h.text);
-        if (prevState.current !== view.state && ALERT_STATES.has(view.state)) setAlertText(h.text);
+        if (prevState.current !== view.state) setAlertText(ALERT_STATES.has(view.state) ? h.text : null); // the alert never outlives its state (W18b-f2 D1)
         prevState.current = view.state;
+        // the focused control may have just left the page (cleanup finished, allow panel gone): never leave focus on <body> (W18b-f2 D4)
+        if (!document.activeElement || document.activeElement === document.body) document.getElementById("run-h")?.focus();
     }, [sig]);
 
     const head = runHeadline(view);
@@ -150,7 +156,7 @@ function AllowPanel({view, canApprove, locked, refreshNow}: {view: RestoreRunVie
         for (const s of aw.services) { const el = refs.current[s.service]; confirmations[s.service] = el?.value ?? ""; if (el) el.value = ""; } // read once, clear at once: the typed text never outlives the click
         try {
             const v = verdict(await approveRestorePolicyAction({runId: view.id, confirmations}));
-            if (v.ok) { announce("Allowed. The restore continues."); await refreshNow(); }
+            if (v.ok) { announce("Allowed. The restore continues."); await refreshNow(); document.getElementById("run-h")?.focus(); }
             else { const t = textOf(POLICY_REFUSAL_TEXT, v.code); setErr(t); announce(t); if (v.code === "hard_refusal") setHard(true); }
         } catch { setErr(RECOVERY.page.loadError.body); } finally { setBusy(false); }
     };
@@ -169,7 +175,7 @@ function AllowPanel({view, canApprove, locked, refreshNow}: {view: RestoreRunVie
             ))}
             {reason && <p id="allow-reason" className="text-muted-foreground text-sm">{reason}</p>}
             {err && <p role="alert" data-testid="allow-error" className="text-sm">{err}</p>}
-            {!hard && <ReasonButton reason={reason === null && busy ? RECOVERY.go.busy : reason} onClick={submit}>{RECOVERY.run.allowButton}</ReasonButton>}
+            {!hard && <ReasonButton className={PRIMARY_AA} reason={reason === null && busy ? RECOVERY.go.busy : reason} onClick={submit}>{RECOVERY.run.allowButton}</ReasonButton>}
         </section>
     );
 }
@@ -182,7 +188,7 @@ function CancelControl({runId, machine, locked, refreshNow}: {runId: string; mac
         setErr(null);
         try {
             const v = verdict(await cancelRestoreRunAction({runId}));
-            if (v.ok) { announce(RECOVERY.run.cancelling); await refreshNow(); } else { const t = textOf(CANCEL_REFUSAL_TEXT, v.code); setErr(t); announce(t); }
+            if (v.ok) { announce(RECOVERY.run.cancelling); await refreshNow(); document.getElementById("run-h")?.focus(); } else { const t = textOf(CANCEL_REFUSAL_TEXT, v.code); setErr(t); announce(t); }
         } catch { setErr(RECOVERY.page.loadError.body); }
     };
     return (
@@ -206,7 +212,7 @@ function CleanupControl({view, locked, refreshNow}: {view: RestoreRunView; locke
         setErr(null);
         try {
             const v = verdict(await cleanupRestoreRunAction({runId: view.id}));
-            if (v.ok) { announce(RECOVERY.run.cleanupRunning); await refreshNow(); } else { const t = textOf(CLEANUP_REFUSAL_TEXT, v.code); setErr(t); announce(t); }
+            if (v.ok) { announce(RECOVERY.run.cleanupRunning); await refreshNow(); document.getElementById("run-h")?.focus(); } else { const t = textOf(CLEANUP_REFUSAL_TEXT, v.code); setErr(t); announce(t); }
         } catch { setErr(RECOVERY.page.loadError.body); }
     };
     const retry = c !== null;
