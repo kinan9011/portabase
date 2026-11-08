@@ -42,6 +42,8 @@ import {latestRender, renderVerdict} from "./render";
 export type RestoreTaskDeps = ChannelDeps & {
     /** Presigned GET URL of one stored object (default: the upstream download path through the adapter). */
     artifactUrl?: (backupStorageId: string) => Promise<string | null>;
+    /** W18a (D-4): runs INSIDE the enqueue transaction right after the task row (and override binding) is written; a throw rolls the task back. The orchestrator writes its step journal here. */
+    onTaskInserted?: (tx: ForkDb, t: {taskId: string; type: TaskType}) => Promise<void>;
 };
 
 export type RestoreRefusalCode = "forbidden" | "locked" | "rate_limited" | "invalid_input" | "not_enrolled" | "agent_disabled" | "capability_missing" | "insecure_transport" | "invalid_url" | "signing_unavailable"
@@ -216,6 +218,7 @@ export async function enqueueRestoreTask(d: RestoreTaskDeps, raw: unknown): Prom
             const taskKey = await loadTaskKey(d, e);
             const t = await insertSignedTask(tx, {e, agentName: a.name, type, plaintext, targetAgentId, actorUserId: p.userId, signing, kid, taskKey, now, ttlMs});
             if (stored) await bindOverride(tx, {rowId: stored.rowId, revision: stored.revision, restoreId, type, taskId: t.taskId, now}); // throws OverrideRace ⇒ the insert rolls back
+            if (d.onTaskInserted) await d.onTaskInserted(tx, {taskId: t.taskId, type}); // W18a: step journal in the same transaction (a throw rolls the task back)
             await audit("success", {taskId: t.taskId, seq: t.seq, restoreId: restoreId || null, planHash: input.type === "restore_probe" ? null : input.planHash, ...(stored ? {override_revision: stored.revision} : {}), ...extra}, tx);
             return {ok: true, taskId: t.taskId, seq: t.seq, notAfter: t.notAfter.toISOString()};
         });
@@ -245,7 +248,7 @@ async function bindOverride(tx: ForkDb, a: {rowId: string; revision: number; res
 }
 
 /** Approvals recorded on the plan row for THIS hash (a record for another hash never counts). */
-function approvalsOf(row: PlanRow): ApprovalKind[] {
+export function approvalsOf(row: PlanRow): ApprovalKind[] {
     if (!Array.isArray(row.approvals)) return [];
     return (row.approvals as {kind?: unknown; plan_hash?: unknown}[]).flatMap((a) => (a && a.plan_hash === row.planHash && (a.kind === "production_target" || a.kind === "destructive_replace") ? [a.kind] : []));
 }
@@ -258,7 +261,7 @@ type ResolvedManifest = {sha256: string; indexOf: Map<string, number>; byIndex: 
  * hash the plan bound (`rp.manifest_sha256`), then map every plan artifact to its index in the manifest by (source_name, location, generated_id).
  * Missing, ambiguous or contradicting (hash/size) matches are `manifest_mismatch`; restic artifacts are `mode_unsupported` (W17-i-f1).
  */
-async function resolveManifest(d: RestoreTaskDeps, plan: RestorePlanV1, m: {json: string; sigB64: string}): Promise<ResolvedManifest | {code: RestoreRefusalCode; detail?: string}> {
+export async function resolveManifest(d: RestoreTaskDeps, plan: RestorePlanV1, m: {json: string; sigB64: string}): Promise<ResolvedManifest | {code: RestoreRefusalCode; detail?: string}> {
     const v = verifyManifestBundle({json: m.json, sig: Buffer.from(m.sigB64, "base64")}, await loadTrustAnchors(d.db),
         {stackId: plan.rp.stack_id, rpId: plan.rp.id, sequence: plan.rp.sequence});
     if (!v.ok) return {code: "manifest_mismatch", detail: v.code};

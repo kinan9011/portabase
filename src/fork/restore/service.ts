@@ -1,10 +1,11 @@
-import {eq} from "drizzle-orm";
+import {and, eq, inArray} from "drizzle-orm";
 import {z} from "zod";
 import {assertForkResource} from "@/fork/resource-scope";
 import {ForkForbiddenError, ForkNotFoundError, type ForkPrincipal} from "@/fork/acl";
 import {recordAudit} from "@/fork/audit";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkRestorePlan} from "@/fork/db/schema/restore";
+import {forkRestoreRun} from "@/fork/db/schema/restore-run";
 import {forkStack} from "@/fork/db/schema/stack";
 import {forkEnv, type ForkEnv} from "@/fork/env";
 import {withForkLock} from "@/fork/locks";
@@ -116,7 +117,11 @@ export async function checkPlanFresh(d: Pick<RestoreDeps, "db" | "now">, row: Pl
     if (row.planVersion !== PLAN_VERSION) return {fresh: false, code: "stale", reason: "plan_version"};
     const m = MappingsV1.safeParse(row.mappings);
     if (!row.rpId || !row.targetAgentId || !m.success) return {fresh: false, code: "stale", reason: "not_found"};
-    const l = await loadPlanInput(d.db, {rpId: row.rpId, targetAgentId: row.targetAgentId, purpose: row.purpose as "restore", mode: row.mode as "new_stack", mappings: m.data}, {principal: null, skipAgentAcl: true, organizationId: row.organizationId, now});
+    // W18a D-8: `restore_db` creates this restore's own compose project on the target before `compose_up` is enqueued; while a run of THIS plan is active that project is
+    // excluded from the collision facts (otherwise an Arcane sync between the two steps would turn the plan `stale` after data was written). Exact project name only.
+    const [active] = await d.db.select({id: forkRestoreRun.id}).from(forkRestoreRun).where(and(eq(forkRestoreRun.planId, row.id), inArray(forkRestoreRun.state, ["running", "awaiting_approval"]))).limit(1);
+    const ignoreProject = active ? RestorePlanV1.safeParse(row.plan).data?.target.project : undefined;
+    const l = await loadPlanInput(d.db, {rpId: row.rpId, targetAgentId: row.targetAgentId, purpose: row.purpose as "restore", mode: row.mode as "new_stack", mappings: m.data}, {principal: null, skipAgentAcl: true, organizationId: row.organizationId, now, ignoreProject});
     if (!l.ok) return {fresh: false, code: "stale", reason: l.code};
     try {
         const r = planRestore(l.input);

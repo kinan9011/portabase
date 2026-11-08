@@ -21,6 +21,9 @@ const KIND_META: Record<DeliverableKind, {level: NotifyLevel; event: NotifyEvent
     "kit.key_rotated": {level: "warning", event: "error_backup", stackScoped: true},
     "fork.selfcheck.failed": {level: "warning", event: "error_backup", stackScoped: false},
     "fork.selfcheck.recovered": {level: "info", event: "success_backup_recovered", stackScoped: false},
+    "restore.finished": {level: "info", event: "success_backup_recovered", stackScoped: true},
+    "restore.failed": {level: "critical", event: "error_backup", stackScoped: true},
+    "restore.needs_approval": {level: "warning", event: "error_backup", stackScoped: true},
 };
 
 const PayloadSchema = z.looseObject({stackId: z.uuid().optional(), reason: z.string().max(64).nullish(), hours: z.number().finite().optional()});
