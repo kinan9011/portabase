@@ -168,7 +168,7 @@ describe("Activity tab (durable timeline, sanitised, reload-safe)", () => {
 
 const SP = (primary: ProtectionView["primary"], hours: number | null, verifying = false) => ({
     primary, complete: true, counts: {total: 0, captured: 0, gaps: 0, blockers: 0, warnings: 0, external: 0, excluded: 0, accepted: 0}, recoveryPoints: {verified: 0, pending: 0},
-    facets: {lastGoodBackup: {hoursAgo: hours, verifying}, testRestore: {daysAgo: null}, deletable: "no", hostCompromise: false, consistency: [], pausedAfterReauthorization: false, inventoryStale: false, configLocked: false},
+    facets: {lastGoodBackup: {hoursAgo: hours, verifying}, testRestore: {daysAgo: null, stale: false}, deletable: "no", hostCompromise: false, consistency: [], pausedAfterReauthorization: false, inventoryStale: false, configLocked: false},
 }) as ProtectionView;
 
 describe("'Last good backup' first line (D43: verified RPs only)", () => {

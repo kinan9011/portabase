@@ -30,7 +30,7 @@ export function FacetsPanel({p}: {p: ProtectionView}) {
         <section aria-labelledby="facets-h" className="flex flex-col gap-3" data-testid="facets">
             <h2 id="facets-h" className="text-lg font-semibold">{F.heading}</h2>
             <ul className="flex flex-col gap-3">
-                <Row testId="facet-test-restore" label={F.testRestore.label} value={f.testRestore.daysAgo === null ? F.testRestore.never : F.testRestore.ago(f.testRestore.daysAgo)} description={F.testRestore.description}/>
+                <Row testId="facet-test-restore" label={F.testRestore.label} value={F.testRestore.value(f.testRestore.daysAgo, f.testRestore.stale)} description={F.testRestore.description} tone={f.testRestore.stale ? "warning" : undefined}/>
                 <Row testId="facet-deletable" label={F.deletable.label} value={F.deletable.values[f.deletable]} description={F.deletable.description[f.deletable]} tone={f.deletable === "no" ? undefined : "warning"}/>
                 {f.hostCompromise && <Row testId="facet-host-compromise" label={F.hostCompromise.label} value={F.needsAttention} description={F.hostCompromise.description} tone="warning"/>}
                 <li className="flex flex-col gap-1" data-testid="facet-consistency">

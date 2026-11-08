@@ -101,7 +101,7 @@ describe("exhaustive grid: the function is total and `protected` is impossible u
 });
 
 describe("facets (§4.6 1–7 + locked)", () => {
-    const fi: FacetInputs = {hasActivePolicy: true, hoursSinceLastVerified: 5, verifying: false, daysSinceTestRestore: null, channelDeletable: [], pausedAfterReauthorization: false, inventoryStale: false, configLocked: false};
+    const fi: FacetInputs = {hasActivePolicy: true, hoursSinceLastVerified: 5, verifying: false, daysSinceTestRestore: null, testRestoreStale: false, channelDeletable: [], pausedAfterReauthorization: false, inventoryStale: false, configLocked: false};
     const report = validateCompleteness(cleanInventory(), {...EMPTY_CONTEXT, ...FULL_COVERAGE});
 
     it("3: not checked fails closed; worst-of channels", () => {

@@ -102,7 +102,7 @@ export async function loadRestoreTargets(db: ForkDb, principal: ForkPrincipal | 
 
 export const RestoreChoice = z.strictObject({
     stackId: z.uuid(), name: z.string(), environmentName: z.string(), runtime: z.string(),
-    lastGood: z.strictObject({hoursAgo: z.number().nullable(), verifying: z.boolean()}), testRestoreDaysAgo: z.number().nullable(),
+    lastGood: z.strictObject({hoursAgo: z.number().nullable(), verifying: z.boolean()}), testRestoreDaysAgo: z.number().nullable(), testRestoreStale: z.boolean().optional(),
     verifiedCount: z.number().int(), pendingCount: z.number().int(),
 });
 export type RestoreChoice = z.infer<typeof RestoreChoice>;
@@ -123,7 +123,7 @@ export async function loadRestoreChoices(db: ForkDb, organizationId: string, o: 
         out.push(RestoreChoice.parse({
             stackId: r.id, name: r.display_name, environmentName: r.environment_name, runtime: r.runtime_state,
             lastGood: prot ? {hoursAgo: prot.facets.lastGoodBackup.hoursAgo, verifying: prot.facets.lastGoodBackup.verifying} : {hoursAgo: null, verifying: Number(r.pending) > 0},
-            testRestoreDaysAgo: prot ? prot.facets.testRestore.daysAgo : null,
+            testRestoreDaysAgo: prot ? prot.facets.testRestore.daysAgo : null, testRestoreStale: prot ? prot.facets.testRestore.stale : false,
             verifiedCount: Number(r.verified), pendingCount: Number(r.pending),
         }));
     }

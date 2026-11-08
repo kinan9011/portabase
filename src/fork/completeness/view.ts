@@ -32,7 +32,7 @@ export const ProtectionViewSchema = z.strictObject({
     recoveryPoints: z.strictObject({verified: z.number().int().min(0), pending: z.number().int().min(0)}),
     facets: z.strictObject({
         lastGoodBackup: z.strictObject({hoursAgo: z.number().min(0).nullable(), verifying: z.boolean()}),
-        testRestore: z.strictObject({daysAgo: z.number().min(0).nullable()}),
+        testRestore: z.strictObject({daysAgo: z.number().min(0).nullable(), stale: z.boolean()}),
         deletable: z.enum(DELETABLE_VALUES),
         hostCompromise: z.boolean(),
         consistency: z.array(z.strictObject({member: z.string().max(1100), level: z.enum(CONSISTENCY_FACETS)})).max(5000),

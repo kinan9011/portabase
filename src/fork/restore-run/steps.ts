@@ -36,7 +36,7 @@ export const ACTIVE = ["running", "awaiting_approval"] as const;
 export const MANIFEST_FETCH_ATTEMPTS = 30;
 
 export type JournalRow = {
-    runId: string; step: string; attempt: number; taskId: string | null; overrideRevision: number | null;
+    runId: string; step: string; attempt: number; taskId: string | null; overrideRevision: number | null; createdAt: Date;
     task: {status: string; attempts: number; result: unknown; notAfter: Date} | null;
 };
 
@@ -45,7 +45,7 @@ export async function journalRows(db: ForkDb, runId: string, step: JournalStep):
     const rows = await db.select({j: forkRestoreRunTask, t: {status: forkAgentTask.status, attempts: forkAgentTask.attempts, result: forkAgentTask.result, notAfter: forkAgentTask.notAfter}})
         .from(forkRestoreRunTask).leftJoin(forkAgentTask, eq(forkAgentTask.id, forkRestoreRunTask.taskId))
         .where(and(eq(forkRestoreRunTask.runId, runId), eq(forkRestoreRunTask.step, step))).orderBy(desc(forkRestoreRunTask.attempt));
-    return rows.map((r) => ({runId, step, attempt: r.j.attempt, taskId: r.j.taskId, overrideRevision: r.j.overrideRevision, task: r.t && r.t.status ? r.t : null}));
+    return rows.map((r) => ({runId, step, attempt: r.j.attempt, taskId: r.j.taskId, overrideRevision: r.j.overrideRevision, createdAt: r.j.createdAt, task: r.t && r.t.status ? r.t : null}));
 }
 
 /** Task deps for one enqueue: acts as the run's STARTER and writes the journal row in the enqueue transaction. */

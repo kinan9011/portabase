@@ -8,6 +8,9 @@ import {logger} from "@/lib/logger";
 import {quiesceAlert} from "@/fork/quiesce/alert";
 import {reconcileOpenQuiesces} from "@/fork/quiesce/reconcile";
 import type {QuiesceState} from "@/fork/quiesce/vocab";
+import {testRestoreStaleHolds} from "@/fork/test-restore/facet";
+import {lastTestRestoreVerifiedAt, scheduleRow} from "@/fork/test-restore/load";
+import {DEFAULT_STALE_DAYS} from "@/fork/test-restore/vocab";
 import {evaluateConditions, nextEpisode, type Condition} from "./conditions";
 
 const log = logger.child({module: "fork/notifications-evaluate"});
@@ -40,7 +43,11 @@ export async function evaluateAlerts(d: EvaluateDeps): Promise<EvaluateResult> {
                  where r.stack_id = ${a.stack_id} and r.quiesce_state is not null order by r.started_at desc limit 1`);
             const qr = q.rows[0] as {quiesce_state: QuiesceState; quiesce_stopped_at: Date | null; quiesce_max_stop_seconds: number} | undefined;
             const qa = quiesceAlert(qr ? {state: qr.quiesce_state, stoppedAt: qr.quiesce_stopped_at ? new Date(qr.quiesce_stopped_at) : null, maxStopSeconds: qr.quiesce_max_stop_seconds} : null, now);
-            const all: Condition[] = [...conditions, {kind: "stack.quiesce_stopped", holds: qa.active, hours: null}];
+            // W-TR (D-8): a scheduled test restore that has not succeeded within the stack's decay age
+            const trSched = await scheduleRow(d.db, a.stack_id);
+            const trVerified = trSched?.enabled ? await lastTestRestoreVerifiedAt(d.db, a.stack_id) : null;
+            const trStale = testRestoreStaleHolds({enabled: trSched?.enabled === true && trSched.pausedAt === null, enabledAt: trSched?.enabledAt ?? null, lastVerifiedAt: trVerified, now, staleAfterDays: trSched?.staleAfterDays ?? DEFAULT_STALE_DAYS});
+            const all: Condition[] = [...conditions, {kind: "stack.quiesce_stopped", holds: qa.active, hours: null}, {kind: "stack.test_restore_stale", holds: trStale, hours: null}];
             for (const c of all) {
                 await withForkLock(d.db, `alert:${a.stack_id}:${c.kind}`, async (tx) => {
                     const cur = await tx.execute(sql`select active, epoch from fork_alert_state where stack_id = ${a.stack_id} and kind = ${c.kind}`);
@@ -54,7 +61,7 @@ export async function evaluateAlerts(d: EvaluateDeps): Promise<EvaluateResult> {
                     if (n.fire) {
                         const queued = await enqueueForkNotification(tx, {
                             kind: c.kind, dedupeKey: `${c.kind}:${a.stack_id}:${n.epoch}`,
-                            payload: {state: c.kind === "stack.partial" ? "partial" : c.kind === "stack.quiesce_stopped" ? "stopped" : "no_good_backup", stackId: a.stack_id, link: `/dashboard/stacks/${a.stack_id}`, ...(c.hours !== null ? {hours: c.hours} : {}),
+                            payload: {state: c.kind === "stack.partial" ? "partial" : c.kind === "stack.quiesce_stopped" ? "stopped" : c.kind === "stack.test_restore_stale" ? "stale" : "no_good_backup", stackId: a.stack_id, link: `/dashboard/stacks/${a.stack_id}`, ...(c.hours !== null ? {hours: c.hours} : {}),
                                 ...(c.kind === "stack.quiesce_stopped" && qa.since ? {since: new Date(Math.floor(qa.since.getTime() / 60_000) * 60_000).toISOString()} : {})},
                         });
                         if (queued) out.fired++;

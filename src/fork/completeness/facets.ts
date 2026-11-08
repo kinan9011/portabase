@@ -12,6 +12,8 @@ export type FacetInputs = {
     verifying: boolean;
     /** Data verified by a test restore, days ago (R2, D36). Null = never / not fed. */
     daysSinceTestRestore: number | null;
+    /** W-TR (D-7): the newest verified test restore is older than the stack's decay age. */
+    testRestoreStale: boolean;
     /** Per storage channel: can the source host delete the copy? Empty = no channel / not checked. */
     channelDeletable: readonly Deletable[];
     /** Policy paused because the activating user lost rights (F7). */
@@ -24,7 +26,7 @@ export type FacetInputs = {
 
 export type Facets = {
     lastGoodBackup: {hoursAgo: number | null; verifying: boolean};
-    testRestore: {daysAgo: number | null};
+    testRestore: {daysAgo: number | null; stale: boolean};
     /** Worst of the channels, failing closed: yes > not_checked > no is the order of concern. */
     deletable: Deletable;
     /** A facet and a "Needs attention" item — NEVER a reason for Partial (§4.5). */
@@ -52,7 +54,7 @@ export function deriveFacets(i: FacetInputs, report: CompletenessReport): Facets
     });
     return {
         lastGoodBackup: {hoursAgo: i.hoursSinceLastVerified, verifying: i.verifying},
-        testRestore: {daysAgo: i.daysSinceTestRestore},
+        testRestore: {daysAgo: i.daysSinceTestRestore, stale: i.testRestoreStale},
         deletable,
         hostCompromise: i.hasActivePolicy && deletable !== "no",
         consistency,

@@ -397,7 +397,10 @@ export const FACET_COPY = {
         verifying: "A newer backup is being verified (Backed up · verifying). It counts once verification passes.",
         description: "Only verified recovery points count.",
     },
-    testRestore: {label: "Data verified by test restore", never: "Not tested", ago: (d: number) => `${Math.floor(d)} d ago`, description: "A test restore proves the data can be read back. Automatic test restores arrive in release R2."},
+    testRestore: {label: "Data verified by test restore", never: "Not tested", ago: (d: number) => `${Math.floor(d)} d ago`, stale: "Out of date", staleDescription: (n: number) => `No successful test restore in the last ${n} days.`,
+        /** Value text of the facet: "N d ago", plus the decay marker once it is out of date (W-TR). */
+        value: (d: number | null, stale: boolean) => (d === null ? "Not tested" : `${Math.floor(d)} d ago${stale ? " · Out of date" : ""}`),
+        description: "Proved by restoring the data on a test host, checking it, and wiping it. The app was not started."},
     deletable: {
         label: "Deletable from source host",
         values: {yes: "Yes", no: "No", not_checked: "Not checked"} as const satisfies Record<Deletable, string>,
@@ -811,6 +814,10 @@ export const NOTIFY = {
     kinds: {
         "restore.finished": {title: "Restore finished", sentence: "A restore finished and its services started."},
         "restore.failed": {title: "Restore did not finish", sentence: "A restore stopped before it was complete. Open the stack to see which step failed."},
+        "test_restore.failed": {title: "Test restore failed", sentence: "A test restore failed."},
+        "test_restore.wipe_failed": {title: "Test restore copy not wiped", sentence: "The test-restore copy on the test host could not be wiped. Wipe it now."},
+        "test_restore.skipped": {title: "Test restore did not run", sentence: "A scheduled test restore did not run."},
+        "stack.test_restore_stale": {title: "No recent test restore", sentence: "No recent successful test restore."},
         "restore.needs_approval": {title: "Restore waiting for approval", sentence: "A restore is waiting for an owner to approve flagged settings."},
         "run.failed": {title: "Backup failed", sentence: "The backup failed."},
         "run.blocked": {title: "Backup incomplete", sentence: "The backup is incomplete: some required resources are not covered."},
