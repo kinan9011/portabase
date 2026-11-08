@@ -39,7 +39,16 @@ describe("W11 structure", () => {
     });
 
     it("`container_name` is never produced and no stop/quiesce field exists in the policy input or the UI (D29, R1)", () => {
-        for (const f of [...POLICY, ...WIZARD, ...COPIES]) expect(code(f), f).not.toMatch(/container_name|containerName|quiesce|stop_copy|stopCopy/i);
+        // W17b (narrow, deliberate amendment): the two wizard files that carry the READ-ONLY status line may name exactly that prop / component / import — nothing else
+        const ALLOWED = /^.*(quiesceReason|QuiesceStatusRow|quiesce-status-row).*$/gm;
+        for (const f of [...POLICY, ...WIZARD, ...COPIES]) {
+            const c = code(f);
+            const carrier = /(configure-form\.client|consistency-section)\.tsx$/.test(f);
+            expect(carrier ? c.replace(ALLOWED, "") : c, f).not.toMatch(/container_name|containerName|quiesce|stop_copy|stopCopy/i);
+            if (carrier) expect((c.match(ALLOWED) ?? []).length, f).toBeLessThanOrEqual(f.includes("consistency-section") ? 4 : 3);
+        }
+        const row = code(path.join(ROOT, "src/fork/ui/stacks/quiesce/quiesce-status-row.tsx"));
+        expect(row).not.toMatch(/use client|<(button|input|select|textarea|form|a)\b|action|onClick|onChange|@\/components\/ui/); // the wizard row has no control and no action import
         expect(Object.keys(ActivateInputSchema.shape).sort()).toEqual(["acceptedExclusions", "confirmDockerAccess", "retention", "schedule", "secrets", "selection", "stackId", "storageChannelIds"]);
         expect(ActivateInputSchema.safeParse({stackId: "0b7e1c1e-7f3a-4b6e-9a40-222222222222", stopContainers: true}).success).toBe(false);
     });

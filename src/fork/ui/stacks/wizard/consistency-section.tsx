@@ -8,6 +8,7 @@ import {CONFIGURE} from "@/fork/ui/labels";
 import {SecretInput, type SecretHandle} from "@/fork/ui/secret-input";
 import type {ConfigureView} from "@/fork/stack-policy/configure-view";
 import type {PreviewView} from "@/fork/stack-policy/preview";
+import {QuiesceStatusRow} from "@/fork/ui/stacks/quiesce/quiesce-status-row";
 import type {DbFieldError, DbForm, WizardState} from "./model";
 import type {ServerIssue} from "./resources-section";
 
@@ -64,13 +65,14 @@ function DbBlock({db, f, st, set, errors, serverIssues, secretRefs, secretPresen
     );
 }
 
-export function ConsistencySection({view, st, set, preview, dbErrors, serverIssues, secretRefs, secretPresent, setPresent}: {
-    view: ConfigureView; st: WizardState; set: (p: Partial<WizardState>) => void; preview: PreviewView; dbErrors: readonly DbFieldError[]; serverIssues: readonly ServerIssue[];
+export function ConsistencySection({quiesceReason, view, st, set, preview, dbErrors, serverIssues, secretRefs, secretPresent, setPresent}: {
+    quiesceReason?: string | null; view: ConfigureView; st: WizardState; set: (p: Partial<WizardState>) => void; preview: PreviewView; dbErrors: readonly DbFieldError[]; serverIssues: readonly ServerIssue[];
     secretRefs: React.RefObject<Record<string, SecretHandle | null>>; secretPresent: Record<string, boolean>; setPresent: (service: string, has: boolean) => void;
 }) {
     return (
         <div className="flex flex-col gap-4">
             <p className="text-muted-foreground text-sm">{C.intro}</p>
+            {quiesceReason !== undefined && <QuiesceStatusRow reason={quiesceReason}/>}
             {preview.stopHints.length > 0 && (
                 <p role="note" data-testid="stop-label-note" className="rounded-md border p-3 text-sm">{C.stopLabel} {C.stopFor(preview.stopHints.join(", "))}</p>
             )}

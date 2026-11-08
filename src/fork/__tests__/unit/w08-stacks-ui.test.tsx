@@ -12,6 +12,7 @@ const refresh = vi.fn();
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh}), notFound: () => { throw new Error("NEXT_NOT_FOUND"); }}));
 vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: vi.fn(), cancelStackRunAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-schedule.action", () => ({updateStackScheduleAction: vi.fn()}));
+vi.mock("@/fork/actions/stack-quiesce.action", () => ({previewQuiesceAction: vi.fn(), enableQuiesceAction: vi.fn(), disableQuiesceAction: vi.fn(), startQuiesceNowAction: vi.fn()}));
 
 import {StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";
 import {StackListView} from "@/fork/ui/stacks/stack-list";

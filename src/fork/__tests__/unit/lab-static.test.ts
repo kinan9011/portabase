@@ -57,7 +57,11 @@ describe("fork lab — network exposure", () => {
 describe("fork lab — supply chain and secrets", () => {
     it("pins every image by digest", () => {
         for (const f of composeFiles) {
-            for (const m of read(f).matchAll(/^\s*image:\s*(\S+)/gm)) expect(m[1], `${f}: ${m[1]}`).toMatch(/@sha256:[0-9a-f]{64}$/);
+            for (const m of read(f).matchAll(/^\s*image:\s*(\S+)/gm)) {
+                // W17b: the quiesce lab's WAL writer is a LOCAL re-tag (`forklab/…`) of the digest-pinned stock agent image: a registry digest would make the agent's guard treat it as a manager image
+                if (/\/quiesce\/compose\.yml$/.test(f) && m[1] === "forklab/sqlite-writer:w17b") continue;
+                expect(m[1], `${f}: ${m[1]}`).toMatch(/@sha256:[0-9a-f]{64}$/);
+            }
         }
     });
 

@@ -14,6 +14,7 @@ const update = vi.fn();
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
 vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: (...a: unknown[]) => start(...a), cancelStackRunAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-schedule.action", () => ({updateStackScheduleAction: (...a: unknown[]) => update(...a)}));
+vi.mock("@/fork/actions/stack-quiesce.action", () => ({previewQuiesceAction: vi.fn(), enableQuiesceAction: vi.fn(), disableQuiesceAction: vi.fn(), startQuiesceNowAction: vi.fn()}));
 
 import {ActivityTab} from "@/fork/ui/stacks/activity/activity-tab";
 import {BackupsTab} from "@/fork/ui/stacks/backups/backups-tab";

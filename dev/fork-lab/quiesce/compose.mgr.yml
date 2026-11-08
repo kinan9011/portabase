@@ -2,8 +2,8 @@
 name: forklab-quiesce-mgr
 services:
   mgr:
-    image: ghcr.io/portabase/portabase:1.35.2
+    image: ghcr.io/portabase/portabase@sha256:9de7caa26c23e1d4e8915aa42d79b62d786c4539d8f96370ca600de8d47a72e6
     entrypoint: ["sleep", "1000000"]
   app2:
-    image: busybox
+    image: busybox@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
     command: ["sleep", "1000000"]

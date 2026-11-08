@@ -13,6 +13,7 @@ const ID = "0b7e1c1e-7f3a-4b6e-9a40-111111111111";
 const h = vi.hoisted(() => ({principal: null as null | ForkPrincipal, org: "x" as string | null, list: vi.fn(), detail: vi.fn(), resource: vi.fn()}));
 vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: vi.fn(), cancelStackRunAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-schedule.action", () => ({updateStackScheduleAction: vi.fn()}));
+vi.mock("@/fork/actions/stack-quiesce.action", () => ({previewQuiesceAction: vi.fn(), enableQuiesceAction: vi.fn(), disableQuiesceAction: vi.fn(), startQuiesceNowAction: vi.fn()}));
 vi.mock("next/navigation", () => ({notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, useRouter: () => ({refresh: () => {}})}));
 vi.mock("@/fork/principal", () => ({getForkPrincipal: async () => h.principal}));
 vi.mock("@/fork/db/handle", () => ({appDb: async () => ({tag: "db"})}));

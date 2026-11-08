@@ -11,6 +11,7 @@ const cancel = vi.fn();
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
 vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: (...a: unknown[]) => start(...a), cancelStackRunAction: (...a: unknown[]) => cancel(...a)}));
 vi.mock("@/fork/actions/stack-schedule.action", () => ({updateStackScheduleAction: vi.fn()}));
+vi.mock("@/fork/actions/stack-quiesce.action", () => ({previewQuiesceAction: vi.fn(), enableQuiesceAction: vi.fn(), disableQuiesceAction: vi.fn(), startQuiesceNowAction: vi.fn()}));
 
 import {RunNowButton} from "@/fork/ui/stacks/run-controls.client";
 import {RunPanel} from "@/fork/ui/stacks/schedule/run-panel";
