@@ -20,7 +20,7 @@ const RUNTIME_ROUTES: RegExp[] = [/^\/api\/fork\/agent\/[0-9a-f-]{36}\/(?:lease|
  */
 const ADMIN_PAGES: RegExp[] = [/^\/dashboard\/integrations(\/|$)/];
 /** Member-visible fork pages (W08): hidden (real 404) whenever no fork flag is on; who may open them is decided by the page (org membership, `stacks.view`). */
-const MEMBER_PAGES: RegExp[] = [/^\/dashboard\/stacks(\/|$)/];
+const MEMBER_PAGES: RegExp[] = [/^\/dashboard\/stacks(\/|$)/, /^\/dashboard\/recovery(\/|$)/]; // W18b: Stack Recovery pages (D13)
 
 export function forkPageHidden(pathname: string, role: string | null | undefined, source: Record<string, string | undefined> = process.env): boolean {
     if (MEMBER_PAGES.some((r) => r.test(pathname))) return !anyForkFlagOn(source);
