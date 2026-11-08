@@ -10,14 +10,12 @@ import {forkRestoreRun} from "@/fork/db/schema/restore-run";
 import {forkStackRun} from "@/fork/db/schema/runs";
 import {forkStack, forkStackPolicy, forkStackSource} from "@/fork/db/schema/stack";
 import {forkEnv} from "@/fork/env";
-import {fileKeyProvider} from "@/fork/keys";
 import {withForkLock} from "@/fork/locks";
 import {authorizeMutation, loadStackContext, type MaterializeDeps} from "@/fork/materialize/apply";
 import {currentForkMode} from "@/fork/mode";
 import {assertForkResource} from "@/fork/resource-scope";
 import {ACTIVE_RESTORE_RUN_STATES} from "@/fork/restore-run/vocab";
 import {readPrincipal, type PrincipalLookup} from "@/fork/upstream";
-import {getServerUrl} from "@/utils/get-server-url";
 import {quiesceAlert} from "./alert";
 import {decideQuiesce, type QuiesceDecision, type QuiesceDecisionInput} from "./decide";
 import {enqueueQuiesceStart, enqueueQuiesceTask, type QuiesceEnqueueRefusal, type QuiesceTaskDeps} from "./enqueue";
@@ -208,7 +206,8 @@ export async function startNow(d: QuiesceAdminDeps, raw: unknown): Promise<Quies
     const leaseS = d.leaseSeconds ?? forkEnv().FORK_AGENT_LEASE_SECONDS;
     if (!loaded?.agentId || !loaded.lastSeenAt || now.getTime() - loaded.lastSeenAt.getTime() > 2 * leaseS * 1000) { await audit("denied", {reason: "agent_offline", runId: run.id}); return refuse("agent_offline", "The agent is not reachable right now.", {manual}); }
     if (!run.quiesceTaskId || !loaded.project) return refuse("nothing_stopped", "No containers are waiting to be started by a backup.");
-    const ch = d.channel ?? {keys: fileKeyProvider, serverUrl: getServerUrl};
+    const ch = d.channel;
+    if (!ch) return refuse("signing_unavailable", "The start request could not be sent.", {manual}); // the server action always wires the real keys
     const r = await enqueueQuiesceStart({db: d.db, keys: ch.keys, serverUrl: ch.serverUrl, env: ch.env, now: d.now, kekDir: d.kekDir, principal: p}, {runId: run.id, stackId, orgId: auth.organizationId, quiesceTaskId: run.quiesceTaskId, project: loaded.project, agentId: loaded.agentId, actorUserId: p.userId,
         onInserted: async (tx, taskId) => { await tx.update(forkStackRun).set({quiesceStartTaskId: taskId, updatedAt: now}).where(eq(forkStackRun.id, run.id)); }});
     if (!r.ok) return refuse(r.code, "The start request could not be sent.", {manual});

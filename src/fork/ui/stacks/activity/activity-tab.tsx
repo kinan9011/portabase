@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type {ActivityRun, ActivityView} from "@/fork/stacks/activity-view";
-import {ACTIVITY, RP_STATUS_LABELS, RUNS} from "@/fork/ui/labels";
+import {ACTIVITY, QUIESCE, RP_STATUS_LABELS, RUNS} from "@/fork/ui/labels";
 import {fmtUtc, stackHref} from "@/fork/ui/stacks/format";
 import {runReasonText} from "@/fork/ui/stacks/run-reason";
 import {StageAnnouncer} from "@/fork/ui/stacks/activity/stage-announcer.client";
@@ -28,6 +28,13 @@ function Run({run, stackId, limits, open}: {run: ActivityRun; stackId: string; l
                 <div className="mt-3 flex flex-col gap-3 text-sm">
                     {reason && <p data-testid="activity-reason" className={`rounded-lg border p-2 ${TONE_MAP[run.state === "failed" ? "danger" : "warning"].panel}`}>{reason}</p>}
                     {run.validatorBlocked && <p>{RUNS.blocked}</p>}
+                    {run.quiesce && (
+                        <p data-testid="activity-quiesce" data-state={run.quiesce.state}>
+                            {run.quiesce.downtimeMs !== null ? QUIESCE.lastResult.paused(QUIESCE.duration(run.quiesce.downtimeMs), run.quiesce.count)
+                                : run.quiesce.state === "skipped" || run.quiesce.state === "refused" || run.quiesce.state === "not_started" ? QUIESCE.lastResult.notPaused(run.quiesce.reason ? (QUIESCE.skip as Record<string, string>)[run.quiesce.reason] ?? QUIESCE.agentCodes[run.quiesce.reason] ?? QUIESCE.states[run.quiesce.state] : QUIESCE.states[run.quiesce.state])
+                                : QUIESCE.states[run.quiesce.state]}
+                        </p>
+                    )}
                     {run.inventoryRefresh && (run.inventoryRefresh === "failed" || run.inventoryRefresh === "skipped_locked") && <p>{RUNS.refresh[run.inventoryRefresh]}</p>}
                     <div>
                         <h3 className="font-medium">{A.stagesHeading}</h3>

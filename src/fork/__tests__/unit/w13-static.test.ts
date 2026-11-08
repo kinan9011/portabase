@@ -47,7 +47,7 @@ describe("W13 structure", () => {
     it("the notification body renderer interpolates only closed-table lookups, the sanitised name, a validated uuid and a clamped hour count", () => {
         const r = code(path.join(ROOT, "fork/notifications/render.ts"));
         const payloadReads = [...r.matchAll(/payload\.(\w+)/g)].map((m) => m[1]).sort();
-        expect([...new Set(payloadReads)]).toEqual(["hours", "reason", "stackId"]);
+        expect([...new Set(payloadReads)]).toEqual(["hours", "reason", "since", "stackId", "state"]); // W17b adds state + since (closed-table / fixed-format use only)
         expect(r).not.toMatch(/JSON\.stringify|\.message\b.*payload|payload\.(error|path|link|url|key|name)/);
     });
 

@@ -14,6 +14,7 @@ import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {fmtPort, fmtUtc, STACKS_HREF} from "@/fork/ui/stacks/format";
 import {ResourcesTabs} from "@/fork/ui/stacks/resources-tabs";
 import {ScheduleTab} from "@/fork/ui/stacks/schedule/schedule-tab";
+import type {QuiesceViewDto} from "@/fork/quiesce/view";
 import {ActivityTab} from "@/fork/ui/stacks/activity/activity-tab";
 import {BackupsTab} from "@/fork/ui/stacks/backups/backups-tab";
 import {RunNowButton, RunPoller} from "@/fork/ui/stacks/run-controls.client";
@@ -121,7 +122,7 @@ function Overview({v, p, c, onOpenConfiguration}: {v: InventoryView; p: Protecti
     );
 }
 
-export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean}) {
+export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false, quiesce = null}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean; quiesce?: QuiesceViewDto | null}) {
     const [tab, setTab] = React.useState<StackTab>(initialTab);
     // a real navigation (e.g. "Open in Backups" from Activity) changes the server-parsed tab: follow it; polling refreshes keep the same value and change nothing
     React.useEffect(() => { setTab(initialTab); }, [initialTab]);
@@ -184,7 +185,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                     <TabsContent value="resources"><ResourcesTabs view={view}/></TabsContent>
                     <TabsContent value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
                     <TabsContent value="backups"><BackupsTab stackId={detail.id} view={detail.backups} runReason={runReason}/></TabsContent>
-                    <TabsContent value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} isAdmin={canConfigure} configLocked={configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`} runs={detail.runs} canRun={canRun}/></TabsContent>
+                    <TabsContent value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} isAdmin={canConfigure} configLocked={configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`} runs={detail.runs} canRun={canRun} quiesce={quiesce}/></TabsContent>
                     <TabsContent value="activity"><ActivityTab stackId={detail.id} view={detail.activity} limits={detail.runs?.limits ?? {waitMinutes: 10, stallMinutes: 30}}/></TabsContent>
                 </Tabs>
             )}
