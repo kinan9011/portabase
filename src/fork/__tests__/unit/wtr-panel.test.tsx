@@ -164,4 +164,11 @@ describe("W-TR-f panel", () => {
         for (const wp of ["verified", "not_needed", "failed"]) expect(isTestRestoreActive(w("succeeded", wp)), wp).toBe(false);
         expect(isTestRestoreActive(view({last: null}))).toBe(false);
     });
+    it("13 keyboard focus: opening the editor moves focus into the form, Cancel returns it to the opener", async () => {
+        ui(view());
+        fireEvent.click(screen.getByTestId("tr-edit-open"));
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("tr-enabled")));
+        fireEvent.click(screen.getByTestId("tr-edit-cancel"));
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("tr-edit-open")));
+    });
 });

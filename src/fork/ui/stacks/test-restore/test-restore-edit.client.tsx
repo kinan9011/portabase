@@ -10,6 +10,7 @@ import {runTestRestoreNowAction, setTestRestoreScheduleAction, wipeTestRestoreNo
 import {ScheduleSchema, type Schedule} from "@/fork/schedule/schedule";
 import {DEFAULT_TR_SCHEDULE} from "@/fork/test-restore/vocab";
 import type {TestRestoreView} from "@/fork/test-restore/view";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {GENERIC_FAILURE} from "@/fork/ui/labels";
@@ -69,7 +70,7 @@ export function TestRestoreActions({view, stackId, configLocked, active}: {view:
     return (
         <div className="flex flex-col gap-2" data-testid="tr-actions">
             <div className="flex flex-wrap items-start gap-3">
-                {showRun && <ReasonButton type="button" reason={runReason} aria-busy={pending || undefined} data-testid="tr-run-now" onClick={() => void act(() => runTestRestoreNowAction({stackId}), TR.actions.started)}>{TR.actions.runNow}</ReasonButton>}
+                {showRun && <ReasonButton type="button" className={PRIMARY_AA} reason={runReason} aria-busy={pending || undefined} data-testid="tr-run-now" onClick={() => void act(() => runTestRestoreNowAction({stackId}), TR.actions.started)}>{TR.actions.runNow}</ReasonButton>}
                 {showWipe && last && <ReasonButton type="button" variant="outline" reason={configLocked ? TR.reasons.locked : null} data-testid="tr-wipe-now" onClick={() => void act(() => wipeTestRestoreNowAction({runId: last.runId}), TR.actions.wipeArmed)}>{TR.actions.wipeNow}</ReasonButton>}
             </div>
             {msg && <p role="status" data-testid="tr-outcome" className={`max-w-prose text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</p>}
@@ -98,7 +99,14 @@ export function TestRestoreEditor({view, stackId, reason}: {view: TestRestoreVie
     const needTarget = enabled && (!target || root.trim() === "");
     const blocked = needTarget || !staleOk || !schedOk;
     const noCandidates = (admin?.candidates.length ?? 0) === 0;
-    const close = () => { setOpen(false); queueMicrotask(() => opener.current?.focus()); };
+    // keyboard users keep their place: opening moves focus into the form, closing returns it to the opener (the opener is a new node after the form unmounts)
+    const firstRef = React.useRef<HTMLInputElement | null>(null);
+    const refocusOpener = React.useRef(false);
+    React.useEffect(() => {
+        if (open) firstRef.current?.focus();
+        else if (refocusOpener.current) { refocusOpener.current = false; opener.current?.focus(); }
+    }, [open]);
+    const close = () => { refocusOpener.current = true; setOpen(false); };
     const save = async () => {
         if (pending || blocked) return;
         setPending(true);
@@ -123,7 +131,7 @@ export function TestRestoreEditor({view, stackId, reason}: {view: TestRestoreVie
                 <form className="flex flex-col gap-4 rounded-xl border p-4" aria-labelledby={`${ids}-h`} data-testid="tr-edit-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
                     <h4 id={`${ids}-h`} className="font-semibold">{TR.edit.heading}</h4>
                     <div className="flex items-center gap-2">
-                        <input id={`${ids}-en`} type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} data-testid="tr-enabled" className="size-4"/>
+                        <input id={`${ids}-en`} type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} data-testid="tr-enabled" ref={firstRef} className="size-6 shrink-0"/>
                         <Label htmlFor={`${ids}-en`}>{TR.edit.enabled}</Label>
                     </div>
                     <SchedulePicker value={sched} onChange={setSched} onCronValidity={setCronOk}/>
@@ -148,7 +156,7 @@ export function TestRestoreEditor({view, stackId, reason}: {view: TestRestoreVie
                     {needTarget && <p id={`${ids}-nt`} className="text-muted-foreground text-sm">{TR.edit.needTargetRoot}</p>}
                     {msg && !msg.ok && <p role="alert" data-testid="tr-edit-error" className="text-destructive text-sm">{msg.text}</p>}
                     <div className="flex flex-wrap gap-3">
-                        <Button type="submit" aria-busy={pending || undefined} aria-disabled={blocked || undefined} aria-describedby={needTarget ? `${ids}-nt` : undefined} data-testid="tr-edit-save">{pending ? TR.edit.saving : TR.edit.save}</Button>
+                        <Button type="submit" className={PRIMARY_AA} aria-busy={pending || undefined} aria-disabled={blocked || undefined} aria-describedby={needTarget ? `${ids}-nt` : undefined} data-testid="tr-edit-save">{pending ? TR.edit.saving : TR.edit.save}</Button>
                         <Button type="button" variant="outline" onClick={close} data-testid="tr-edit-cancel">{TR.edit.cancel}</Button>
                     </div>
                 </form>
@@ -186,14 +194,14 @@ export function PrivacyEditor({view, stackId, reason}: {view: TestRestoreView; s
                 <legend className="text-sm font-medium">{TR.privacy.question}</legend>
                 {([["yes", TR.privacy.yes], ["no", TR.privacy.no], ["unset", TR.privacy.unset]] as const).map(([v, label]) => (
                     <div key={v} className="flex items-center gap-2">
-                        <input id={`${ids}-${v}`} type="radio" name={`${ids}-pd`} value={v} checked={pd === v} aria-disabled={blocked || undefined} data-testid={`tr-pd-${v}`} className="size-4"
+                        <input id={`${ids}-${v}`} type="radio" name={`${ids}-pd`} value={v} checked={pd === v} aria-disabled={blocked || undefined} data-testid={`tr-pd-${v}`} className="size-6 shrink-0"
                             onChange={() => { if (!blocked) { setPd(v); if (v === "no") setOptIn(false); } }}/>
                         <Label htmlFor={`${ids}-${v}`}>{label}</Label>
                     </div>
                 ))}
             </fieldset>
             <div className="flex items-center gap-2">
-                <input id={`${ids}-oi`} type="checkbox" checked={noNeed ? false : optIn} aria-disabled={blocked || noNeed || undefined} aria-describedby={noNeed ? `${ids}-nn` : undefined} data-testid="tr-optin" className="size-4"
+                <input id={`${ids}-oi`} type="checkbox" checked={noNeed ? false : optIn} aria-disabled={blocked || noNeed || undefined} aria-describedby={noNeed ? `${ids}-nn` : undefined} data-testid="tr-optin" className="size-6 shrink-0"
                     onChange={(e) => { if (blocked || noNeed) return; if (e.target.checked) setDlg(true); else setOptIn(false); }}/>
                 <Label htmlFor={`${ids}-oi`}>{TR.privacy.optIn}</Label>
             </div>
