@@ -157,6 +157,11 @@ A **run** backs a stack up as a group: the dashboard-held schedule (D14, `fork_s
 - **Honesty:** `succeeded` is the only success tone; `incomplete` / `failed` / `cancelled` are never green; steps after a failure read "Not run"; progress is polled (5 s, paused while the tab is hidden) from the durable run row, no SSE. The plan reaches client code only as a narrowed DTO (`toPlanUi`): no host path, no artifact id, no hash on screen. Copy lives in `src/fork/ui/recovery/labels.ts` (English only), pure logic in `model.ts`.
 - **Tests:** `pnpm test:fork:unit w18b`, `pnpm exec vitest run --project integration w18b`, e2e on the production build `pnpm build && pnpm exec vitest run --project e2e w18b-recovery-pages flags-parity`.
 
+### Flow C lab + HOLD (W18b-f1)
+- **Lab:** `FORK_LAB=1 FORK_TEST_DATABASE_URL=… W17_AGENT_IMAGE=portabase-agent-fork:w17b-lab pnpm exec vitest run --project e2e w18b-flow-c-lab` (after `pnpm build`; `restic` + `rclone` on PATH). The production build runs its OWN restore-runs job (`FORK_RESTORE_TICK_SECONDS=2`, no seams): manifest = restic over rclone on a real MinIO channel, artifact URL = upstream presigned GET, the real fork agent image. F0 sanity · F1 Flow C (server job, ALLOW, data oracles, override reaches only the container) · F2 corrupted object ⇒ honest failed + cleanup · F3 pages (no canary in HTML/RSC).
+- **HOLD** (`W18B_LAB_HOLD=1 W18B_SCRATCH=<dir> … -t HOLD`): keeps the lab up for the browser run / walk-through; writes `<dir>/w18b-lab.json` (URL, accounts), executes one command per line of `<dir>/w18b-lab.cmd` (`env-on|env-off|corrupt-object|put-object|drop-object|pause-agent|resume-agent|expire-plans|hygiene`, results in `w18b-lab.log`), ends when `<dir>/w18b-lab.stop` exists.
+- **Cleanup is scoped** (`w18bf1-*` names, the `notes` compose project, this lab's run ids). Run it alone on the host: fixed local-storage ports 1081/1082 and the subnet `172.31.254.0/24`; the older labs' global label sweeps would destroy a HOLD session.
+
 ## Rollback
 Fork and upstream migrations are forward-only. Take a dump before every deploy / upstream sync
 (`DATABASE_URL=... scripts/fork/predeploy-dump.sh`); rollback = stop the app, drop + recreate the database, `pg_restore --no-owner`.

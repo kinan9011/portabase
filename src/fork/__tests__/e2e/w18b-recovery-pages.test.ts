@@ -132,10 +132,12 @@ describe("W18b recovery pages (real build)", () => {
 
         // E3 no existence oracle: random and foreign ids show the same visible content; a foreign stack in the wizard is dropped with the same sentence
         const ghost = async (p: string) => { const h = await (await get(base, p, admin)).text(); const body = h.slice(h.indexOf('<main class="h-full">')); return `${body.includes("NEXT_HTTP_ERROR_FALLBACK")}|${visible(body)}`; }; // page body only (the head carries request-specific ids); the not-found marker must match too
+        // streamed Suspense chunks arrive in any order (CI 42458182951): compare the words, not their order
+        const words = (g: string) => g.split(" ").sort().join(" ");
         const randomPlan = await ghost(`/dashboard/recovery/plans/${randomUUID()}`);
-        expect(await ghost(`/dashboard/recovery/plans/${foreignPlan.planId}`)).toBe(randomPlan);
+        expect(words(await ghost(`/dashboard/recovery/plans/${foreignPlan.planId}`))).toBe(words(randomPlan));
         const randomRun = await ghost(`/dashboard/recovery/runs/${randomUUID()}`);
-        expect(await ghost(`/dashboard/recovery/runs/${foreignRun}`)).toBe(randomRun);
+        expect(words(await ghost(`/dashboard/recovery/runs/${foreignRun}`))).toBe(words(randomRun));
         expect(await ghost(`/dashboard/recovery/new?stack=${fw.stack}`)).toContain(GONE);
         expect(await ghost(`/dashboard/recovery/new?stack=${randomUUID()}`)).toContain(GONE);
         expect(randomPlan).not.toContain(planA.planId);
