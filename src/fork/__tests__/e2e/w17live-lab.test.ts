@@ -414,7 +414,7 @@ describe.skipIf(!LAB)("W17-live: live restore proof (-Fc + -Fd, sqlite in WAL vo
         const t0 = Date.now(); let killed = false;
         while (Date.now() - t0 < 150_000) {
             let top = "";
-            try { top = docker(["top", "app-db2-1", "-eo", "args"]); } catch { top = ""; }
+            try { top = docker(["top", "app-db2-1", "-eo", "pid,args"]); } catch { top = ""; }
             if (/pg_restore/.test(top)) { docker(["kill", CLEAN]); killed = true; killedMs = Date.now() - t0; break; }
             const x = await task(t1Id); if (x && !["queued", "leased", "running"].includes(x.status)) break;
             await sleep(100);
@@ -439,7 +439,7 @@ describe.skipIf(!LAB)("W17-live: live restore proof (-Fc + -Fd, sqlite in WAL vo
     it("N11/N9 resume: second restore_db with the same restore_id ⇒ db reused, db2 restored; data oracles", async () => {
         // the orphan pg_restore of T1 (if any) may still run in app-db2-1: record it (plan D-1)
         let orphan = "";
-        try { orphan = docker(["top", "app-db2-1", "-eo", "args"]).split("\n").filter((l) => /pg_restore/.test(l)).join(" | "); } catch { orphan = "(no container)"; }
+        try { orphan = docker(["top", "app-db2-1", "-eo", "pid,args"]).split("\n").filter((l) => /pg_restore/.test(l)).join(" | "); } catch { orphan = "(no container)"; }
         RUN.push(`N11 orphan pg_restore in app-db2-1 before T2: ${orphan || "none"}`);
         const r = await run("restore_db", {approval: null});
         RUN.push(`N11 T2 restore_db ${JSON.stringify(r).slice(0, 500)}`);
@@ -514,6 +514,7 @@ describe.skipIf(!LAB)("W17-live: live restore proof (-Fc + -Fd, sqlite in WAL vo
     it("N13 cleanup: owned resources gone, workspace gone, agent running", async () => {
         const r = await run("restore_cleanup", {cleanup: {workspace: true, volumes: true, networks: true, containers: true}});
         RUN.push(`N13 cleanup ${JSON.stringify(r)}`);
+        if (r.status !== "succeeded") RUN.push(`N13 DIAG left: containers=[${docker(["ps", "-a", "--filter", "label=com.docker.compose.project=app", "--format", "{{.Names}}:{{.State}}"]).replaceAll("\n", ",")}] volumes=[${docker(["volume", "ls", "-q", "--filter", `label=com.portabase.fork.restore_id=${restoreId}`]).replaceAll("\n", ",")}] networks=[${docker(["network", "ls", "--format", "{{.Name}}", "--filter", `label=com.portabase.fork.restore_id=${restoreId}`]).replaceAll("\n", ",")}]`);
         expect(r).toMatchObject({status: "succeeded"});
         expect(docker(["ps", "-aq", "--filter", "label=com.docker.compose.project=app"]).trim()).toBe("");
         expect(docker(["volume", "ls", "-q", "--filter", `label=com.portabase.fork.restore_id=${restoreId}`]).trim()).toBe("");
