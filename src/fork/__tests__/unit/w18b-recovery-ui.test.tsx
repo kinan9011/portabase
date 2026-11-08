@@ -19,6 +19,7 @@ vi.mock("@/utils/get-server-url", () => ({getServerUrl: () => "http://x"}));
 vi.mock("@/fork/arcane/connection-service", () => ({soleOrganization: async () => h.org}));
 vi.mock("@/fork/restore-wizard/view", () => ({loadRestoreChoices: h.choices}));
 vi.mock("@/fork/restore-run/view", () => ({listRestoreRuns: h.runs}));
+vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: vi.fn(), cancelStackRunAction: vi.fn()}));
 
 import RecoveryPage from "../../../../app/(customer)/dashboard/(organization)/recovery/page";
 
