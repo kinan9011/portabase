@@ -131,7 +131,7 @@ const deny = async (d: OverrideDeps, action: string, g: Extract<Gated, {ok: true
     return {ok: false, code};
 };
 
-const auditKeys = (names: Pair[]) => ({env_keys: names.slice(0, MAX_AUDIT_KEYS).map(label), env_key_count: names.length});
+const auditKeys = (names: Pair[]) => ({env_keys: names.slice(0, MAX_AUDIT_KEYS).map(label), env_count: names.length});
 
 // ---- set ---------------------------------------------------------------------------------------------------------------------------------
 
@@ -139,8 +139,8 @@ class Refused extends Error { constructor(readonly failure: OverrideFailure, rea
 
 export async function setRestoreOverrides(d: OverrideDeps, raw: unknown): Promise<{ok: true; view: RestoreOverridesView} | OverrideFailure> {
     const parsed = SetOverridesRequest.safeParse(raw);
-    // validate shape first, but keep the audit path/ACL identical for malformed input (no value is ever read from `raw` for the audit)
-    const g = await gated(d, parsed.success ? parsed.data : (raw && typeof raw === "object" ? {planId: (raw as Record<string, unknown>).planId, planHash: (raw as Record<string, unknown>).planHash} : null), OverridesIdRequest, "fork.restore_override.denied", {rate: true});
+    const ids = raw && typeof raw === "object" ? {planId: (raw as Record<string, unknown>).planId, planHash: (raw as Record<string, unknown>).planHash} : null;
+    const g = await gated(d, ids, OverridesIdRequest, "fork.restore_override.denied", {rate: true});
     if (!g.ok) return g;
     if (!parsed.success) return deny(d, "fork.restore_override.denied", g, "invalid_input");
     const req = parsed.data;
