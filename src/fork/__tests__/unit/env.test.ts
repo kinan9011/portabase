@@ -27,4 +27,10 @@ describe("fork env flags", () => {
         expect(forkEnv({}).FORK_RESTORE_PLAN_TTL_HOURS).toBe(24);
         for (const [v, want] of [["1", 1], ["168", 168], ["0", 24], ["169", 24], ["x", 24], ["", 24]] as const) expect(forkEnv({FORK_RESTORE_PLAN_TTL_HOURS: v}).FORK_RESTORE_PLAN_TTL_HOURS, v).toBe(want);
     });
+    it("W18a: restore run cap defaults to 12 h (1..48); tick defaults to 10 s (0..300, blank is never 0)", () => {
+        expect(forkEnv({}).FORK_RESTORE_RUN_MAX_HOURS).toBe(12);
+        for (const [v, want] of [["1", 1], ["48", 48], ["0", 12], ["49", 12], ["x", 12], ["", 12]] as const) expect(forkEnv({FORK_RESTORE_RUN_MAX_HOURS: v}).FORK_RESTORE_RUN_MAX_HOURS, v).toBe(want);
+        expect(forkEnv({}).FORK_RESTORE_TICK_SECONDS).toBe(10);
+        for (const [v, want] of [["0", 0], ["1", 1], ["300", 300], ["301", 10], ["-1", 10], ["x", 10], ["", 10], ["  ", 10]] as const) expect(forkEnv({FORK_RESTORE_TICK_SECONDS: v}).FORK_RESTORE_TICK_SECONDS, v).toBe(want);
+    });
 });

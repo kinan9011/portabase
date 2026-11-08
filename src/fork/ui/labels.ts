@@ -809,6 +809,9 @@ export const NOTIFY = {
     generic: "Open the dashboard for details.",
     stackFallback: "A stack",
     kinds: {
+        "restore.finished": {title: "Restore finished", sentence: "A restore finished and its services started."},
+        "restore.failed": {title: "Restore did not finish", sentence: "A restore stopped before it was complete. Open the stack to see which step failed."},
+        "restore.needs_approval": {title: "Restore waiting for approval", sentence: "A restore is waiting for an owner to approve flagged settings."},
         "run.failed": {title: "Backup failed", sentence: "The backup failed."},
         "run.blocked": {title: "Backup incomplete", sentence: "The backup is incomplete: some required resources are not covered."},
         "run.incomplete": {title: "Backup incomplete", sentence: "The backup finished but is incomplete."},

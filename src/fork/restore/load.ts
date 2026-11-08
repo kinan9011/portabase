@@ -37,7 +37,7 @@ function parseInv(raw: unknown): StackInventoryV1 | null {
     try { return parseInventoryStrict(raw); } catch { return null; }
 }
 
-export async function loadPlanInput(db: ForkDb, req: LoadRequest, o: {principal: ForkPrincipal | null; organizationId: string; now: Date; factsMaxAgeHours?: number; skipAgentAcl?: boolean}): Promise<LoadResult> {
+export async function loadPlanInput(db: ForkDb, req: LoadRequest, o: {principal: ForkPrincipal | null; organizationId: string; now: Date; factsMaxAgeHours?: number; skipAgentAcl?: boolean; ignoreProject?: string}): Promise<LoadResult> {
     const [rp] = await db.select().from(forkRecoveryPoint).where(eq(forkRecoveryPoint.id, req.rpId));
     if (!rp) return {ok: false, code: "not_found"};
     const [stack] = await db.select().from(forkStack).where(eq(forkStack.id, rp.stackId));
@@ -99,6 +99,7 @@ export async function loadPlanInput(db: ForkDb, req: LoadRequest, o: {principal:
               left join lateral (select content_hash, inventory from fork_stack_inventory where stack_id = s.id order by version desc limit 1) i on true
              where s.environment_id in (${sql.join(envIds.map((id) => sql`${id}::uuid`), sql`, `)})`);
         for (const r of held.rows as {stack_id: string; compose_project: string; content_hash: string | null; inventory: unknown}[]) {
+            if (o.ignoreProject && r.compose_project === o.ignoreProject) continue; // W18a D-8: the project an ACTIVE run of this very plan created on the target is not a collision
             facts.projects.add(r.compose_project);
             const inv = r.inventory ? parseInv(r.inventory) : null;
             if (!inv) continue;

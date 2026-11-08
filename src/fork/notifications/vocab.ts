@@ -6,6 +6,7 @@ export const DELIVERABLE_KINDS = [
     "run.failed", "run.blocked", "run.incomplete", "run.skipped", "run.policy_paused",
     "stack.partial", "stack.no_good_backup", "kit.unverified", "kit.key_rotated",
     "fork.selfcheck.failed", "fork.selfcheck.recovered",
+    "restore.finished", "restore.failed", "restore.needs_approval", // W18a
 ] as const;
 export type DeliverableKind = (typeof DELIVERABLE_KINDS)[number];
 export const isDeliverableKind = (k: string): k is DeliverableKind => (DELIVERABLE_KINDS as readonly string[]).includes(k);

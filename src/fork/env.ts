@@ -51,6 +51,14 @@ const intRange = (min: number, max: number, dflt: number) =>
         return Number.isInteger(n) && n >= min && n <= max ? n : dflt;
     });
 
+/** Like `intRange` but a blank value is the default, never 0 (W18a: 0 switches the orchestrator job off, so it must be spelled out). */
+const intRangeExplicit = (min: number, max: number, dflt: number) =>
+    z.string().optional().transform((v) => {
+        const t = v?.trim() ?? "";
+        const n = Number(t);
+        return t !== "" && Number.isInteger(n) && n >= min && n <= max ? n : dflt;
+    });
+
 const schema = z.object({
     FORK_STACKS_ENABLED: flag,
     FORK_ARCANE_ENABLED: flag,
@@ -110,6 +118,9 @@ const schema = z.object({
     FORK_AGENT_LEASE_SECONDS: intRange(15, 600, 60),
     /** W16: restore plan lifetime (hours); a plan older than this is `expired` and must be re-planned. */
     FORK_RESTORE_PLAN_TTL_HOURS: intRange(1, 168, 24),
+    /** W18a: hard cap of one restore run (hours, 1..48) and the orchestrator tick period (seconds, 1..300; `0` = the job never ticks: LIVE LAB ONLY). */
+    FORK_RESTORE_RUN_MAX_HOURS: intRange(1, 48, 12),
+    FORK_RESTORE_TICK_SECONDS: intRangeExplicit(0, 300, 10),
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -148,6 +159,8 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_AGENT_TASK_TTL_MINUTES: source.FORK_AGENT_TASK_TTL_MINUTES,
         FORK_AGENT_LEASE_SECONDS: source.FORK_AGENT_LEASE_SECONDS,
         FORK_RESTORE_PLAN_TTL_HOURS: source.FORK_RESTORE_PLAN_TTL_HOURS,
+        FORK_RESTORE_RUN_MAX_HOURS: source.FORK_RESTORE_RUN_MAX_HOURS,
+        FORK_RESTORE_TICK_SECONDS: source.FORK_RESTORE_TICK_SECONDS,
     });
 }
 

@@ -5,6 +5,7 @@ import type {ForkDb} from "@/fork/db/handle";
 import {forkArcaneConnection, forkArcaneEnvironment} from "@/fork/db/schema/arcane";
 import {forkRecoveryPoint, forkRecoveryPointArtifact} from "@/fork/db/schema/recovery";
 import {forkRestorePlan} from "@/fork/db/schema/restore";
+import {forkRestoreRun} from "@/fork/db/schema/restore-run";
 import {forkStackRun} from "@/fork/db/schema/runs";
 import {forkStack, forkStackInventory} from "@/fork/db/schema/stack";
 
@@ -51,6 +52,10 @@ async function owningOrg(db: ForkDb, kind: ForkResourceKind, id: string): Promis
         }
         case "restore_plan": {
             const [r] = await db.select({o: forkRestorePlan.organizationId}).from(forkRestorePlan).where(eq(forkRestorePlan.id, id));
+            return r?.o ?? null;
+        }
+        case "restore_run": {
+            const [r] = await db.select({o: forkRestoreRun.organizationId}).from(forkRestoreRun).where(eq(forkRestoreRun.id, id));
             return r?.o ?? null;
         }
         case "recovery_point_artifact": {
