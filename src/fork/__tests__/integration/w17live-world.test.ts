@@ -13,7 +13,7 @@ beforeAll(async () => { t = await freshForkDb(); pool = t.pool; kek = newKek(); 
 afterAll(async () => { await t?.drop(); rmSync(kek, {recursive: true, force: true}); });
 
 /** the W17-live lab world: the three standard sources + a -Fd database, a second volume and a sqlite file inside it (no docker; the lab file seeds the same shape) */
-export const LIVE_EXTRA: ExtraSource[] = [
+const LIVE_EXTRA: ExtraSource[] = [
     {role: "db", key: "db:db2", dbms: "postgresql", member: "db_db2", engine: "postgresql"},
     {role: "volume", key: "volume:app_kumadata", dbms: "docker-volume", member: "volume_app_kumadata", engine: "docker-volume"},
     {role: "db", key: "db:kuma", dbms: "sqlite", member: "db_kuma", engine: "sqlite"},
