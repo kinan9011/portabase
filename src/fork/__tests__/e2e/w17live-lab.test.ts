@@ -535,16 +535,22 @@ describe.skipIf(!LAB)("W17-live: live restore proof (-Fc + -Fd, sqlite in WAL vo
         const l = stripAnsi(logsAll(CLEAN));
         expect(l).toContain("compose.render.v1 NOT enabled");
         const why = l.split("\n").find((x) => x.includes("compose.render.v1 NOT enabled"))!.replace(/^.*Fork channel: /, "");
-        expect(await enq("compose_render")).toMatchObject({ok: false, code: "capability_missing"});
+        // observed order of the dashboard checks: the plan made BEFORE the downgrade is `stale` (the planner re-runs with the new target capabilities ⇒ different inputs digest) before the enqueue capability gate is reached
+        const oldPlanRefusal = await enq("compose_render");
+        expect(oldPlanRefusal).toMatchObject({ok: false, code: "stale"});
         const p = await createRestorePlan({db, principal: principal(), configAllowed: async () => true}, req(world, {mode: "new_stack", mappings: {...MAPPING, restore_root: `${ROOT}/restore`}}));
-        const blockers = p.ok ? ((await loadPlanRow({db}, p.planId, p.planHash)) as {ok: true; plan: {blockers: string[]}}).plan.blockers : [`refused:${p.code}`];
-        expect(blockers).toContain("target_capability_missing");
+        if (!p.ok) throw new Error(`new plan refused: ${p.code}`);
+        const np = await loadPlanRow({db}, p.planId, p.planHash); if (!np.ok) throw new Error(np.code);
+        const blockers = np.plan.blockers as unknown as (string | {code: string})[];
+        expect(np.plan.outcome).toBe("blocked");
+        expect(blockers.map((b) => (typeof b === "string" ? b : b.code))).toContain("target_capability_missing");
+        expect(await enqueueRestoreTask(chDeps(), {type: "compose_render", planId: p.planId, planHash: p.planHash, restoreId: randomUUID(), manifest: manifestOf()} as never)).toMatchObject({ok: false, code: "plan_blocked"});
         const header = {v: 1, restore_id: randomUUID(), plan_id: planId, plan_hash: planHash, stack_id: world.stack, rp_id: world.rp, purpose: "restore", mode: "new_stack", host_role: "test", approvals: [], workspace: `${ROOT}/restore/app`, project: "app"};
         const planted = await plant(world.agent, cleanBundle, "compose_render", {...header, manifest_sha256: world.manifestSha, compose: {dir: `${ROOT}/restore/app/compose`, override_yml: null, env: {}, path_map: []}}, {target: world.agent});
         const x = await finished(planted);
         expect(x.status).toBe("rejected"); expect(x.result).toMatchObject({reason: "capability_missing"});
         expect(docker(["ps", "-aq", "--filter", "label=com.portabase.fork.helper=true"]).trim()).toBe("");
-        RUN.push(`N15a caps=${c.capabilities.join(",")} log="${why.slice(0, 160)}" enqueue=capability_missing planner_blockers=${blockers.join(",")} planted compose_render => ${x.status}/${x.result.reason}; no helper container`);
+        RUN.push(`N15a caps=${c.capabilities.join(",")} log="${why.slice(0, 160)}" enqueue(old plan)=stale new plan outcome=blocked blockers=${JSON.stringify(blockers)} enqueue(new plan)=plan_blocked planted compose_render => ${x.status}/${x.result.reason}; no helper container`);
     });
 
     it("N15b stock agent 1.25.2: never leases; an enqueued restore_probe stays queued (attempts 0, no lease) and is cancellable", async () => {
