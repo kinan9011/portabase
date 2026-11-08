@@ -67,7 +67,7 @@ export function TestRestorePanel({view, stackId, isAdmin, configLocked}: {view: 
             </dl>
             <div data-testid="tr-privacy" className="flex flex-col gap-2 text-sm">
                 <p className="font-medium">{TR.privacy.heading}</p>
-                <p>{pd === true ? TR.privacy.yes : pd === false ? TR.privacy.no : TR.privacy.unset}. {view.privacy.optIn ? TR.privacy.optedIn : TR.privacy.notOptedIn}</p>
+                <p>{pd === true ? TR.privacy.yes : pd === false ? TR.privacy.no : TR.privacy.unset}.{pd !== false && ` ${view.privacy.optIn ? TR.privacy.optedIn : TR.privacy.notOptedIn}`}</p>
                 {noOptIn && <p role="note" className="max-w-prose">{TR.privacy.refusedLine}</p>}
                 <PrivacyEditor view={view} stackId={stackId} reason={privacyReason}/>
             </div>
