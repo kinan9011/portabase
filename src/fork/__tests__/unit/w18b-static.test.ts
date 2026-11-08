@@ -104,7 +104,7 @@ describe("W18b static guards", () => {
         expect(defaultButtons).toBeGreaterThanOrEqual(7);
         expect(src(path.join(ROOT, "src/fork/ui/recovery/recovery-home.tsx"))).toMatch(/LINK_PRIMARY = `\$\{PRIMARY_AA\}/);
         const style = readFileSync(path.join(ROOT, "src/fork/ui/recovery/style.ts"), "utf8");
-        expect([...new Set(style.match(/#[0-9a-f]{6}/gi))].sort()).toEqual(["#9a3412", "#c2410c"]);
+        expect([...new Set(style.match(/#[0-9a-f]{6}/gi))].sort()).toEqual(["#991b1b", "#9a3412", "#b91c1c", "#c2410c"]);
         expect(contrast("#ffffff", "#c2410c")).toBeGreaterThanOrEqual(4.5);
         expect(contrast("#ffffff", "#9a3412")).toBeGreaterThanOrEqual(4.5);
     });
