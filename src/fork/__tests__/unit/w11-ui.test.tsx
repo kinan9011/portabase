@@ -15,6 +15,8 @@ const previewAction = vi.fn();
 vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: vi.fn(), cancelStackRunAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-schedule.action", () => ({updateStackScheduleAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-quiesce.action", () => ({previewQuiesceAction: vi.fn(), enableQuiesceAction: vi.fn(), disableQuiesceAction: vi.fn(), startQuiesceNowAction: vi.fn()}));
+vi.mock("@/fork/actions/test-restore.action", () => ({setTestRestoreScheduleAction: vi.fn(), runTestRestoreNowAction: vi.fn(), wipeTestRestoreNowAction: vi.fn()}));
+vi.mock("@/fork/actions/restore-plan.action", () => ({setStackPrivacyAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-policy.action", () => ({activateStackPolicyAction: (...a: unknown[]) => activateAction(...a), previewStackPolicyAction: (...a: unknown[]) => previewAction(...a)}));
 
 import {ConfigureForm} from "@/fork/ui/stacks/wizard/configure-form.client";
