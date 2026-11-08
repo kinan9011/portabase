@@ -22,7 +22,11 @@ import {loadFreshPlan, loadPlanRow, type PlanRow} from "@/fork/restore/service";
 import type {RestorePlanV1} from "@/fork/restore/schema";
 import type {ApprovalKind} from "@/fork/restore/vocab";
 import {artifactDownloadUrl} from "@/fork/upstream/storage-read";
-import {BuildError, artifactIndexes, buildApplyPayload, buildCleanupPayload, buildProbePayload, buildStagePayload, type BuildInput} from "./build";
+import {canonicalJson} from "@/fork/canonical";
+import {checkPolicyApproval} from "@/fork/policy/approval";
+import {checkRawCompose} from "@/fork/policy/raw";
+import {BuildError, artifactIndexes, buildApplyPayload, buildCleanupPayload, buildComposeRef, buildDbPayload, buildProbePayload, buildRenderPayload, buildStagePayload, buildUpPayload, workspaceOf, type BuildInput} from "./build";
+import {latestRender, renderVerdict} from "./render";
 
 /**
  * The ONLY builder of restore tasks (W17-i, plan-W17 i-2; generic `enqueueTask` keeps refusing them). Called by tests today and by the W18a orchestrator
@@ -38,7 +42,9 @@ export type RestoreTaskDeps = ChannelDeps & {
 };
 
 export type RestoreRefusalCode = "forbidden" | "locked" | "rate_limited" | "invalid_input" | "not_enrolled" | "agent_disabled" | "capability_missing" | "insecure_transport" | "invalid_url" | "signing_unavailable"
-    | "not_found" | "stale" | "expired" | "hash_mismatch" | "plan_tampered" | "plan_blocked" | "approval_missing" | "mode_unsupported" | "manifest_mismatch" | "artifact_unavailable" | "payload_too_large" | "target_mismatch";
+    | "not_found" | "stale" | "expired" | "hash_mismatch" | "plan_tampered" | "plan_blocked" | "approval_missing" | "mode_unsupported" | "manifest_mismatch" | "artifact_unavailable" | "payload_too_large" | "target_mismatch"
+    // W17-ii (compose types)
+    | "raw_refused" | "render_missing" | "policy_refused" | "approval_invalid";
 export type RestoreRefusal = {ok: false; code: RestoreRefusalCode; retryAfterSeconds?: number};
 export type RestoreEnqueueResult = {ok: true; taskId: string; seq: number; notAfter: string} | RestoreRefusal;
 
@@ -46,10 +52,14 @@ const uuid = z.uuid();
 const hex64 = z.string().regex(/^[0-9a-f]{64}$/);
 const Plan = {planId: uuid, planHash: hex64, restoreId: uuid};
 const Manifest = z.strictObject({json: z.string().min(2).max(2 * 1024 * 1024), sigB64: z.string().min(4).max(2048)});
+/** Operator override of the restored stack (W16b supplies it; tests pass literals). Secret-bearing: goes into `payload_enc` only — never audited, never logged, never in an error. */
+const Overrides = z.strictObject({env: z.record(z.string(), z.string()), overrideYml: z.string().nullable()}).nullable().optional();
 const RestoreEnqueueInput = z.discriminatedUnion("type", [
     z.strictObject({type: z.literal("restore_probe"), agentId: uuid, workspace: z.string().max(1024).optional()}),
     z.strictObject({type: z.literal("restore_stage"), ...Plan, manifest: Manifest}),
     z.strictObject({type: z.literal("restore_apply"), ...Plan, manifest: Manifest}),
+    z.strictObject({type: z.literal("compose_render"), ...Plan, manifest: Manifest, overrides: Overrides}),
+    z.strictObject({type: z.enum(["restore_db", "compose_up"]), ...Plan, manifest: Manifest, approval: z.unknown().nullable(), overrides: Overrides}),
     z.strictObject({type: z.literal("restore_cleanup"), ...Plan, cleanup: z.strictObject({workspace: z.boolean(), volumes: z.boolean(), networks: z.boolean(), containers: z.boolean()})}),
 ]);
 
@@ -114,11 +124,39 @@ export async function enqueueRestoreTask(d: RestoreTaskDeps, raw: unknown): Prom
         if (plan.mode === "existing_stack") return deny("mode_unsupported", {reason2: "existing_stack"});
         const bi: BuildInput = {restoreId, planId: row.id, planHash: row.planHash, plan, approvals: approvalsOf(row), indexOf: new Map()};
         try {
-            if (input.type === "restore_stage" || input.type === "restore_apply") {
+            if (input.type === "restore_stage" || input.type === "restore_apply" || input.type === "compose_render" || input.type === "restore_db" || input.type === "compose_up") {
                 const rm = await resolveManifest(d, plan, input.manifest);
                 if ("code" in rm) return deny(rm.code, rm.detail ? {detail: rm.detail} : {});
                 const withIndex: BuildInput = {...bi, indexOf: rm.indexOf};
-                if (input.type === "restore_apply") {
+                if (input.type === "compose_render" || input.type === "restore_db" || input.type === "compose_up") {
+                    // W17-ii: override YAML is judged on BOTH sides (D46): the dashboard refuses a poisoned override before it is ever signed
+                    const ref = buildComposeRef(withIndex, input.overrides ? {env: input.overrides.env, overrideYml: input.overrides.overrideYml} : null);
+                    const ws = workspaceOf(plan);
+                    if (ref.override_yml !== null) {
+                        const file = `${ws}/.portabase/secret/override.yml`;
+                        if (checkRawCompose({root: ws, entry: [file], files: [{path: file, text: ref.override_yml}]}).refused) return deny("raw_refused");
+                    }
+                    if (input.type === "compose_render") {
+                        plaintext = Buffer.from(JSON.stringify(buildRenderPayload(withIndex, rm.sha256, ref)), "utf8");
+                    } else {
+                        // the render the operator saw, judged AGAIN right before enqueue (D-6): never trust a stored verdict
+                        const row = await latestRender(d.db, {restoreId, agentId: plan.target.agent_id});
+                        if (!row) return deny("render_missing");
+                        const verdict = renderVerdict(row, ws);
+                        if (verdict.hard.length > 0) return deny("policy_refused", {composeSha256: row.renderedSha256, hard: verdict.hard.map((h) => h.code)});
+                        let approval: unknown = null;
+                        if (verdict.verdict === "allow") {
+                            if (input.approval !== null) return deny("approval_invalid", {detail: "over_broad", composeSha256: row.renderedSha256});
+                        } else {
+                            const chk = checkPolicyApproval({verdict, token: input.approval, context: {stack_id: plan.rp.stack_id, rp_id: plan.rp.id, target_agent_id: plan.target.agent_id}});
+                            if (!chk.ok) return deny("approval_invalid", {detail: chk.code, composeSha256: row.renderedSha256});
+                            approval = input.approval;
+                            extra = {approvalSha256: sha256(canonicalJson(approval))};
+                        }
+                        extra = {...extra, composeSha256: row.renderedSha256};
+                        plaintext = Buffer.from(JSON.stringify(input.type === "restore_db" ? buildDbPayload(withIndex, rm.sha256, ref, row.renderedSha256, approval) : buildUpPayload(withIndex, rm.sha256, ref, row.renderedSha256, approval)), "utf8");
+                    }
+                } else if (input.type === "restore_apply") {
                     plaintext = Buffer.from(JSON.stringify(buildApplyPayload(withIndex, rm.sha256)), "utf8");
                 } else {
                     const urls = new Map<number, string>();
@@ -132,6 +170,7 @@ export async function enqueueRestoreTask(d: RestoreTaskDeps, raw: unknown): Prom
                     extra = {artifacts: urls.size};
                 }
             } else {
+                if (input.type !== "restore_cleanup") throw new BuildError("invalid_input");
                 plaintext = Buffer.from(JSON.stringify(buildCleanupPayload(bi, input.cleanup)), "utf8");
             }
         } catch (e) {

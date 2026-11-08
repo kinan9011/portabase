@@ -10,7 +10,7 @@ import {anyForkFlagOn} from "@/fork/env";
  * Each handler still authorises itself; the allowlist is not a permission check.
  */
 const CONFIG_ROUTES: RegExp[] = [/^\/api\/fork\//];
-const RUNTIME_ROUTES: RegExp[] = [/^\/api\/fork\/agent\/[0-9a-f-]{36}\/(?:lease|hash-report|tasks\/[0-9a-f-]{36}\/(?:heartbeat|result))\/?$/];
+const RUNTIME_ROUTES: RegExp[] = [/^\/api\/fork\/agent\/[0-9a-f-]{36}\/(?:lease|hash-report|tasks\/[0-9a-f-]{36}\/(?:heartbeat|result|render))\/?$/];
 
 /**
  * `proxy.ts` hook (P04, `/dashboard` branch): fork PAGES that must answer with a real HTTP 404 (the

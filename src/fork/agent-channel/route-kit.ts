@@ -10,12 +10,13 @@ const NO_STORE = {"Cache-Control": "no-store"};
 export const json = (body: unknown, status: number, extra: Record<string, string> = {}) => NextResponse.json(body, {status, headers: {...NO_STORE, ...extra}});
 export const notFound = () => json({message: "This API route does not exist.", status: 404}, 404);
 
-export async function readJsonBody(req: Request): Promise<{ok: true; body: unknown} | {ok: false}> {
+export async function readJsonBody(req: Request, o: {maxBytes?: number} = {}): Promise<{ok: true; body: unknown} | {ok: false}> {
+    const max = o.maxBytes ?? MAX_BODY_BYTES;
     if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) return {ok: false};
-    if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return {ok: false};
+    if (Number(req.headers.get("content-length") ?? 0) > max) return {ok: false};
     try {
         const text = await req.text();
-        if (Buffer.byteLength(text) > MAX_BODY_BYTES) return {ok: false};
+        if (Buffer.byteLength(text) > max) return {ok: false};
         return {ok: true, body: text.length ? JSON.parse(text) : {}};
     } catch { return {ok: false}; }
 }

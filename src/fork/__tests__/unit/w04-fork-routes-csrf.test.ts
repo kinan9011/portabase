@@ -17,7 +17,7 @@ describe("SEC-16 every state-changing /api/fork route calls forkCsrfGuard first"
     const files = all.filter((f) => !f.includes(`${path.sep}agent${path.sep}`));
     it("agent channel routes are cookie-less bearer routes: each authenticates through withAgent and never reads a session", () => {
         const agent = all.filter((f) => f.includes(`${path.sep}agent${path.sep}`));
-        expect(agent.length).toBe(4);
+        expect(agent.length).toBe(5);
         for (const f of agent) { const src = readFileSync(f, "utf8"); expect(src, f).toContain("withAgent("); expect(src, f).not.toMatch(/currentUser|getForkPrincipal|cookies\(/); }
     });
     it("there is at least the status route (the scan is not vacuous)", () => expect(files.length).toBeGreaterThan(0));

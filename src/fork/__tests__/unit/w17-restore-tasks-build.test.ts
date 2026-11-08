@@ -2,7 +2,7 @@ import {readdirSync, readFileSync} from "node:fs";
 import path from "node:path";
 import {describe, expect, it} from "vitest";
 import {enqueueTask, validatePayload} from "@/fork/agent-channel/tasks";
-import {PUBLIC_TASK_TYPES, RESTORE_TASK_TYPES, TARGETED_TASK_TYPES, TASK_REQUIRES, TASK_TYPES} from "@/fork/agent-channel/vocab";
+import {COMPOSE_TASK_TYPES, PUBLIC_TASK_TYPES, RESTORE_TASK_TYPES, TARGETED_TASK_TYPES, TASK_REQUIRES, TASK_TYPES} from "@/fork/agent-channel/vocab";
 import {planRestore} from "@/fork/restore/plan";
 import {BuildError, artifactIndexes, buildApplyPayload, buildCleanupPayload, buildHeader, buildProbePayload, buildStagePayload, type BuildInput} from "@/fork/restore-tasks/build";
 import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
@@ -20,7 +20,8 @@ const bi = (plan: ReturnType<typeof planOf>["plan"], approvals: BuildInput["appr
 describe("W17-i vocabulary", () => {
     it("restore types are targeted, require restore.target.v1 and are never public", () => {
         expect([...RESTORE_TASK_TYPES]).toEqual(["restore_probe", "restore_stage", "restore_apply", "restore_cleanup"]);
-        expect([...TARGETED_TASK_TYPES]).toEqual([...RESTORE_TASK_TYPES]);
+        expect([...TARGETED_TASK_TYPES]).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES]);
+        for (const t of COMPOSE_TASK_TYPES) { expect(TASK_REQUIRES[t]).toEqual(["restore.target.v1", "compose.render.v1"]); expect(PUBLIC_TASK_TYPES as readonly string[]).not.toContain(t); }
         for (const t of RESTORE_TASK_TYPES) { expect(TASK_REQUIRES[t]).toEqual(["restore.target.v1"]); expect(TASK_TYPES).toContain(t); expect(PUBLIC_TASK_TYPES as readonly string[]).not.toContain(t); }
         // envelope type grammar has no dots (ADR-007 A13)
         for (const t of TASK_TYPES) expect(t).toMatch(/^[a-z][a-z0-9_]{1,47}$/);
@@ -30,7 +31,7 @@ describe("W17-i vocabulary", () => {
         for (const c of ["bad_signature", "target_mismatch", "payload_invalid", "execution_error"]) expect(RESTORE_REASONS as readonly string[]).not.toContain(c);
     });
     it("the generic enqueue refuses every restore type (static: input enum is PUBLIC_TASK_TYPES)", async () => {
-        for (const type of RESTORE_TASK_TYPES) expect(await enqueueTask({principal: null} as never, {agentId: u(1), type, payload: {}})).toMatchObject({ok: false});
+        for (const type of [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES]) expect(await enqueueTask({principal: null} as never, {agentId: u(1), type, payload: {}})).toMatchObject({ok: false});
     });
 });
 
@@ -79,11 +80,11 @@ describe("payload builders (pure mapping of a verified plan)", () => {
 describe("static guards", () => {
     const dir = path.join(ROOT, "src/fork/restore-tasks");
     const code = (f: string) => readFileSync(path.join(dir, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    it("the scope is exactly build / codes / enqueue / payload-schema", () => { expect(readdirSync(dir).sort()).toEqual(["build.ts", "codes.ts", "enqueue.ts", "payload-schema.ts"]); });
+    it("the scope is exactly build / codes / enqueue / payload-schema / render / view", () => { expect(readdirSync(dir).sort()).toEqual(["build.ts", "codes.ts", "enqueue.ts", "payload-schema.ts", "render.ts", "view.ts"]); });
     it("pure modules (build, codes, payload-schema) import no I/O, DB, env, clock or crypto", () => {
-        for (const f of ["build.ts", "codes.ts", "payload-schema.ts"]) {
+        for (const f of ["build.ts", "codes.ts", "payload-schema.ts", "view.ts"]) {
             const c = code(f);
-            for (const m of c.matchAll(/(?:from\s+|import\(\s*)["']([^"']+)["']/g)) expect(m[1], `${f} imports ${m[1]}`).toMatch(/^(zod|@\/fork\/restore\/(schema|vocab)|\.\/(build|codes|payload-schema))$/);
+            for (const m of c.matchAll(/(?:from\s+|import\(\s*)["']([^"']+)["']/g)) expect(m[1], `${f} imports ${m[1]}`).toMatch(/^(zod|@\/fork\/restore\/(schema|vocab)|\.\/(build|codes|payload-schema|view))$/);
             expect(c, f).not.toMatch(/\bfetch\(|process\.env|new Date\(|Date\.now\(|console\./);
         }
     });

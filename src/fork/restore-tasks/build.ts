@@ -1,7 +1,7 @@
 import type {Action, RestorePlanV1} from "@/fork/restore/schema";
 import type {ApprovalKind} from "@/fork/restore/vocab";
 import type {z} from "zod";
-import type {ApplyPayload, CleanupPayload, ProbePayload, RestoreHeader, StagePayload} from "./payload-schema";
+import type {ApplyPayload, CleanupPayload, ComposeRef, DbPayload, ProbePayload, RenderPayload, RestoreHeader, StagePayload, UpPayload} from "./payload-schema";
 
 /**
  * Pure payload builders of the W17-i restore tasks (plan-W17 §4.0, §4.1 i-2): a verified plan in, a strict payload out. NO I/O, no clock, no env, no DB
@@ -99,4 +99,42 @@ export function buildCleanupPayload(i: BuildInput, c: {workspace: boolean; volum
 
 export function buildProbePayload(workspace?: string): z.infer<typeof ProbePayload> {
     return {v: 1, ...(workspace ? {workspace} : {})};
+}
+
+// --- W17-ii compose types (plan-W17-ii ii-2). Pure: the enqueue service supplies the verified render hash and the approval token. ---
+/** The single compose directory + the path map of the plan (every restored path whose original location is known). */
+export function buildComposeRef(i: BuildInput, o: {env: Record<string, string>; overrideYml: string | null} | null): z.infer<typeof ComposeRef> {
+    const ws = workspaceOf(i.plan);
+    const dirs = live(i.plan).filter((a) => a.kind === "restore_compose_dir");
+    const dir = dirs.length === 1 ? dirs[0]!.destination.path : undefined;
+    if (!dir || !isUnder(dir, ws)) throw new BuildError("mode_unsupported");
+    const map = new Map<string, string>();
+    for (const a of live(i.plan)) {
+        const from = a.source.original_path, to = a.destination.path;
+        if (a.destination.kind === "path" && from && to) map.set(`${from}\0${to}`, from);
+    }
+    const path_map = [...map.keys()].map((k) => { const [from, to] = k.split("\0") as [string, string]; return {from, to}; })
+        .sort((x, y) => (x.from < y.from ? -1 : x.from > y.from ? 1 : x.to < y.to ? -1 : x.to > y.to ? 1 : 0));
+    return {dir, override_yml: o?.overrideYml ?? null, env: {...(o?.env ?? {})}, path_map};
+}
+
+export function buildRenderPayload(i: BuildInput, manifestSha256: string, ref: z.infer<typeof ComposeRef>): z.infer<typeof RenderPayload> {
+    if (!live(i.plan).some((a) => a.kind === "compose_up")) throw new BuildError("mode_unsupported");
+    return {...buildHeader(i), manifest_sha256: manifestSha256, compose: ref};
+}
+
+export function buildDbPayload(i: BuildInput, manifestSha256: string, ref: z.infer<typeof ComposeRef>, composeSha256: string, approval: unknown): z.infer<typeof DbPayload> {
+    const dbs = live(i.plan).filter((a) => a.kind === "restore_db_dump" && a.source.dbms === "postgresql" && a.destination.kind === "db_service")
+        .map((a) => { if (!a.destination.name) throw new BuildError("mode_unsupported"); return {index: indexFor(i, a), service: a.destination.name}; });
+    if (dbs.length === 0) throw new BuildError("mode_unsupported");
+    return {...buildHeader(i), manifest_sha256: manifestSha256, compose: ref, compose_sha256: composeSha256, approval: approval ?? null, dbs};
+}
+
+export function buildUpPayload(i: BuildInput, manifestSha256: string, ref: z.infer<typeof ComposeRef>, composeSha256: string, approval: unknown): z.infer<typeof UpPayload> {
+    if (!live(i.plan).some((a) => a.kind === "compose_up")) throw new BuildError("mode_unsupported");
+    const volumes = live(i.plan).filter((a) => a.kind === "restore_volume" && a.destination.kind === "volume").map((a) => {
+        if (!a.destination.name) throw new BuildError("mode_unsupported");
+        return a.destination.name;
+    });
+    return {...buildHeader(i), manifest_sha256: manifestSha256, compose: ref, compose_sha256: composeSha256, approval: approval ?? null, volumes};
 }

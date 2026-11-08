@@ -48,3 +48,23 @@ export const ApplyPayload = RestoreHeader.extend({
 });
 
 export const CleanupPayload = RestoreHeader.extend({workspace_remove: z.boolean(), volumes: z.boolean(), networks: z.boolean(), containers: z.boolean()});
+
+// --- W17-ii compose types (ADR-007 A14) ---
+const envKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/)
+    .refine((k) => !/^(COMPOSE_|DOCKER_|BUILDKIT_)/.test(k) && !["PATH", "HOME", "HOSTNAME"].includes(k), "reserved");
+const envVal = z.string().max(4096).refine((v) => !/[\0\r\n]/.test(v), "control");
+/** Compose reference of a restore workspace: the agent derives the compose files itself (E2); `env` + `override_yml` are secret-bearing (payload_enc only). */
+export const ComposeRef = z.strictObject({
+    dir: absPath, override_yml: z.string().max(64 * 1024).nullable(),
+    env: z.record(envKey, envVal).refine((r) => Object.keys(r).length <= 200, "too many"),
+    path_map: z.array(z.strictObject({from: absPath, to: absPath})).max(200),
+});
+export type ComposeRef = z.infer<typeof ComposeRef>;
+export const RenderPayload = RestoreHeader.extend({manifest_sha256: hex64, compose: ComposeRef});
+export const DbPayload = RestoreHeader.extend({
+    manifest_sha256: hex64, compose: ComposeRef, compose_sha256: hex64, approval: z.unknown().nullable(),
+    dbs: z.array(z.strictObject({index, service})).min(1).max(20),
+});
+export const UpPayload = RestoreHeader.extend({
+    manifest_sha256: hex64, compose: ComposeRef, compose_sha256: hex64, approval: z.unknown().nullable(), volumes: z.array(volumeName).max(100),
+});

@@ -6,7 +6,7 @@ import {describe, expect, it} from "vitest";
 import {verifyEnvelope, type Envelope} from "@/fork/agent-channel/envelope";
 import {encryptPayload, payloadSha256} from "@/fork/agent-channel/payload";
 import {validatePayload} from "@/fork/agent-channel/tasks";
-import {RESTORE_TASK_TYPES, SIGN_DOMAIN, TASK_REQUIRES, TARGETED_TASK_TYPES} from "@/fork/agent-channel/vocab";
+import {COMPOSE_TASK_TYPES, RESTORE_TASK_TYPES, SIGN_DOMAIN, TASK_REQUIRES, TARGETED_TASK_TYPES} from "@/fork/agent-channel/vocab";
 import {canonicalJson} from "@/fork/canonical";
 import {buildManifest} from "@/fork/manifest/build";
 import {signManifest} from "@/fork/manifest/sign";
@@ -15,7 +15,7 @@ import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
 import {testKeypair} from "@/fork/__tests__/w14-fixtures";
 
 /**
- * Cross-language vectors of the W17-i restore tasks (plan-W17 i-3). The dashboard code signs / builds them; the Rust agent (`src/fork/tests/restore_vectors.json`)
+ * Cross-language vectors of the W17-i restore tasks (plan-W17 i-3) + the W17-ii compose tasks (plan-W17-ii ii-1). The dashboard code signs / builds them; the Rust agent (`src/fork/tests/restore_vectors.json`)
  * must decide exactly as recorded. Fixed clock inside the file, injected on both sides; TEST-ONLY keys; no secrets.
  * Generator: `W17_VECTORS_OUT=<agent>/src/fork/tests/restore_vectors.json pnpm exec vitest run --project unit w17-restore-task-vectors`.
  */
@@ -31,17 +31,22 @@ const PLAN = "88888888-8888-4888-8888-888888888888";
 const HEX = (c: string) => c.repeat(64);
 
 const header = (o: Record<string, unknown> = {}) => ({v: 1, restore_id: RESTORE, plan_id: PLAN, plan_hash: HEX("a"), stack_id: STACK, rp_id: RP, purpose: "restore", mode: "selective", host_role: "test", approvals: [], workspace: "/srv/restore/app", project: "app", ...o});
+function composeRef(o: Record<string, unknown> = {}) { return {dir: "/srv/restore/app/compose", override_yml: null, env: {}, path_map: [{from: "/opt/stack/www", to: "/srv/restore/app/files/www"}], ...o}; }
 const samples = {
     restore_probe: {v: 1},
     restore_stage: {...header(), manifest: {json_b64: "e30=", sig_b64: "AAAA", sha256: HEX("b")}, artifacts: [{index: 0, source: "archive", url: "https://minio.example.test/b/o?X-Amz-Signature=x"}], paths: [{index: 0, dest: "/srv/restore/app/files/app"}]},
     restore_apply: {...header(), manifest_sha256: HEX("b"), volumes: [{index: 1, name: "app_appdata", compose_volume: "appdata"}], sqlite: [], networks: [{name: "app_default"}], unpack: []},
     restore_cleanup: {...header(), workspace_remove: true, volumes: true, networks: true, containers: false},
+    compose_render: {...header(), manifest_sha256: HEX("b"), compose: composeRef()},
+    restore_db: {...header(), manifest_sha256: HEX("b"), compose: composeRef(), compose_sha256: HEX("c"), approval: null, dbs: [{index: 1, service: "db"}]},
+    compose_up: {...header(), manifest_sha256: HEX("b"), compose: composeRef(), compose_sha256: HEX("c"), approval: null, volumes: ["app_appdata"]},
 } as const;
+const ALL_TYPES = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES] as const;
 
 type PCase = {type: string; name: string; payload: unknown; schema_valid: boolean; agent: string};
 function payloadCases(): PCase[] {
     const out: PCase[] = [];
-    for (const type of RESTORE_TASK_TYPES) out.push({type, name: `${type}_valid`, payload: samples[type], schema_valid: true, agent: "ok"});
+    for (const type of ALL_TYPES) out.push({type, name: `${type}_valid`, payload: samples[type], schema_valid: true, agent: "ok"});
     const bad = (type: keyof typeof samples, name: string, payload: unknown, schema_valid = false, agent = "payload_invalid") => out.push({type, name, payload, schema_valid, agent});
     const s = samples;
     bad("restore_probe", "probe_unknown_key", {...s.restore_probe, x: 1});
@@ -67,13 +72,31 @@ function payloadCases(): PCase[] {
     // schema-valid but semantically refused by the agent (header rules, DD5/DD17)
     bad("restore_apply", "test_restore_with_volume", {...s.restore_apply, purpose: "test_restore"}, true, "mode_unsupported");
     bad("restore_stage", "production_without_approval", {...s.restore_stage, host_role: "production", approvals: []}, true, "approval_missing");
+    // ---- W17-ii compose types ----
+    const ref = (o: Record<string, unknown>) => composeRef(o);
+    bad("compose_render", "render_unknown_key", {...s.compose_render, extra: 1});
+    bad("compose_render", "render_env_key_compose_file", {...s.compose_render, compose: ref({env: {COMPOSE_FILE: "x"}})}, false, "override_invalid");
+    bad("compose_render", "render_env_key_path", {...s.compose_render, compose: ref({env: {PATH: "/x"}})}, false, "override_invalid");
+    bad("compose_render", "render_env_value_newline", {...s.compose_render, compose: ref({env: {A: "x\ny"}})}, false, "override_invalid");
+    bad("compose_render", "render_override_too_large", {...s.compose_render, compose: ref({override_yml: "a".repeat(64 * 1024 + 1)})}, false, "override_invalid");
+    bad("compose_render", "render_path_map_to_outside_workspace", {...s.compose_render, compose: ref({path_map: [{from: "/opt/stack/www", to: "/etc/www"}]})}, true, "path_not_allowed");
+    bad("compose_render", "render_dir_outside_workspace", {...s.compose_render, compose: ref({dir: "/etc"})}, true, "path_not_allowed");
+    bad("compose_render", "render_relative_dir", {...s.compose_render, compose: ref({dir: "srv/restore/app/compose"})});
+    bad("compose_render", "render_missing_manifest_sha", (({manifest_sha256: _m, ...rest}) => rest)(s.compose_render));
+    bad("restore_db", "db_empty_dbs", {...s.restore_db, dbs: []});
+    bad("restore_db", "db_unknown_key", {...s.restore_db, extra: 1});
+    bad("restore_db", "db_bad_service", {...s.restore_db, dbs: [{index: 1, service: "a b"}]});
+    bad("restore_db", "db_missing_compose_sha", (({compose_sha256: _m, ...rest}) => rest)(s.restore_db));
+    bad("compose_up", "up_unknown_key", {...s.compose_up, extra: 1});
+    bad("compose_up", "up_volume_with_slash", {...s.compose_up, volumes: ["a/b"]});
+    bad("compose_up", "up_missing_approval_key", (({approval: _m, ...rest}) => rest)(s.compose_up));
     return out;
 }
 
 function buildVectors() {
     const k = testKeypair(), other = testKeypair();
     const taskKey = randomBytes(32);
-    const own = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "restore.target.v1"];
+    const own = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "restore.target.v1", "compose.render.v1"];
     let n = 100;
     const mk = (type: string, o: Partial<Envelope> & {omitTarget?: boolean} = {}, plaintext = Buffer.from(JSON.stringify(samples[type as keyof typeof samples] ?? {}))) => {
         const {omitTarget, ...rest} = o;
@@ -92,7 +115,11 @@ function buildVectors() {
     cases.push({name: "restore_stage_targeted_at_another_agent", expect: "target_mismatch", ...mk("restore_stage", {target_agent_id: OTHER_AGENT})});
     cases.push({name: "restore_apply_without_target", expect: "target_mismatch", ...mk("restore_apply", {omitTarget: true})});
     cases.push({name: "restore_cleanup_without_target", expect: "target_mismatch", ...mk("restore_cleanup", {omitTarget: true})});
-    cases.push({name: "compose_up_unknown_type_in_w17i", expect: "unsupported_type", ...mk("compose_up", {requires: ["compose.render.v1"], target_agent_id: AGENT}, Buffer.from("{}"))});
+    for (const type of COMPOSE_TASK_TYPES) cases.push({name: `${type}_targeted_ok`, expect: "ok", ...mk(type)});
+    cases.push({name: "compose_up_without_target", expect: "target_mismatch", ...mk("compose_up", {omitTarget: true})});
+    cases.push({name: "compose_render_without_target", expect: "target_mismatch", ...mk("compose_render", {omitTarget: true})});
+    cases.push({name: "compose_up_targeted_at_another_agent", expect: "target_mismatch", ...mk("compose_up", {target_agent_id: OTHER_AGENT})});
+    cases.push({name: "compose_down_unknown_type", expect: "unsupported_type", ...mk("compose_down", {requires: ["compose.render.v1"], target_agent_id: AGENT}, Buffer.from("{}"))});
 
     // ---- manifest cases (RSA PKCS#1 v1.5 / SHA-256 over the RAW bytes, no domain prefix) ----
     const art = {sourceName: "volume_app_data", engine: "docker-volume", archiveKind: "archive_enc", dumpFormat: null, archiveFormatVersion: 1, encrypted: true, channelId: null, channelKind: "s3", pathOrSnapshotId: "backups/a/vol.tar.gz.enc", generatedId: "g1",
@@ -134,7 +161,7 @@ function buildVectors() {
     return {note: "TEST-ONLY keys and data. Generated by dashboard src/fork/__tests__/unit/w17-restore-task-vectors.test.ts (W17_VECTORS_OUT=…). The Rust agent decides exactly like this.",
         now: NOW, agent_id: AGENT, enroll_id: ENROLL, own_capabilities: own, pins: [{kid: k.kid, pem: k.publicKey}], task_key_b64: taskKey.toString("base64"),
         ids: {stack_id: STACK, rp_id: RP, restore_id: RESTORE, plan_id: PLAN},
-        codes: [...RESTORE_REASONS], types: Object.fromEntries(RESTORE_TASK_TYPES.map((t) => [t, [...TASK_REQUIRES[t]]])), targeted: [...TARGETED_TASK_TYPES],
+        codes: [...RESTORE_REASONS], types: Object.fromEntries(ALL_TYPES.map((t) => [t, [...TASK_REQUIRES[t]]])), targeted: [...TARGETED_TASK_TYPES],
         cases, stage_world, payload_cases: payloadCases(), manifest_artifacts: [art, db].map((a) => ({source_name: a.sourceName, plaintext_sha256: a.plaintextSha256, plaintext_size: a.plaintextSize, dump_format: a.dumpFormat})), manifests};
 }
 const VECTORS = path.join(process.cwd(), "src/fork/__tests__/fixtures/restore-task-vectors.json");
@@ -152,7 +179,7 @@ describe("W17-i cross-language vectors", () => {
     it("payload cases: the TS schema accepts exactly the schema_valid ones", () => {
         const v = load();
         for (const c of v.payload_cases) expect(validatePayload(c.type as never, c.payload as Record<string, unknown>) === null, c.name).toBe(c.schema_valid);
-        expect(v.payload_cases.filter((c) => c.agent === "ok")).toHaveLength(RESTORE_TASK_TYPES.length);
+        expect(v.payload_cases.filter((c) => c.agent === "ok")).toHaveLength(ALL_TYPES.length);
     });
     it("manifest cases: the TS reference verifier accepts only the valid ones", () => {
         const v = load();
@@ -172,7 +199,8 @@ describe("W17-i cross-language vectors", () => {
     it("codes and types in the vectors equal the dashboard's lists", () => {
         const v = load();
         expect(v.codes).toEqual([...RESTORE_REASONS]);
-        expect(Object.keys(v.types).sort()).toEqual([...RESTORE_TASK_TYPES].sort());
-        expect(v.targeted).toEqual([...RESTORE_TASK_TYPES]);
+        expect(Object.keys(v.types).sort()).toEqual([...ALL_TYPES].sort());
+        expect(v.targeted).toEqual([...ALL_TYPES]);
+        expect(v.codes).toHaveLength(34);
     });
 });
