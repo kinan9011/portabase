@@ -524,6 +524,11 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
             ["db-password", dbPw], ["task-key", cb.task_key_b64 ?? ""], ["agent-credential", cb.credential ?? ""]];
         const needles = named.filter(([, v]) => v.length >= 8);
         log("T9", true, `needles: ${needles.map(([n]) => n).join(",")} (dropped as too short/empty: ${named.filter(([, v]) => v.length < 8).map(([n]) => n).join(",") || "none"})`);
+        // the probe result lists the agent's ALLOWED ROOTS (`roots[].path`, the W17 design: admin-configured, DB-only, needed by the planner) — that is the one place ROOT may appear; everything else must be clean
+        const taskResults = await q("select type, result from fork_agent_task where type in ('restore_verify','restore_cleanup','restore_probe')");
+        const rootsHits = taskResults.filter((r) => JSON.stringify(r.result?.roots ?? []).includes(ROOT)).length;
+        const rawHits = taskResults.filter((r) => JSON.stringify(r.result ?? {}).includes(ROOT)).length;
+        check("T9", rawHits === rootsHits && taskResults.every((r) => !JSON.stringify(r.result ?? {}).includes(workspace())), `ROOT occurs in ${rootsHits}/${taskResults.length} task results, ONLY under probe roots[].path (${rawHits} raw); the scratch workspace path in none`);
         const outbox = await q("select kind, payload from fork_notification_outbox");
         const rendered = outbox.map((o) => JSON.stringify(renderNotification({kind: o.kind, payload: o.payload, stackName: "app", baseUrl: URL_FOR_AGENTS()})));
         const mv = await getTestRestoreView(td({principal: {userId: memberId, systemRole: null, memberships: [{organizationId: org, role: "member"}]}}), {stackId: world.stack});
@@ -536,7 +541,7 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
             ["outbox payloads", JSON.stringify(outbox.map((o) => o.payload))], ["outbox rendered bodies", rendered.join("\n")],
             ["audit events", JSON.stringify(await q("select action, redacted_details from fork_audit_event"))],
             ["restore runs", JSON.stringify(await q("select reason, steps, integrity, wipe_reason from fork_restore_run"))],
-            ["agent task results", JSON.stringify(await q("select result from fork_agent_task where type in ('restore_verify','restore_cleanup','restore_probe')"))],
+            ["agent task results (probe `roots` aside)", JSON.stringify(taskResults.map((r) => { const x = {...(r.result ?? {})}; delete x.roots; return x; }))],
             ["member view", JSON.stringify(mv.view)], ["admin view without admin.restoreRoot", adminNoRoot],
         ];
         for (const [h, text] of hay) {
