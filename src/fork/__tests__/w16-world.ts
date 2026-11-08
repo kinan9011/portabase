@@ -10,6 +10,8 @@ export type World = {
     org: string; conn: string; srcEnv: string; stack: string; rp: string; inventory: StackInventoryV1; agent: string; agentName: string; tgtEnv: string;
     sources: Record<"compose" | "volume" | "db", string>;
 };
+/** W17-live: extra seeded sources (db / volume) beyond the three standard ones */
+export type ExtraSource = {role: "db" | "volume"; key: string; dbms: string; member: string; engine: string};
 export const P = (userId: string, systemRole: string | null, ...m: [string, string][]): ForkPrincipal => ({userId, systemRole, memberships: m.map(([organizationId, role]) => ({organizationId, role}))});
 export const uid = () => randomUUID();
 
@@ -19,7 +21,7 @@ export async function seedUser(pool: Pool, role: "admin" | "user" = "user"): Pro
     return id;
 }
 
-export async function seedWorld(pool: Pool, o: {org?: string; project?: string; inventory?: StackInventoryV1; hostRole?: "production" | "test"; syncAt?: Date; caps?: string[]; roots?: string[]} = {}): Promise<World> {
+export async function seedWorld(pool: Pool, o: {org?: string; project?: string; inventory?: StackInventoryV1; hostRole?: "production" | "test"; syncAt?: Date; caps?: string[]; roots?: string[]; extra?: ExtraSource[]} = {}): Promise<World> {
     const org = o.org ?? await seedOrg(pool);
     const conn = await seedConnection(pool, org, `c-${randomUUID().slice(0, 6)}`);
     const srcEnv = await seedEnvironment(pool, conn, null, null, "src");
@@ -27,7 +29,7 @@ export async function seedWorld(pool: Pool, o: {org?: string; project?: string; 
     const project = inventory.stack.compose_project;
     const stack = await seedStack(pool, org, srcEnv, project);
     await pool.query("insert into fork_stack_inventory (stack_id, version, content_hash, inventory) values ($1,1,$2,$3)", [stack, contentHash(inventory), JSON.stringify(inventory)]);
-    const rp = await seedRp(pool, stack, {status: "verified", required: 3});
+    const rp = await seedRp(pool, stack, {status: "verified", required: 3 + (o.extra?.length ?? 0)});
     await pool.query("update fork_recovery_point set manifest_sha256=$2, manifest_sig_kid=$3, inventory_version=1, inventory_hash=$4, consistency_level='mixed' where id=$1", [rp, "a".repeat(64), "0123456789ab", contentHash(inventory)]);
     const src = async (role: string, key: string, dbms: string, member: string, covers: string[] = []) => (await pool.query(
         "insert into fork_stack_source (stack_id, role, resource_key, dbms, engine, member_name, covers_keys, desired_hash) values ($1,$2,$3,$4,'archive',$5,$6,$7) returning id", [stack, role, key, dbms, member, covers, "c".repeat(64)])).rows[0].id as string;
@@ -37,6 +39,7 @@ export async function seedWorld(pool: Pool, o: {org?: string; project?: string; 
         `insert into fork_recovery_point_artifact (rp_id, stack_source_id, source_name, engine, archive_kind, encrypted, channel_id, channel_kind, plaintext_sha256, plaintext_size, required, presence)
          values ($1,$2,$3,$4,'archive_enc',true,$5,'s3',$6,1000,true,'present')`, [rp, source, name, engine, chan, String(n).repeat(64)]);
     await art(sources.compose, "compose_app", "files", 1); await art(sources.volume, "volume_app_data", "docker-volume", 2); await art(sources.db, "db_db", "postgresql", 3);
+    let n = 4; for (const x of o.extra ?? []) { const id = await src(x.role, x.key, x.dbms, x.member); await art(id, x.member, x.engine, n++); }
 
     const agentName = `restore-host-${randomUUID().slice(0, 6)}`;
     const agent = await seedAgent(pool, org, agentName);
