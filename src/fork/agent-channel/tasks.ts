@@ -183,6 +183,18 @@ export async function cancelQueuedTask(db: ForkDb, a: {taskId: string; agentId: 
     });
 }
 
+/**
+ * W18a: expire ONE never-started task whose start deadline passed (same rule as `leaseTask` step 1, but for an agent that is OFFLINE and therefore never polls).
+ * Without this an offline target would leave the orchestrator waiting for the run deadline instead of reporting `agent_offline`.
+ */
+export async function expireQueuedTask(db: ForkDb, a: {taskId: string; agentId: string; now: Date}): Promise<boolean> {
+    return withForkLock(db, `agent-task:${a.agentId}`, async (tx) => {
+        const rows = await tx.update(forkAgentTask).set({status: "expired", finishedAt: a.now, leaseId: null, leaseUntil: null, payloadEnc: null})
+            .where(and(eq(forkAgentTask.id, a.taskId), eq(forkAgentTask.agentId, a.agentId), eq(forkAgentTask.status, "queued"), eq(forkAgentTask.attempts, 0), lt(forkAgentTask.notAfter, a.now))).returning({id: forkAgentTask.id});
+        return rows.length === 1;
+    });
+}
+
 export type TaskCallResult = {ok: true; leaseUntil?: string; duplicate?: boolean} | {ok: false; status: 404 | 409 | 400; code: "not_found" | "lease_mismatch" | "conflict" | "invalid_input"};
 
 export async function heartbeatTask(db: ForkDb, e: Enrollment, a: {taskId: string; leaseId: unknown; leaseSeconds: number; now?: Date}): Promise<TaskCallResult> {

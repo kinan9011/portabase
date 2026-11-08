@@ -1,5 +1,6 @@
 import {and, desc, eq} from "drizzle-orm";
 import type {ForkPrincipal} from "@/fork/acl";
+import {expireQueuedTask} from "@/fork/agent-channel/tasks";
 import {forkAgentTask} from "@/fork/db/schema/agent-channel";
 import {forkRecoveryPoint} from "@/fork/db/schema/recovery";
 import {forkRestoreOverride} from "@/fork/db/schema/restore-override";
@@ -36,12 +37,12 @@ export const MANIFEST_FETCH_ATTEMPTS = 30;
 
 export type JournalRow = {
     runId: string; step: string; attempt: number; taskId: string | null; overrideRevision: number | null;
-    task: {status: string; attempts: number; result: unknown} | null;
+    task: {status: string; attempts: number; result: unknown; notAfter: Date} | null;
 };
 
 /** Every journal row of one step (newest attempt first) with its task row. */
 export async function journalRows(db: ForkDb, runId: string, step: JournalStep): Promise<JournalRow[]> {
-    const rows = await db.select({j: forkRestoreRunTask, t: {status: forkAgentTask.status, attempts: forkAgentTask.attempts, result: forkAgentTask.result}})
+    const rows = await db.select({j: forkRestoreRunTask, t: {status: forkAgentTask.status, attempts: forkAgentTask.attempts, result: forkAgentTask.result, notAfter: forkAgentTask.notAfter}})
         .from(forkRestoreRunTask).leftJoin(forkAgentTask, eq(forkAgentTask.id, forkRestoreRunTask.taskId))
         .where(and(eq(forkRestoreRunTask.runId, runId), eq(forkRestoreRunTask.step, step))).orderBy(desc(forkRestoreRunTask.attempt));
     return rows.map((r) => ({runId, step, attempt: r.j.attempt, taskId: r.j.taskId, overrideRevision: r.j.overrideRevision, task: r.t && r.t.status ? r.t : null}));
@@ -89,6 +90,9 @@ const isOutcome = (x: Check | StepOutcome): x is StepOutcome => "kind" in x;
 async function taskStep(ctx: RunCtx, o: TaskStepOpts): Promise<StepOutcome> {
     const rows = await journalRows(ctx.d.db, ctx.run.id, o.step);
     const last = rows[0];
+    // an OFFLINE agent never polls, so nothing else would ever expire its never-started task: do it here (the budget below then ends in `agent_offline`)
+    if (last?.task?.status === "queued" && last.task.attempts === 0 && last.taskId && last.task.notAfter.getTime() < ctx.now.getTime()
+        && (await expireQueuedTask(ctx.d.db, {taskId: last.taskId, agentId: ctx.plan.target.agent_id, now: ctx.now}))) last.task.status = "expired";
     const enqueue = async (): Promise<StepOutcome> => {
         let m: ManifestBundle | null = null;
         if (o.manifest) {

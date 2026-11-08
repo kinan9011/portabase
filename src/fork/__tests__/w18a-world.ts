@@ -99,7 +99,7 @@ export function harness(t: W04Db, kek: string, key: Key, org: string) {
 
     const run = async (id: string) => (await q("select * from fork_restore_run where id=$1", [id]))[0]!;
     const journal = (id: string) => q("select * from fork_restore_run_task where run_id=$1 order by created_at, attempt", [id]);
-    const tasks = () => q("select id, type, status, attempts, payload_enc is null as purged from fork_agent_task order by seq");
+    const tasks = (agentId: string) => q("select id, type, status, attempts, payload_enc is null as purged from fork_agent_task where agent_id=$1 order by seq", [agentId]);
     const tick = (d: RestoreRunDeps, id: string) => tickRestoreRun(d, id);
 
     /** tick → fake agent → tick … until the run is terminal (or `max` rounds). */
@@ -132,6 +132,6 @@ export function harness(t: W04Db, kek: string, key: Key, org: string) {
         return startRestoreRun(d, {planId: c.planId, planHash: c.planHash, confirm: "RESTORE app", acceptMissingInputs: true, ...extra});
     };
 
-    return {T0, now, advance, q, user, deps, plan, agentStep, drive, run, journal, tasks, tick, start, enr, signedManifestOf, reset: () => resetRateLimits(), randomUUID};
+    return {principals, T0, now, advance, q, user, deps, plan, agentStep, drive, run, journal, tasks, tick, start, enr, signedManifestOf, reset: () => resetRateLimits(), randomUUID};
 }
 export type Harness = ReturnType<typeof harness>;
