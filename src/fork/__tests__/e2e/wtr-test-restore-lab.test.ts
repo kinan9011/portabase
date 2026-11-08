@@ -1,4 +1,4 @@
-import {execFileSync, spawn, spawnSync, type ChildProcess} from "node:child_process";
+import {execFileSync, spawn, type ChildProcess} from "node:child_process";
 import {createPrivateKey, randomBytes, randomUUID, sign as rsaSign} from "node:crypto";
 import {chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, } from "node:fs";
 import http from "node:http";
@@ -16,7 +16,7 @@ import {canonicalJson} from "@/fork/canonical";
 import type {ForkDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
 import {kidOfPublicKey} from "@/fork/manifest/sign";
-import {createRestorePlan, loadPlanRow, setStackPrivacy} from "@/fork/restore/service";
+import {createRestorePlan, setStackPrivacy} from "@/fork/restore/service";
 import {buildManifest} from "@/fork/manifest/build";
 import {signManifest} from "@/fork/manifest/sign";
 import {createHash} from "node:crypto";
@@ -28,20 +28,13 @@ import {runTestRestoreNow, setTestRestoreSchedule} from "@/fork/test-restore/ser
 import {getTestRestoreView} from "@/fork/test-restore/view";
 import {DEFAULT_TR_SCHEDULE} from "@/fork/test-restore/vocab";
 import type {TestRestoreDeps} from "@/fork/test-restore/deps";
-import {enqueueRestoreTask, type RestoreTaskDeps} from "@/fork/restore-tasks/enqueue";
-import {approveRestorePlan} from "@/fork/restore/service";
-import {startRestoreRun, cleanupRestoreRun, approveRestorePolicy, cancelRestoreRun} from "@/fork/restore-run/service";
-import {leaseName, tickRestoreRun} from "@/fork/restore-run/tick";
-import {getRestoreRunView} from "@/fork/restore-run/view";
-import {setRestoreOverrides, type OverrideDeps} from "@/fork/config/service";
-import {acquireLease} from "@/fork/locks";
-import type {RestoreRunDeps} from "@/fork/restore-run/deps";
-import {harness} from "@/fork/__tests__/w18a-world";
+import type {RestoreTaskDeps} from "@/fork/restore-tasks/enqueue";
+import {tickRestoreRun} from "@/fork/restore-run/tick";
 import {freshForkDb, seedAgent, type W04Db} from "@/fork/__tests__/w04-helpers";
 import {decryptAgentArchive, encryptAgentArchive, sha256} from "@/fork/__tests__/agent-archive";
 import {ADMIN} from "@/fork/__tests__/e2e/helpers";
-import {testKeypair} from "@/fork/__tests__/w14-fixtures";
-import {req, seedUser} from "@/fork/__tests__/w16-world";
+import type {testKeypair} from "@/fork/__tests__/w14-fixtures";
+import {req, } from "@/fork/__tests__/w16-world";
 import {PASSWORD, seedW17World, type W17} from "@/fork/__tests__/w17-world";
 
 /**
@@ -144,7 +137,7 @@ async function plant(agentId: string, bundleStr: string, type: string, payload: 
 }
 
 describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork agent image", () => {
-    let world: W17; let planId = ""; let planHash = ""; let cleanBundle = ""; let vpsAgent = ""; let vpsBundle = ""; let volName = ""; let composeDest = "";
+    let world: W17; const planId = ""; const planHash = ""; let cleanBundle = ""; let vpsAgent = ""; let vpsBundle = ""; const volName = ""; const composeDest = "";
     const restoreId = randomUUID();
     let filesPlain = Buffer.alloc(0);
 
@@ -262,7 +255,7 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         await q("update fork_recovery_point set manifest_sha256=$2 where id=$1", [world.rp, createHash("sha256").update(s.json).digest("hex")]);
     }
     /** serve `pg` (plaintext tar.gz of the pg artifact) and tell the DB its signed hash/size */
-    async function usePgPlain(plain: Buffer, ciphertext?: Buffer) {
+    async function servePgPlain(plain: Buffer, ciphertext?: Buffer) {
         put(world.rp, "db_db", ciphertext ?? encryptAgentArchive(MASTER, plain));
         await q("update fork_recovery_point_artifact set plaintext_sha256=$3, plaintext_size=$4 where rp_id=$1 and source_name=$2", [world.rp, "db_db", sha256(plain), plain.length]);
         await resign();
@@ -297,7 +290,7 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         const set = await setTestRestoreSchedule(td(), {stackId: world.stack, enabled: true, schedule: sched, targetAgentId: world.agent, restoreRoot: `${ROOT}/restore`, staleAfterDays: 14});
         check("T1", set.ok, "schedule configured (target is a host_role=test host)");
         await q("update fork_test_restore_schedule set enabled_at=$2 where stack_id=$1", [world.stack, new Date(now.getTime() - 2 * 3_600_000)]);
-        await usePgPlain(pgFixturePlain());
+        await servePgPlain(pgFixturePlain());
         const tick = await testRestoreSchedulerTick(td());
         check("T1", tick.started === 1, `scheduler tick started=${tick.started}`);
         const [row] = await q("select id, trigger, scheduled_for from fork_restore_run where stack_id=$1", [world.stack]);
@@ -332,7 +325,7 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         execFileSync("truncate", ["-s", String(Math.floor(size / 2)), file]);
         const tgz = path.join(dir, "..", `trunc-${randomUUID()}.tar.gz`);
         execFileSync("tar", ["-czf", tgz, "-C", dir, "."]);
-        await usePgPlain(readFileSync(tgz));
+        await servePgPlain(readFileSync(tgz));
         const before = await facetDays();
         const id = await manual();
         const r = await driveTest(id);
@@ -344,7 +337,7 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
 
     it("T5 tampered ciphertext (one byte flipped, manifest unchanged) and T5b truncated .enc ⇒ failed at stage, wipe verified", async () => {
         const good = encryptAgentArchive(MASTER, pgFixturePlain());
-        await usePgPlain(pgFixturePlain());
+        await servePgPlain(pgFixturePlain());
         const flipped = Buffer.from(good); flipped[Math.floor(flipped.length / 2)] ^= 0xff;
         put(world.rp, "db_db", flipped);
         const a = await driveTest(await manual());
@@ -358,7 +351,7 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
     }, 900_000);
 
     it("T6 personal data: undeclared (NULL) ⇒ skipped with 0 plans and 0 tasks; after the explicit opt-in a run succeeds", async () => {
-        await usePgPlain(pgFixturePlain());
+        await servePgPlain(pgFixturePlain());
         await q("update fork_stack set contains_personal_data=NULL, test_restore_opt_in_at=NULL, test_restore_opt_in_by=NULL where id=$1", [world.stack]);
         const plans = Number((await q("select count(*)::int n from fork_restore_plan where stack_id=$1", [world.stack]))[0].n);
         const tasks = await taskCount();
