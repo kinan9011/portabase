@@ -34,7 +34,7 @@ import {PASSWORD, seedW17World, type W17} from "@/fork/__tests__/w17-world";
  * LIVE W18a test (FORK_LAB=1, docker-bridge lab ONLY, synthetic TEST-ONLY data, never the owner's hosts): the REAL fork dashboard (production build, its own
  * restore-runs job switched off with FORK_RESTORE_TICK_SECONDS=0) + the REAL fork agent image (`W17_AGENT_IMAGE`) on a dedicated docker network. The TEST process drives
  * the orchestrator (`tickRestoreRun`) with the same DB and seams for the manifest bytes and the artifact URLs (an in-test http server on the bridge gateway).
- *   L1 full orchestrated restore + VPS isolation + concurrency · L2 forged manifest · L3 rollback manifest · L5 stage object swapped → cleanup · L8 agent killed during restore_db.
+ *   L1 full orchestrated restore + VPS isolation + concurrency · L2 forged manifest · L3 rollback manifest · L4 agent offline at start · L8 agent killed during restore_db · L5 stage object swapped → cleanup.
  * Prerequisites: `pnpm build`, Postgres at FORK_TEST_DATABASE_URL, docker, the agent image.
  */
 const LAB = process.env.FORK_LAB === "1";
@@ -339,7 +339,31 @@ describe.skipIf(!LAB)("W18a live: orchestrated restore on the fork agent image",
         expect(owned(runId)).toEqual({containers: "", volumes: "", networks: ""});
     }, 900_000);
 
-    it("L8 the clean agent is killed while restore_db runs: the run NEVER shows failed, the lapsed lease is re-offered after the restart, the run finishes", async () => {
+    it("L4 the clean agent is offline when the run starts: the never-started probe expires, a fresh task is enqueued (attempt 2) when the agent is back, and the run finishes", async () => {
+        const short = {env: () => ({FORK_ALLOW_INSECURE_LOOPBACK: true, FORK_AGENT_TASK_TTL_MINUTES: 1, FORK_AGENT_LEASE_SECONDS: 60})};
+        const c = await approvedPlan();
+        docker(["stop", CLEAN]);
+        try {
+            const runId = await begin(c, short);
+            await tickRestoreRun(rd(short), runId);
+            expect((await journalOf(runId)).map((x) => `${x.step}#${x.attempt}`)).toEqual(["probe#1"]);
+            await sleep(65_000); // the 1-minute start deadline passes with nobody polling
+            await tickRestoreRun(rd(short), runId); // the orchestrator itself expires the stale task and enqueues attempt 2
+            expect((await journalOf(runId)).map((x) => `${x.step}#${x.attempt}`)).toEqual(["probe#1", "probe#2"]);
+            expect((await runRow(runId)).state).toBe("running"); // offline is not failed
+            docker(["start", CLEAN]);
+            const r = await driveRun(runId, {over: short});
+            RUN.push(`L4 offline at start: probe attempts=2 (first expired) final=${r.state} verification=${r.verification}`);
+            expect(r).toMatchObject({state: "succeeded", verification: "started"});
+            const cl = await enqueueRestoreTask(chDeps(), {type: "restore_cleanup", planId: c.planId, planHash: c.planHash, restoreId: runId, cleanup: {workspace: true, volumes: true, networks: true, containers: true}});
+            if (!cl.ok) throw new Error(cl.code);
+            expect((await finished(cl.taskId)).status).toBe("succeeded");
+        } finally {
+            try { docker(["start", CLEAN]); } catch { /* already running */ }
+        }
+    }, 900_000);
+
+    it("L8 the clean agent is killed while restore_db runs: the run ends failed TRUTHFULLY (the interrupted restore is aborted by the agent's startup sweep, never silently re-run, never success) and the explicit cleanup removes the owned leftovers", async () => {
         const c = await approvedPlan();
         const runId = await begin(c);
         const states: string[] = [];
@@ -350,14 +374,18 @@ describe.skipIf(!LAB)("W18a live: orchestrated restore on the fork agent image",
             const [t1] = await q("select a.status from fork_restore_run_task j join fork_agent_task a on a.id=j.task_id where j.run_id=$1 and j.step='restore_db'", [runId]);
             if (t1 && ["leased", "running"].includes(t1.status)) { killed = true; docker(["kill", CLEAN]); await sleep(3000); docker(["start", CLEAN]); RUN.push(`L8 killed ${CLEAN} while restore_db was ${t1.status}; restarted`); }
         }});
-        RUN.push(`L8 killed=${killed} final=${r.state} verification=${r.verification} states_seen=${[...new Set(states)].join(",")}`);
+        const [rdb] = await q("select a.status, a.result, a.attempts from fork_restore_run_task j join fork_agent_task a on a.id=j.task_id where j.run_id=$1 and j.step='restore_db'", [runId]);
+        RUN.push(`L8 killed=${killed} run=${r.state} reason=${r.reason} failed_step=${r.failed_step} verification=${r.verification} restore_db_task=${rdb.status}/${JSON.stringify(rdb.result)}/attempts=${rdb.attempts} states_seen=${[...new Set(states)].join(",")}`);
         expect(killed).toBe(true);
-        expect(states).not.toContain("failed");
-        expect(r).toMatchObject({state: "succeeded", verification: "started"});
-        expect((await journalOf(runId)).filter((x) => x.step === "restore_db").length).toBe(1); // one task, re-offered by the channel, not re-enqueued
-        const cl = await enqueueRestoreTask(chDeps(), {type: "restore_cleanup", planId: c.planId, planHash: c.planHash, restoreId: runId, cleanup: {workspace: true, volumes: true, networks: true, containers: true}});
-        if (!cl.ok) throw new Error(cl.code);
-        expect((await finished(cl.taskId)).status).toBe("succeeded");
+        expect(r.state).not.toBe("succeeded"); // an interrupted restore is never recorded as success
+        expect(r.verification).toBeNull();
+        expect(r.failed_step).toBe("restore_db");
+        expect((await journalOf(runId)).filter((x) => x.step === "restore_db").length).toBe(1);
+        const cl = await cleanup(runId);
+        expect(cl.status).toBe("succeeded");
+        expect(owned(runId)).toEqual({containers: "", volumes: "", networks: ""});
+        expect(rexists(wsDir())).toBe(false);
+        RUN.push(`L8 cleanup status=${cl.status} owned_leftovers=0 workspace_gone=${!rexists(wsDir())}`);
     }, 900_000);
 
     it("L5 the stored object is swapped after the plan: failed/checksum_mismatch at stage; the explicit cleanup removes the workspace and nothing else was created", async () => {
