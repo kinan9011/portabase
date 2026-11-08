@@ -18,7 +18,7 @@ function texts(x: unknown, out: string[] = [], depth = 0): string[] {
     if (depth > 8) return out;
     if (typeof x === "string") out.push(x);
     else if (typeof x === "function") { try { texts((x as (...a: unknown[]) => unknown)("clean-host", "notes", "svc", "8080"), out, depth + 1); } catch { /* needs another argument shape */ } try { texts((x as (...a: unknown[]) => unknown)(["a", "b"], 2, 3), out, depth + 1); } catch { /* ignore */ } }
-    else if (Array.isArray(x)) x.forEach((y) => texts(y, out, depth + 1));
+    else if (Array.isArray(x)) { for (const y of x) texts(y, out, depth + 1); }
     else if (x && typeof x === "object") for (const [k, y] of Object.entries(x)) if (k !== "codes") texts(y, out, depth + 1);
     return out;
 }

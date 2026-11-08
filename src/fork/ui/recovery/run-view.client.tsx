@@ -55,13 +55,13 @@ export function RunView({initial, appName, canExecute, canApproveProduction, loc
     // announce only real changes (step / state / cleanup); the alert region only for transitions into failed / incomplete / awaiting approval
     const sig = `${view.state}|${view.steps.map((s) => `${s.name}:${s.status}`).join(",")}|${view.cleanup?.status ?? ""}`;
     const first = React.useRef(true); const prevState = React.useRef(view.state);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: fires on the change signature only (not on every poll tick); `view` is read as of that change
     React.useEffect(() => {
         if (first.current) { first.current = false; return; }
         const h = runHeadline(view);
         announce(h.text);
         if (prevState.current !== view.state && ALERT_STATES.has(view.state)) setAlertText(h.text);
         prevState.current = view.state;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sig]);
 
     const head = runHeadline(view);

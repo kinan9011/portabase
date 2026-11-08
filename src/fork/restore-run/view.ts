@@ -1,4 +1,4 @@
-import {desc, eq} from "drizzle-orm";
+import {desc, eq, type SQL} from "drizzle-orm";
 import {z} from "zod";
 import {buildOverridesView} from "@/fork/config/service";
 import {forkAgentTask} from "@/fork/db/schema/agent-channel";
@@ -115,7 +115,7 @@ export async function listRestoreRuns(d: RestoreRunDeps, raw: unknown): Promise<
     const input = z.strictObject({stackId: z.uuid().optional(), planId: z.uuid().optional()}).refine((x) => !(x.stackId && x.planId)).safeParse(raw);
     if (!input.success) return {ok: false, code: "invalid_input"};
     const {stackId, planId} = input.data;
-    let where;
+    let where: SQL | undefined;
     if (stackId || planId) {
         try { await assertForkResource(d.db, d.principal, "restore.plan", stackId ? {kind: "stack", id: stackId} : {kind: "restore_plan", id: planId as string}); } catch (e) {
             if (e instanceof ForkNotFoundError) return {ok: false, code: "not_found"};
