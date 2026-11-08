@@ -220,6 +220,7 @@ describe("channel changes of W17-i", () => {
         const w = await seedW17World(t, kek, key, admin, {org});
         const e = await enrolmentOf(w.agent);
         for (const code of ["symlink_escape", ...RESTORE_REASONS]) {
+            resetRateLimits(); // 35 codes > the 30/min enqueue limit (W17-ii grew the list)
             const r = await enqueueRestoreTask(asAdmin(), {type: "restore_probe", agentId: w.agent});
             if (!r.ok) throw new Error(r.code);
             const l = await leaseTask(t.db, e, {capabilities: ["restore.target.v1"], leaseSeconds: 60, now: NOW});
