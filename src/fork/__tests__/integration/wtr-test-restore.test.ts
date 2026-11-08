@@ -222,6 +222,10 @@ describe("W-TR scheduled data-only test restore", () => {
         expect(await h.drive(d, w, s.runId)).toMatchObject({state: "succeeded", verification: "data_only"});
         const prot = await loadProtectionByStackId(t.db, w.stack, {configLocked: false, now: h.now()});
         expect(prot?.facets.testRestore.daysAgo).toBeNull();
+        // mutation guard for the purpose filter: even a (forged) data_verified + verified-wipe row of purpose `restore` must not count
+        await pool.query("update fork_restore_run set verification='data_verified', wipe_state='verified' where id=$1", [s.runId]);
+        const forged = await loadProtectionByStackId(t.db, w.stack, {configLocked: false, now: h.now()});
+        expect(forged?.facets.testRestore.daysAgo).toBeNull();
     });
 
     it("migration CHECKs reject verification 'tested', trigger 'cron' and stale_after_days 0", async () => {
