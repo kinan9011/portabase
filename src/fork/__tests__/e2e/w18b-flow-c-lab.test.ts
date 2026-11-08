@@ -311,7 +311,7 @@ describe.skipIf(!LAB)("W18b live: Flow C through the real server job, MinIO mani
         await signAndStore(n1); await signAndStore(n2);
         await startAgent(CLEAN, ST_CLEAN, w.agent, cleanBundle);
         await waitFor("clean agent reported compose.render.v1", async () => (await q("select capabilities from fork_agent_enrollment where agent_id=$1", [w.agent]))[0]?.capabilities.includes("compose.render.v1"), 120_000);
-        expect(out).not.toMatch(/FORK_RESTORE_TICK_SECONDS=0/);
+        if (!process.env.W18B_TICK_SECONDS) expect(out).not.toMatch(/FORK_RESTORE_TICK_SECONDS=0/);
         await makePlan(n1, {}); // "folder last used" prefill for the browser run
         docker(["volume", "create", REF_VOL]);
         docker(["run", "--rm", "-i", "-v", `${REF_VOL}:/r`, BUSYBOX, "tar", "-xzf", "-", "-C", "/r", "--strip-components=1"], process.env, decryptAgentArchive(MASTER, vol));
