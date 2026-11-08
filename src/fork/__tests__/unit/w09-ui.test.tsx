@@ -11,6 +11,8 @@ const refresh = vi.fn();
 vi.mock("@/fork/actions/stack-run.action", () => ({startStackRunAction: vi.fn(), cancelStackRunAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-schedule.action", () => ({updateStackScheduleAction: vi.fn()}));
 vi.mock("@/fork/actions/stack-quiesce.action", () => ({previewQuiesceAction: vi.fn(), enableQuiesceAction: vi.fn(), disableQuiesceAction: vi.fn(), startQuiesceNowAction: vi.fn()}));
+vi.mock("@/fork/actions/test-restore.action", () => ({setTestRestoreScheduleAction: vi.fn(), runTestRestoreNowAction: vi.fn(), wipeTestRestoreNowAction: vi.fn()}));
+vi.mock("@/fork/actions/restore-plan.action", () => ({setStackPrivacyAction: vi.fn()}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh}), notFound: () => { throw new Error("NEXT_NOT_FOUND"); }}));
 
 import {StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";

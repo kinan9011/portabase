@@ -9,7 +9,9 @@ import {testRestoreSchedulerTick} from "@/fork/test-restore/scheduler";
 import {runTestRestoreNow, setTestRestoreSchedule, wipeTestRestoreNow} from "@/fork/test-restore/service";
 import {getTestRestoreView} from "@/fork/test-restore/view";
 import {advanceTestRestoreWipes} from "@/fork/test-restore/wipe";
+import {cancelRestoreRun} from "@/fork/restore-run/service";
 import {tickRestoreRun} from "@/fork/restore-run/tick";
+import {CAPTURE_WINDOW_MS} from "@/fork/test-restore/vocab";
 import {freshForkDb, seedOrg, type W04Db} from "@/fork/__tests__/w04-helpers";
 import {testKeypair} from "@/fork/__tests__/w14-fixtures";
 import {harness, CAPS, type Harness, type Reply} from "@/fork/__tests__/w18a-world";
@@ -211,6 +213,9 @@ describe("W-TR scheduled data-only test restore", () => {
         const av = await getTestRestoreView(h.deps(w, op), {stackId: w.stack});
         expect(av.ok && av.view.admin?.restoreRoot).toBe("/srv/restore");
         expect(JSON.stringify(mv)).not.toContain("/srv/restore");
+        expect(JSON.stringify(mv)).not.toContain(w.agent);
+        expect(av.ok && av.view.admin?.schedule?.preset).toBe("hourly");
+        expect(av.ok && av.view.admin?.targetAgentId).toBe(w.agent);
     });
 
     it("a selective restore run (data_only) never feeds the facet (purpose filter)", async () => {
@@ -238,5 +243,92 @@ describe("W-TR scheduled data-only test restore", () => {
         expect(defs.find((x) => x.conname === "fork_restore_run_verification_ck")?.d).toContain("data_verified");
         expect(defs.find((x) => x.conname === "fork_restore_run_verification_ck")?.d).not.toContain("tested");
         expect(defs.find((x) => x.conname === "fork_restore_run_trigger_ck")?.d).not.toContain("cron");
+    });
+    // ---- W-TR-f S6 backfill (plan W-TR §5.2 cases 9-13): clock from the harness seam (one captured Date.now()), never a literal date -------------------------------------------
+    const started = async (w: W17, op: ForkPrincipal, over: Record<string, unknown> = {}) => {
+        await configure(w, op, over);
+        const d = h.deps(w, null);
+        expect(await testRestoreSchedulerTick(d)).toMatchObject({started: 1});
+        const [row] = await h.q("select id from fork_restore_run where stack_id=$1", [w.stack]);
+        return {d, id: row.id as string};
+    };
+
+    it("agent offline: a never-leased probe expires 3 times ⇒ failed/agent_offline at probe; the wipe is not_needed (nothing was staged); the facet does not move", async () => {
+        const w = await world(); await privacy(w, false);
+        const {d, id} = await started(w, await operator());
+        for (let i = 0; i < 3; i++) { await tickRestoreRun(d, id); expect((await h.run(id)).state).toBe("running"); h.advance(11 * 60_000); }
+        await tickRestoreRun(d, id);
+        expect(await h.run(id)).toMatchObject({state: "failed", reason: "agent_offline", failed_step: "probe"});
+        for (let i = 0; i < 3; i++) await advanceTestRestoreWipes(d);
+        expect(await h.run(id)).toMatchObject({wipe_state: "not_needed"});
+        expect((await loadProtectionByStackId(t.db, w.stack, {configLocked: false, now: h.now()}))?.facets.testRestore.daysAgo).toBeNull();
+    });
+
+    it("the enabler lost the rights: the next due tick pauses the schedule (reauth_failed), one skipped notification, one paused audit row, the panel view says so, no run starts", async () => {
+        const w = await world(); await privacy(w, false);
+        const op = await operator();
+        await configure(w, op);
+        h.principals.set(op.userId, {...op, memberships: []}); // rights gone: the tick resolves the CURRENT principal (D-10)
+        const d = h.deps(w, null);
+        expect(await testRestoreSchedulerTick(d)).toMatchObject({started: 0, skipped: 1});
+        const row = (await h.q("select paused_at, pause_reason from fork_test_restore_schedule where stack_id=$1", [w.stack]))[0];
+        expect(row.paused_at).not.toBeNull();
+        expect(row.pause_reason).toBe("reauth_failed");
+        expect((await outbox("test_restore.skipped")).filter((x) => x.dedupe_key.includes(w.stack)).length).toBe(1);
+        expect((await h.q("select count(*)::int n from fork_audit_event where action='fork.test_restore.paused' and resource_id=$1", [w.stack]))[0].n).toBe(1);
+        expect((await h.q("select count(*)::int n from fork_restore_run where stack_id=$1", [w.stack]))[0].n).toBe(0);
+        const viewer = await h.user("admin");
+        const v = await getTestRestoreView(h.deps(w, viewer), {stackId: w.stack});
+        expect(v.ok && v.view.schedule.paused).toEqual({reason: "reauth_failed"});
+        expect(await testRestoreSchedulerTick(d)).toMatchObject({considered: 0}); // a paused schedule is not considered again
+    });
+
+    it("target busy: a wizard restore on the same machine ⇒ the slot WAITS (not consumed); once the capture window is over it is skipped as missed", async () => {
+        const w = await world(); await privacy(w, false);
+        const op = await operator();
+        const now = h.now();
+        const daily = ScheduleSchema.parse({preset: "daily", timezone: "UTC", minute: now.getUTCMinutes(), hour: (now.getUTCHours() + 23) % 24, weekday: 0, monthday: 1}); // slot = 1 h ago, the next one is a day away
+        await configure(w, op, {schedule: daily});
+        const wiz = await h.user("admin");
+        const c = await h.plan(w, {select: ["dir:/srv/app", "volume:app_data"], mode: "selective"});
+        const s = await h.start(h.deps(w, wiz), c);
+        if (!s.ok) throw new Error(s.code);
+        const d = h.deps(w, null);
+        expect(await testRestoreSchedulerTick(d)).toMatchObject({started: 0, waiting: 1});
+        const waiting = (await h.q("select last_scheduled_at, last_outcome, last_reason from fork_test_restore_schedule where stack_id=$1", [w.stack]))[0];
+        expect(waiting).toMatchObject({last_scheduled_at: null, last_outcome: "waiting", last_reason: "target_busy"});
+        h.advance(CAPTURE_WINDOW_MS + 3_600_000);
+        expect(await testRestoreSchedulerTick(d)).toMatchObject({started: 0, skipped: 1});
+        const done = (await h.q("select last_scheduled_at, last_outcome, last_reason from fork_test_restore_schedule where stack_id=$1", [w.stack]))[0];
+        expect(done).toMatchObject({last_outcome: "skipped", last_reason: "missed"});
+        expect(done.last_scheduled_at).not.toBeNull();
+        expect((await h.q("select count(*)::int n from fork_restore_run where stack_id=$1 and purpose='test_restore'", [w.stack]))[0].n).toBe(0);
+    });
+
+    it("cancel: a running test restore that already staged ⇒ cancelled, the wipe runs and is verified, and NO test_restore.failed notification", async () => {
+        const w = await world(); await privacy(w, false);
+        const op = await operator();
+        const {d, id} = await started(w, op);
+        for (let i = 0; i < 40 && !(await h.journal(id)).some((x) => x.step === "stage"); i++) { await tickRestoreRun(d, id); await h.agentStep(w); }
+        expect((await h.journal(id)).some((x) => x.step === "stage")).toBe(true);
+        expect(await cancelRestoreRun(h.deps(w, op), {runId: id})).toEqual({ok: true});
+        const r = await settle(d, w, id);
+        expect(r).toMatchObject({state: "cancelled", wipe_state: "verified", verification: null});
+        expect((await outbox("test_restore.failed")).filter((x) => x.dedupe_key.includes(id))).toEqual([]);
+        expect((await loadProtectionByStackId(t.db, w.stack, {configLocked: false, now: h.now()}))?.facets.testRestore.daysAgo).toBeNull();
+    });
+
+    it("storage unreachable: the manifest cannot be fetched ⇒ verify_manifest waits its attempts, then failed/manifest_unavailable with 0 agent tasks and a not_needed wipe", async () => {
+        const w = await world(); await privacy(w, false);
+        const op = await operator();
+        await configure(w, op);
+        const gone = h.deps(w, null, {manifest: async () => null});
+        expect(await testRestoreSchedulerTick(gone)).toMatchObject({started: 1});
+        const [row] = await h.q("select id from fork_restore_run where stack_id=$1", [w.stack]);
+        for (let i = 0; i < 40 && (await h.run(row.id)).state === "running"; i++) await tickRestoreRun(gone, row.id);
+        expect(await h.run(row.id)).toMatchObject({state: "failed", reason: "manifest_unavailable", failed_step: "verify_manifest"});
+        expect((await h.tasks(w.agent)).length).toBe(0);
+        for (let i = 0; i < 3; i++) await advanceTestRestoreWipes(gone);
+        expect(await h.run(row.id)).toMatchObject({wipe_state: "not_needed"});
     });
 });

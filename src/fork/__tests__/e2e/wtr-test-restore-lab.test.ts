@@ -1,6 +1,6 @@
 import {execFileSync, spawn, type ChildProcess} from "node:child_process";
 import {createPrivateKey, randomBytes, randomUUID, sign as rsaSign} from "node:crypto";
-import {chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, } from "node:fs";
+import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync} from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -22,6 +22,7 @@ import {signManifest} from "@/fork/manifest/sign";
 import {createHash} from "node:crypto";
 import {loadProtectionByStackId} from "@/fork/stacks/protection-load";
 import {evaluateAlerts} from "@/fork/notifications/evaluate";
+import {renderNotification} from "@/fork/notifications/render";
 import {testRestoreSchedulerTick} from "@/fork/test-restore/scheduler";
 import {advanceTestRestoreWipes} from "@/fork/test-restore/wipe";
 import {runTestRestoreNow, setTestRestoreSchedule} from "@/fork/test-restore/service";
@@ -34,7 +35,7 @@ import {freshForkDb, seedAgent, type W04Db} from "@/fork/__tests__/w04-helpers";
 import {decryptAgentArchive, encryptAgentArchive, sha256} from "@/fork/__tests__/agent-archive";
 import {ADMIN} from "@/fork/__tests__/e2e/helpers";
 import type {testKeypair} from "@/fork/__tests__/w14-fixtures";
-import {req, } from "@/fork/__tests__/w16-world";
+import {req, seedUser, type ExtraSource} from "@/fork/__tests__/w16-world";
 import {PASSWORD, seedW17World, type W17} from "@/fork/__tests__/w17-world";
 
 /**
@@ -59,9 +60,39 @@ const MASTER = Buffer.from(FX.master_key_b64, "base64");
 /** W16b: the per-key override value of the lab (random; contains a literal `$` to prove escaping): must reach the container and nowhere else */
 const CANARY3 = `W16B${randomBytes(9).toString("hex")}$x`;
 const SECRET_QS = `X-Amz-Signature=${randomBytes(12).toString("hex")}SECRETSIG`;
+/** W-TR-f: HOLD keeps the lab up for the browser run and executes lines of `$WTR_SCRATCH/wtr-lab.cmd` (closed command set); the sqlite world has the pilot shape (uptime-kuma: sqlite in a named volume + a sqlite artifact) */
+const HOLD = process.env.WTR_LAB_HOLD === "1";
+const SCRATCH = process.env.WTR_SCRATCH ?? "";
+const MEMBER = {email: "member@wtr-lab.test", password: "wtr-member-pw-1!"}, ORGADMIN = {email: "orgadmin@wtr-lab.test", password: "wtr-orgadmin-pw-1!"}; // test-only
+const KUMA_EXTRA: ExtraSource[] = [
+    {role: "volume", key: "volume:app_kumadata", dbms: "docker-volume", member: "volume_app_kumadata", engine: "docker-volume"},
+    {role: "db", key: "db:kuma", dbms: "sqlite", member: "db_kuma", engine: "sqlite"},
+];
+/** SLOW sqlite fixture (D-F8): 4 KiB pages, a table + an index over 200 000 repetitive rows ⇒ `PRAGMA integrity_check` has to verify every index entry (≈ a second) while the archive stays small.
+ *  `bad` = the same db with the root pages of the table and the index overwritten (page 1 + header stay intact, so the agent finds the file and the RIGHT check fails). */
+const KUMA_ROWS = Number(process.env.WTR_KUMA_ROWS ?? 200_000);
+const KUMA_SCRIPT = String.raw`set -eu
+exec 3>&1 1>&2
+W=/tmp/w; mkdir -p $W/good $W/bad $W/vol/vol $W/out && cd $W
+sqlite3 good/kuma.db "PRAGMA page_size=4096; CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT NOT NULL); WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<${KUMA_ROWS}) INSERT INTO t(v) SELECT printf('%0200d', x) FROM c; CREATE INDEX t_v ON t(v);"
+sqlite3 good/kuma.db "VACUUM INTO '$W/out/consistent.db'"
+mv $W/out/consistent.db good/kuma.db
+cp good/kuma.db vol/vol/kuma.db; cp good/kuma.db bad/kuma.db
+PS=$(sqlite3 good/kuma.db "PRAGMA page_size")
+R1=$(sqlite3 good/kuma.db "select rootpage from sqlite_master where name='t'"); R2=$(sqlite3 good/kuma.db "select rootpage from sqlite_master where name='t_v'")
+for r in $R1 $R2; do head -c 64 /dev/zero | tr '\000' '\377' | dd of=bad/kuma.db bs=1 seek=$(( (r-1)*PS + 8 )) conv=notrunc 2>/dev/null; done
+printf '{"rows":%s,"bytes":%s,"page_size":%s,"roots":[%s,%s]}' ${KUMA_ROWS} "$(stat -c %s good/kuma.db)" "$PS" "$R1" "$R2" > out/meta.json
+tar --numeric-owner --owner=1000 --group=1000 -czf out/vol.tar.gz -C vol vol
+tar --numeric-owner --owner=1000 --group=1000 -czf out/sqlite.tar.gz -C good kuma.db
+tar --numeric-owner --owner=1000 --group=1000 -czf out/bad.tar.gz -C bad kuma.db
+tar -cf - -C out vol.tar.gz sqlite.tar.gz bad.tar.gz meta.json >&3
+`;
+type KumaFx = {vol: Buffer; good: Buffer; bad: Buffer; meta: {rows: number; bytes: number; page_size: number; roots: number[]}};
 
 let t: W04Db; let db: ForkDb; let child: ChildProcess; let out = ""; let priv = ""; let tmp = ""; let ROOT = ""; let base = ""; let org = ""; let adminId = "";
 let server: http.Server; let serverPort = 0; let dashPort = 0;
+let forwarder: net.Server | undefined; let kuma: KumaFx; let memberId = "";
+const helperIds = new Set<string>();
 const dashEnvOf = (): NodeJS.ProcessEnv => ({...process.env, NODE_ENV: "production", DATABASE_URL: t.url,
     PROJECT_URL: URL_FOR_AGENTS(), PROJECT_SECRET: DASH_SECRET, PRIVATE_PATH: priv, AUTH_DEFAULT_USER: ADMIN.email, AUTH_DEFAULT_PASSWORD: ADMIN.password,
     AUTH_DEFAULT_USER_NAME: "W17 Lab", SKIP_ONBOARDING: "true", AUTH_SIGNUP_ENABLED: "false", FORK_STACKS_ENABLED: "true", FORK_ARCANE_ENABLED: "true", FORK_ALLOW_INSECURE_LOOPBACK: "true", FORK_MIGRATE_DUMP: "off",
@@ -107,6 +138,15 @@ const rexists = (p: string) => { try { rootSh(`test -e '${p}'`); return true; } 
 const rread = (p: string) => rootSh(`cat '${p}'`);
 const rmode = (p: string) => rootSh(`stat -c %a '${p}'`);
 const stateFile = (vol: string, file: string) => { try { return docker(["run", "--rm", "-v", `${vol}:/s:ro`, "busybox", "cat", `/s/${file}`]); } catch { return ""; } };
+
+const userWithPw = async (u: {email: string; password: string}, role: "member" | "admin") => {
+    const id = await seedUser(t.pool, "user");
+    await q(`update "user" set email=$2 where id=$1`, [id, u.email]);
+    const {hashPassword} = await import("better-auth/crypto");
+    await q(`insert into account (id, account_id, provider_id, user_id, password, created_at, updated_at) values ($1,$2,'credential',$3,$4,now(),now())`, [randomUUID(), id, id, await hashPassword(u.password)]);
+    await q(`insert into member (id, organization_id, user_id, role, created_at) values ($1,$2,$3,$4,now())`, [randomUUID(), org, id, role]);
+    return id;
+};
 
 async function startAgent(name: string, stateVol: string, agentId: string, bundle: string, clean: boolean) {
     const edge = Buffer.from(JSON.stringify({serverUrl: URL_FOR_AGENTS(), agentId, masterKeyB64: MASTER.toString("base64")})).toString("base64url");
@@ -176,6 +216,16 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         t = await freshForkDb(); db = drizzle({client: t.pool}) as unknown as ForkDb;
         org = (await q("insert into organization (name, slug) values ('Default Organization','default') returning id"))[0].id;
         dashPort = await freePort(); base = `http://${GW}:${dashPort}`;
+        if (HOLD) {
+            // one origin for the browser and the agent: dashboard on the gateway, a 127.0.0.1 forwarder on the same port (Chrome resolves *.localhost to 127.0.0.1)
+            for (let i = 0; i < 20 && !forwarder; i++) {
+                const pt = await freePort(GW);
+                const fw = net.createServer((c) => { const u = net.connect(pt, GW); c.pipe(u).pipe(c); u.on("error", () => c.destroy()); c.on("error", () => u.destroy()); });
+                await new Promise<void>((res) => { fw.once("error", () => res()); fw.listen(pt, "127.0.0.1", () => { forwarder = fw; dashPort = pt; res(); }); });
+            }
+            if (!forwarder) throw new Error("no free port for the forwarder");
+            base = `http://${GW}:${dashPort}`;
+        }
         await startDashboard();
         process.env.PRIVATE_PATH = priv;
         adminId = (await q(`select id from "user" where email=$1`, [ADMIN.email]))[0].id;
@@ -188,15 +238,27 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         mkdirSync(path.join(src, "uploads"), {recursive: true}); writeFileSync(path.join(src, "uploads/hello.txt"), "hello from the backup\n");
         const tgz = path.join(tmp, "files.tar.gz"); execFileSync("tar", ["-czf", tgz, "-C", src, "."]);
         filesPlain = readFileSync(tgz);
+        // sqlite fixtures (ONE no-network container of the agent image, which ships sqlite3): consistent good db, volume tar (pilot shape), page-damaged copy
+        const fxOut = execFileSync("docker", ["run", "--rm", "-i", "--network", "none", "--entrypoint", "sh", IMAGE, "-s"], {input: KUMA_SCRIPT, maxBuffer: 512 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"]});
+        const fxDir = mkdtempSync(path.join(tmp, "kuma-")); execFileSync("tar", ["-xf", "-", "-C", fxDir], {input: fxOut});
+        kuma = {vol: readFileSync(path.join(fxDir, "vol.tar.gz")), good: readFileSync(path.join(fxDir, "sqlite.tar.gz")), bad: readFileSync(path.join(fxDir, "bad.tar.gz")), meta: JSON.parse(readFileSync(path.join(fxDir, "meta.json"), "utf8"))};
+        const badDir = mkdtempSync(path.join(tmp, "bad-")); execFileSync("tar", ["-xzf", "-", "-C", badDir], {input: kuma.bad});
+        const magic = readFileSync(path.join(badDir, "kuma.db")).subarray(0, 16).toString("latin1");
+        RUN.push(`RUN T4-fixture ${magic === "SQLite format 3\0" ? "PASS" : "FAIL"} magic intact; ${JSON.stringify(kuma.meta)} tgz good=${kuma.good.length} bad=${kuma.bad.length} vol=${kuma.vol.length}`);
+        expect(magic).toBe("SQLite format 3\0");
         const key = {privateKey: "", publicKey: "", kid: ""};
         const sk = await fileKeyProvider.signing(); key.privateKey = sk.privateKeyPem; key.publicKey = sk.publicKeyPem; key.kid = kidOfPublicKey(sk.publicKeyPem);
         const fx = (n: string) => FX.fixtures.find((f) => f.name === n)!;
         const w = await seedW17World(t, "", key as ReturnType<typeof testKeypair>, adminId, {org, hostRole: "test", roots: [ROOT], caps: ["channel.v1", "noop.v1", "restore.target.v1", "compose.render.v1", "test-restore.v1"],
-            plain: {compose_app: {sha: sha256(filesPlain), size: filesPlain.length}, volume_app_data: {sha: fx("lab-volume").plaintext_sha256, size: fx("lab-volume").plaintext_size}, db_db: {sha: fx("lab-postgres").plaintext_sha256, size: fx("lab-postgres").plaintext_size, dump: "pg_custom"}},
+            plain: {compose_app: {sha: sha256(filesPlain), size: filesPlain.length}, volume_app_data: {sha: fx("lab-volume").plaintext_sha256, size: fx("lab-volume").plaintext_size}, db_db: {sha: fx("lab-postgres").plaintext_sha256, size: fx("lab-postgres").plaintext_size, dump: "pg_custom"},
+                volume_app_kumadata: {sha: sha256(kuma.vol), size: kuma.vol.length}, db_kuma: {sha: sha256(kuma.good), size: kuma.good.length}}, extra: KUMA_EXTRA,
             enrolDeps: {serverUrl: URL_FOR_AGENTS, stepUp: async () => "ok", keys: fileKeyProvider, env: () => ({FORK_ALLOW_INSECURE_LOOPBACK: true, FORK_AGENT_TASK_TTL_MINUTES: 30, FORK_AGENT_LEASE_SECONDS: 60}),
                 principal: {userId: adminId, systemRole: "superadmin", memberships: []}}});
         world = w; cleanBundle = w.agentBundle;
         put(w.rp, "compose_app", encryptAgentArchive(MASTER, filesPlain)); put(w.rp, "volume_app_data", fxFile("lab-volume")); put(w.rp, "db_db", fxFile("lab-postgres"));
+        put(w.rp, "volume_app_kumadata", encryptAgentArchive(MASTER, kuma.vol)); put(w.rp, "db_kuma", encryptAgentArchive(MASTER, kuma.good));
+        memberId = await userWithPw(MEMBER, "member"); await userWithPw(ORGADMIN, "admin");
+        if (HOLD) await q(`update member set role='owner' where user_id=$1 and organization_id=$2`, [adminId, org]);
         await startAgent(CLEAN, ST_CLEAN, w.agent, cleanBundle, true);
         vpsAgent = await seedAgent(t.pool, org, "wtr-prod");
         const r = await enrolAgent({...chDeps(), principal: {userId: adminId, systemRole: "superadmin", memberships: []}}, {agentId: vpsAgent, password: PASSWORD});
@@ -217,12 +279,21 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
             writeFileSync(path.join(evidence, "run.out"), RUN.join("\n") + "\n");
         } else if (evidence) writeFileSync(path.join(tmp, "NOT-WRITTEN"), "canary found a secret in a log: evidence withheld");
         for (const n of [CLEAN, VPS]) { try { docker(["rm", "-f", n]); } catch { /* gone */ } }
-        try { for (const id of docker(["ps", "-aq", "--filter", "label=com.portabase.fork.helper=true"]).split("\n").filter(Boolean)) docker(["rm", "-f", id]); } catch { /* none */ }
-        try { for (const v of docker(["volume", "ls", "-q", "--filter", "label=com.portabase.fork.agent_id"]).split("\n").filter(Boolean)) docker(["volume", "rm", "-f", v]); } catch { /* none */ }
+        // SCOPED (W18b-f1 DD-F1-7): only helper containers this lab saw (sampler ids) or whose command path is under this lab's ROOT; only volumes labelled with THIS lab's agents
+        const mine = new Set(helperIds);
+        try {
+            for (const id of docker(["ps", "-aq", "--filter", "label=com.portabase.fork.helper=true"]).split("\n").filter(Boolean)) {
+                try { if (ROOT && JSON.stringify(JSON.parse(docker(["inspect", id]))[0].Config.Cmd ?? []).includes(ROOT)) mine.add(id); } catch { /* gone */ }
+            }
+        } catch { /* none */ }
+        for (const id of mine) { try { docker(["rm", "-f", id]); } catch { /* gone */ } }
+        for (const a of [world?.agent, vpsAgent].filter(Boolean)) {
+            try { for (const v of docker(["volume", "ls", "-q", "--filter", `label=com.portabase.fork.agent_id=${a}`]).split("\n").filter(Boolean)) docker(["volume", "rm", "-f", v]); } catch { /* none */ }
+        }
         for (const v of [ST_CLEAN, ST_VPS, REF_VOL, "w17lab_foreign", "w17lab_otherrun"]) { try { docker(["volume", "rm", "-f", v]); } catch { /* gone */ } }
         try { docker(["network", "rm", NET]); } catch { /* gone */ }
         if (madeProxy) { try { docker(["network", "rm", "lab_proxy"]); } catch { /* gone */ } }
-        server?.close(); child?.kill("SIGTERM"); await sleep(500); if (child?.exitCode === null) child?.kill("SIGKILL");
+        forwarder?.close(); server?.close(); child?.kill("SIGTERM"); await sleep(500); if (child?.exitCode === null) child?.kill("SIGKILL");
         await t?.drop();
         try { rootSh("rm -rf " + ROOT + "/*"); } catch { /* none */ }
         rmSync(tmp, {recursive: true, force: true});
@@ -260,7 +331,52 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         await q("update fork_recovery_point_artifact set plaintext_sha256=$3, plaintext_size=$4 where rp_id=$1 and source_name=$2", [world.rp, "db_db", sha256(plain), plain.length]);
         await resign();
     }
+    /** same as servePgPlain for the sqlite artifact (`db_kuma`, manifest role Sqlite: engine sqlite, no dump_format) */
+    async function serveSqlitePlain(plain: Buffer) {
+        put(world.rp, "db_kuma", encryptAgentArchive(MASTER, plain));
+        await q("update fork_recovery_point_artifact set plaintext_sha256=$3, plaintext_size=$4 where rp_id=$1 and source_name=$2", [world.rp, "db_kuma", sha256(plain), plain.length]);
+        await resign();
+    }
     const pgFixturePlain = () => decryptAgentArchive(MASTER, fxFile("lab-postgres"));
+    /** a `-Fc` dump cut in half, re-tarred: valid checksums (the manifest is re-signed over it), invalid engine data */
+    function truncatedPg(): Buffer {
+        const dir = mkdtempSync(path.join(tmp, "pg-"));
+        execFileSync("tar", ["-xzf", "-", "-C", dir], {input: pgFixturePlain()});
+        const file = execFileSync("sh", ["-c", `find ${dir} -type f | head -1`], {encoding: "utf8"}).trim();
+        execFileSync("truncate", ["-s", String(Math.floor(readFileSync(file).length / 2)), file]);
+        const tgz = path.join(dir, "..", `trunc-${randomUUID()}.tar.gz`);
+        execFileSync("tar", ["-czf", tgz, "-C", dir, "."]);
+        return readFileSync(tgz);
+    }
+    const goodAll = async () => { await servePgPlain(pgFixturePlain()); await serveSqlitePlain(kuma.good); };
+    /** T2: docker EVENT stream (not polling): every helper container is inspected the moment it is created, and `docker wait` measures how long it lived */
+    type Sample = {id: string; kind: "sqlite" | "pg"; net: string; disabled: unknown; capDrop: string[]; secOpt: string[]; ro: unknown; mounts: string[]; lifetimeMs: number | null};
+    function startHelperSampler() {
+        const samples: Sample[] = [];
+        const ev = spawn("docker", ["events", "--filter", "type=container", "--filter", "event=create", "--filter", "label=com.portabase.fork.helper=true", "--format", "{{.Actor.ID}}"], {stdio: ["ignore", "pipe", "ignore"]});
+        let buf = "";
+        ev.stdout!.on("data", (d) => {
+            buf += d;
+            for (;;) {
+                const nl = buf.indexOf("\n"); if (nl < 0) break;
+                const id = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+                if (!id) continue;
+                helperIds.add(id);
+                try {
+                    const i = JSON.parse(docker(["inspect", id]))[0];
+                    const argv = [...(i.Config.Entrypoint ?? []), ...(i.Config.Cmd ?? [])] as string[];
+                    const kind = argv[0] === "/usr/bin/sqlite3" ? "sqlite" : /\/pg_restore$/.test(argv[0] ?? "") ? "pg" : null;
+                    if (!kind) continue;
+                    const smp: Sample = {id, kind, net: i.HostConfig.NetworkMode, disabled: i.Config.NetworkDisabled, capDrop: i.HostConfig.CapDrop ?? [], secOpt: i.HostConfig.SecurityOpt ?? [], ro: i.HostConfig.ReadonlyRootfs,
+                        mounts: (i.Mounts ?? []).map((m: {Destination: string}) => m.Destination), lifetimeMs: null};
+                    samples.push(smp);
+                    const t0 = Date.now();
+                    const w = spawn("docker", ["wait", id], {stdio: "ignore"}); w.once("exit", () => { smp.lifetimeMs = Date.now() - t0; });
+                } catch { /* a container that vanished before the inspect is not a sample */ }
+            }
+        });
+        return {samples, stop: () => { ev.kill("SIGTERM"); }};
+    }
     async function driveTest(runId: string, o: {ms?: number; each?: () => Promise<void>} = {}) {
         const end = Date.now() + (o.ms ?? 420_000);
         for (;;) {
@@ -290,22 +406,19 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         const set = await setTestRestoreSchedule(td(), {stackId: world.stack, enabled: true, schedule: sched, targetAgentId: world.agent, restoreRoot: `${ROOT}/restore`, staleAfterDays: 14});
         check("T1", set.ok, "schedule configured (target is a host_role=test host)");
         await q("update fork_test_restore_schedule set enabled_at=$2 where stack_id=$1", [world.stack, new Date(now.getTime() - 2 * 3_600_000)]);
-        await servePgPlain(pgFixturePlain());
+        await goodAll();
+        const sampler = startHelperSampler(); await sleep(1500); // the event stream must be subscribed BEFORE the run starts
         const tick = await testRestoreSchedulerTick(td());
         check("T1", tick.started === 1, `scheduler tick started=${tick.started}`);
         const [row] = await q("select id, trigger, scheduled_for from fork_restore_run where stack_id=$1", [world.stack]);
         check("T1", row.trigger === "schedule" && row.scheduled_for !== null, `trigger=${row.trigger} scheduled_for set`);
-        const samples: string[] = [];
-        const r = await driveTest(row.id, {each: async () => {
-            for (const id of helpers().split("\n").filter(Boolean)) {
-                try {
-                    const i = JSON.parse(docker(["inspect", id]))[0];
-                    if (/restore_verify|verify/.test(JSON.stringify(i.Config.Cmd ?? [])) || i.Config.Cmd?.some((c: string) => /pg_restore|sqlite3/.test(c))) samples.push(`${i.HostConfig.NetworkMode}|${i.Config.NetworkDisabled}|${(i.HostConfig.CapDrop ?? []).join(",")}`);
-                } catch { /* gone */ }
-            }
-        }});
+        const r = await driveTest(row.id);
+        await sleep(1500); sampler.stop();
         check("T1", r.state === "succeeded" && r.verification === "data_verified", `state=${r.state} verification=${r.verification}`);
-        check("T1", r.integrity?.checked === 1 && r.integrity?.failed === 0 && r.integrity?.not_supported === 0, `integrity=${JSON.stringify(r.integrity)}`);
+        check("T1", r.integrity?.checked === 2 && r.integrity?.failed === 0 && r.integrity?.not_supported === 0, `integrity=${JSON.stringify(r.integrity)} (pg + sqlite)`);
+        const vt = (await q("select status, result from fork_agent_task where type='restore_verify' and agent_id=$1 order by created_at desc limit 1", [world.agent]))[0];
+        const checks = (vt?.result?.checks ?? []) as {engine: string; status: string; files?: number}[];
+        check("T1", vt?.status === "succeeded" && checks.some((c) => c.engine === "postgresql" && c.status === "ok") && checks.some((c) => c.engine === "sqlite" && c.status === "ok" && c.files === 1), `restore_verify result ${JSON.stringify(vt?.result)}`);
         check("T1", r.wipe_state === "verified", `wipe_state=${r.wipe_state}`);
         check("T1", !rexists(workspace()), `scratch workspace gone on the host (${path.basename(workspace())})`);
         check("T1", helpers() === "", "no helper container left behind");
@@ -313,19 +426,17 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         check("T1", f?.daysAgo === 0 && f.stale === false, `facet ${JSON.stringify(f)}`);
         const v = await getTestRestoreView(td(), {stackId: world.stack});
         check("T1", v.ok && (v.view.last?.durationSeconds ?? 0) > 0, `durationSeconds=${v.ok ? v.view.last?.durationSeconds : "-"}`);
-        if (samples.length === 0) log("T2", true, "SKIP-sampled 0 (the check was too fast to sample; the agent unit test asserts the create body)");
-        else check("T2", samples.every((s) => s === "none|true|ALL"), `sampled ${samples.length} helper(s): ${[...new Set(samples)].join(" ")}`);
+        // T2: NO skip branch — zero samples is a failure of the sampler, never a pass
+        const smp = sampler.samples;
+        const sqliteN = smp.filter((x) => x.kind === "sqlite").length, pgN = smp.filter((x) => x.kind === "pg").length;
+        check("T2", sqliteN >= 1 && pgN >= 1, `sampled ${smp.length} verify helper(s) from the docker event stream: sqlite=${sqliteN} pg=${pgN}`);
+        const hardened = (x: Sample) => x.net === "none" && x.disabled === true && x.capDrop.includes("ALL") && x.secOpt.some((o) => /^no-new-privileges(:true)?$/.test(o)) && x.ro === true && x.mounts.length === 1 && x.mounts[0] === "/v";
+        check("T2", smp.every(hardened), smp.map((x) => `${x.kind} ${x.net}|${x.disabled}|${x.capDrop.join(",")}|ro=${x.ro}|mounts=${x.mounts.length}(${x.mounts.join(",")})|sec=${x.secOpt.join(",")}`).join(" ;; "));
+        log("T2", true, `helper lifetimes (create→exit): ${smp.map((x) => `${x.kind}=${x.lifetimeMs === null ? "unmeasured" : `${x.lifetimeMs}ms`}`).join(" ")}`);
     }, 900_000);
 
     it("T3 engine corruption with VALID checksums: a truncated pg dump passes stage but fails integrity; facet keeps T1's value; wipe verified; one failed notification", async () => {
-        const dir = mkdtempSync(path.join(tmp, "pg-"));
-        execFileSync("tar", ["-xzf", "-", "-C", dir], {input: pgFixturePlain()});
-        const file = execFileSync("sh", ["-c", `find ${dir} -type f | head -1`], {encoding: "utf8"}).trim();
-        const size = readFileSync(file).length;
-        execFileSync("truncate", ["-s", String(Math.floor(size / 2)), file]);
-        const tgz = path.join(dir, "..", `trunc-${randomUUID()}.tar.gz`);
-        execFileSync("tar", ["-czf", tgz, "-C", dir, "."]);
-        await servePgPlain(readFileSync(tgz));
+        await servePgPlain(truncatedPg());
         const before = await facetDays();
         const id = await manual();
         const r = await driveTest(id);
@@ -333,6 +444,23 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         check("T3", r.wipe_state === "verified" && !rexists(workspace()), `wipe_state=${r.wipe_state}, scratch gone`);
         check("T3", JSON.stringify(await facetDays()) === JSON.stringify(before), `facet unchanged ${JSON.stringify(before)}`);
         check("T3", (await q("select 1 from fork_notification_outbox where kind='test_restore.failed' and dedupe_key=$1", [`test_restore:${id}:failed`])).length === 1, "test_restore.failed notification row");
+    }, 900_000);
+
+    it("T4 sqlite page corruption with VALID signed checksums: the artifact stages fine, the sqlite integrity check fails with detail `sqlite` (NOT no_sqlite_file); wipe verified; facet unchanged; one failed notification", async () => {
+        await servePgPlain(pgFixturePlain());
+        await serveSqlitePlain(kuma.bad);
+        const before = await facetDays();
+        const id = await manual();
+        const r = await driveTest(id);
+        check("T4", r.state === "failed" && r.reason === "integrity_failed" && r.failed_step === "integrity", `state=${r.state} reason=${r.reason} step=${r.failed_step}`);
+        const vt = (await q("select status, result from fork_agent_task where type='restore_verify' and agent_id=$1 order by created_at desc limit 1", [world.agent]))[0];
+        const res = JSON.stringify(vt?.result ?? null);
+        const idx = (JSON.parse(curManifest.json).artifacts as {source_name: string}[]).findIndex((a) => a.source_name === "db_kuma");
+        check("T4", vt?.status === "failed" && res.includes("integrity_failed") && res.includes('"detail":"sqlite"') && res.includes(`"artifact":${idx}`) && !res.includes("no_sqlite_file"), `restore_verify task result ${res} (db_kuma manifest index ${idx})`);
+        check("T4", r.wipe_state === "verified" && !rexists(workspace()), `wipe_state=${r.wipe_state}, scratch gone`);
+        check("T4", JSON.stringify(await facetDays()) === JSON.stringify(before), `facet unchanged ${JSON.stringify(before)}`);
+        check("T4", (await q("select 1 from fork_notification_outbox where kind='test_restore.failed' and dedupe_key=$1", [`test_restore:${id}:failed`])).length === 1, "test_restore.failed notification row");
+        await serveSqlitePlain(kuma.good);
     }, 900_000);
 
     it("T5 tampered ciphertext (one byte flipped, manifest unchanged) and T5b truncated .enc ⇒ failed at stage, wipe verified", async () => {
@@ -389,9 +517,83 @@ describe.skipIf(!LAB)("W-TR live: scheduled data-only test restore on the fork a
         check("T8", rows.length === 1, `stack.test_restore_stale rows=${rows.length}`);
     }, 300_000);
 
+    it("T9 canary: no secret, no restore folder and no scratch path in the dashboard log, notifications (+ rendered bodies), audit, run rows, task results or the member view; the admin view carries the restore folder exactly once", async () => {
+        const cb = decodeBundle(cleanBundle);
+        const dbPw = new URL(t.url).password;
+        const named: [string, string][] = [["ROOT", ROOT], ["workspace", workspace()], ["presigned-signature", SECRET_QS.split("=")[1]], ["master-key-b64", MASTER.toString("base64")], ["dashboard-secret", DASH_SECRET],
+            ["db-password", dbPw], ["task-key", cb.task_key_b64 ?? ""], ["agent-credential", cb.credential ?? ""]];
+        const needles = named.filter(([, v]) => v.length >= 8);
+        log("T9", true, `needles: ${needles.map(([n]) => n).join(",")} (dropped as too short/empty: ${named.filter(([, v]) => v.length < 8).map(([n]) => n).join(",") || "none"})`);
+        // the probe result lists the agent's ALLOWED ROOTS (`roots[].path`, the W17 design: admin-configured, DB-only, needed by the planner) — that is the one place ROOT may appear; everything else must be clean
+        const taskResults = await q("select type, result from fork_agent_task where type in ('restore_verify','restore_cleanup','restore_probe')");
+        const rootsHits = taskResults.filter((r) => JSON.stringify(r.result?.roots ?? []).includes(ROOT)).length;
+        const rawHits = taskResults.filter((r) => JSON.stringify(r.result ?? {}).includes(ROOT)).length;
+        check("T9", rawHits === rootsHits && taskResults.every((r) => !JSON.stringify(r.result ?? {}).includes(workspace())), `ROOT occurs in ${rootsHits}/${taskResults.length} task results, ONLY under probe roots[].path (${rawHits} raw); the scratch workspace path in none`);
+        const outbox = await q("select kind, payload from fork_notification_outbox");
+        const rendered = outbox.map((o) => JSON.stringify(renderNotification({kind: o.kind, payload: o.payload, stackName: "app", baseUrl: URL_FOR_AGENTS()})));
+        const mv = await getTestRestoreView(td({principal: {userId: memberId, systemRole: null, memberships: [{organizationId: org, role: "member"}]}}), {stackId: world.stack});
+        const av = await getTestRestoreView(td(), {stackId: world.stack});
+        if (!mv.ok || !av.ok) throw new Error("view refused");
+        const adminJson = JSON.stringify(av.view);
+        const adminNoRoot = JSON.stringify({...av.view, admin: av.view.admin ? {...av.view.admin, restoreRoot: null} : null});
+        const hay: [string, string][] = [
+            ["dashboard log", out],
+            ["outbox payloads", JSON.stringify(outbox.map((o) => o.payload))], ["outbox rendered bodies", rendered.join("\n")],
+            ["audit events", JSON.stringify(await q("select action, redacted_details from fork_audit_event"))],
+            ["restore runs", JSON.stringify(await q("select reason, steps, integrity, wipe_reason from fork_restore_run"))],
+            ["agent task results (probe `roots` aside)", JSON.stringify(taskResults.map((r) => { const x = {...(r.result ?? {})}; delete x.roots; return x; }))],
+            ["member view", JSON.stringify(mv.view)], ["admin view without admin.restoreRoot", adminNoRoot],
+        ];
+        for (const [h, text] of hay) {
+            const hit = needles.findIndex(([, v]) => text.includes(v));
+            check("T9", hit < 0, hit < 0 ? `${h}: 0 hits (${text.length} bytes, ${needles.length} needles)` : `${h}: HIT needle ${needles[hit][0]}`);
+        }
+        const roots = adminJson.split(`${ROOT}/restore`).length - 1;
+        check("T9", roots === 1 && !adminJson.includes(workspace()), `admin view carries the restore folder exactly ${roots}× (admin.restoreRoot, OD-WTRF-2) and never the scratch path`);
+        check("T9", mv.view.admin === null && !JSON.stringify(mv.view).includes(world.agent), "member view: admin projection null, no agent id");
+    }, 300_000);
+
     it("T10 cleanup: no wtr containers other than the two agents, no helper containers, no owner-labelled leftovers", async () => {
         check("T10", helpers() === "", "no helper containers");
         check("T10", docker(["ps", "-aq", "--filter", "label=com.portabase.fork.restore_id"]).trim() === "", "no restore-labelled containers");
         check("T10", docker(["volume", "ls", "-q", "--filter", "label=com.portabase.fork.restore_id"]).trim() === "", "no restore-labelled volumes");
     });
+
+    /** HOLD (browser run, W-TR-f S9): keeps everything up. A run started from the browser goes through the REAL server action → service → startRestoreRun; only its step execution uses the lab seams (manifest bytes, artifact URLs), driven here every 2 s. Never runs the scheduler tick (deterministic). */
+    it.skipIf(!HOLD)("HOLD", async () => {
+        expect(SCRATCH).not.toBe("");
+        mkdirSync(SCRATCH, {recursive: true});
+        const cmdF = path.join(SCRATCH, "wtr-lab.cmd"), logF = path.join(SCRATCH, "wtr-lab.log"), stopF = path.join(SCRATCH, "wtr-lab.stop");
+        for (const f of [cmdF, stopF]) { try { unlinkSync(f); } catch { /* none */ } }
+        await goodAll();
+        writeFileSync(path.join(SCRATCH, "wtr-lab.json"), JSON.stringify({base: URL_FOR_AGENTS(), admin: ADMIN.email, adminPassword: ADMIN.password, member: MEMBER, orgAdmin: ORGADMIN, stackId: world.stack, root: ROOT, agentName: world.agentName,
+            cmd: cmdF, log: logF, stop: stopF, commands: ["serve-good", "serve-bad-sqlite", "serve-bad-pg", "pause-agent", "resume-agent", "fail-wipe", "privacy-null", "privacy-no", "age <days>"]}, null, 1), {mode: 0o600});
+        const say = (cmd: string, ok: boolean, d = "") => writeFileSync(logF, `${new Date().toISOString()} ${cmd} ${ok ? "ok" : "error"} ${d}\n`, {flag: "a"});
+        const exec = async (line: string) => {
+            const [cmd, a] = line.trim().split(/\s+/);
+            if (cmd === "serve-good") await goodAll();
+            else if (cmd === "serve-bad-sqlite") { await servePgPlain(pgFixturePlain()); await serveSqlitePlain(kuma.bad); }
+            else if (cmd === "serve-bad-pg") { await servePgPlain(truncatedPg()); await serveSqlitePlain(kuma.good); }
+            else if (cmd === "pause-agent") docker(["pause", CLEAN]);
+            else if (cmd === "resume-agent") docker(["unpause", CLEAN]);
+            else if (cmd === "fail-wipe") { // lab-only: pretends the latest wipe failed so the browser can show the failed-wipe state and the real "Wipe now" action
+                const n = (await q("update fork_restore_run set wipe_state='failed', wipe_reason='wipe_unverified' where id=(select id from fork_restore_run where purpose='test_restore' and wipe_state='verified' order by created_at desc limit 1) returning id")).length;
+                if (n !== 1) throw new Error("no verified test run to fail");
+            } else if (cmd === "privacy-null") await q("update fork_stack set contains_personal_data=NULL, test_restore_opt_in_at=NULL, test_restore_opt_in_by=NULL where id=$1", [world.stack]);
+            else if (cmd === "privacy-no") await q("update fork_stack set contains_personal_data=false where id=$1", [world.stack]);
+            else if (cmd === "age") { const n = Number(a); if (!Number.isInteger(n) || n < 0 || n > 365) throw new Error("usage: age <0..365>"); await q("update fork_restore_run set created_at = created_at - make_interval(days => $1), finished_at = finished_at - make_interval(days => $1) where purpose='test_restore' and state='succeeded'", [n]); }
+            else throw new Error("unknown command");
+        };
+        try {
+            while (!existsSync(stopF)) {
+                for (const r of await q("select id from fork_restore_run where purpose='test_restore' and state in ('running','awaiting_approval')")) { try { await tickRestoreRun(td(), r.id); } catch (e) { say(`tick ${r.id}`, false, String((e as Error).message).slice(0, 200)); } }
+                try { await advanceTestRestoreWipes(td()); } catch (e) { say("wipes", false, String((e as Error).message).slice(0, 200)); }
+                if (existsSync(cmdF)) {
+                    const lines = readFileSync(cmdF, "utf8").split("\n").filter((l) => l.trim()); unlinkSync(cmdF);
+                    for (const l of lines) { try { await exec(l); say(l.trim(), true); } catch (e) { say(l.trim(), false, String((e as Error).message).slice(0, 200)); } }
+                }
+                await sleep(2000);
+            }
+        } finally { try { docker(["unpause", CLEAN]); } catch { /* not paused */ } }
+    }, 4 * 3_600_000);
 });
