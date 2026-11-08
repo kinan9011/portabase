@@ -45,3 +45,35 @@ describe("W-TR static guards", () => {
         for (const r of [...SKIP_REASONS, ...TR_REFUSALS, ...WIPE_REASONS]) expect(r).toMatch(/^[a-z_]{1,64}$/);
     });
 });
+
+const uiDir = path.join(ROOT, "src/fork/ui/stacks/test-restore");
+const UI_FILES = readdirSync(uiDir).sort();
+const uiCode = (f: string) => readFileSync(path.join(uiDir, f), "utf8").split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*") && !l.trim().startsWith("/*")).join("\n");
+
+describe("W-TR-f UI guards", () => {
+    it("the panel has exactly the planned files", () => {
+        expect(UI_FILES).toEqual(["labels.ts", "test-restore-edit.client.tsx", "test-restore-panel.tsx"]);
+    });
+    it("honest copy: no 'tested' family, and the shared 'Not tested' facet strings are never used", () => {
+        for (const f of UI_FILES) {
+            const c = uiCode(f);
+            expect(c, f).not.toMatch(/\btested\b|verified restore|restore[- ]tested|start[- ]tested|app start|RESTORE_TESTED/i);
+            expect(c, f).not.toMatch(/FACET_COPY\.testRestore\.(value|never)/);
+        }
+    });
+    it("no clock reads in the panel (absolute server times only)", () => {
+        for (const f of UI_FILES) expect(uiCode(f), f).not.toMatch(/Date\.now\(|new Date\(\)/);
+    });
+    it("the client file is a client module; no UI file imports a server module (type-only is fine)", () => {
+        expect(uiCode("test-restore-edit.client.tsx").trimStart().startsWith('"use client"')).toBe(true);
+        for (const f of UI_FILES) {
+            for (const m of uiCode(f).matchAll(/^import\s+(type\s+)?[^;]*?from\s+["']([^"']+)["']/gm)) {
+                if (m[1]) continue;
+                expect(m[2], `${f} imports ${m[2]}`).not.toMatch(/^@\/fork\/db|^@\/fork\/test-restore\/(service|view|load|start|scheduler|wipe|job)$|^node:|^drizzle-orm|^@\/fork\/env$/);
+            }
+        }
+    });
+    it("labels.ts imports only the pure vocab, the shared labels and the formatters", () => {
+        for (const m of uiCode("labels.ts").matchAll(/from\s+["']([^"']+)["']/g)) expect(["@/fork/test-restore/vocab", "@/fork/ui/labels", "@/fork/ui/stacks/format"], `labels.ts imports ${m[1]}`).toContain(m[1]);
+    });
+});
