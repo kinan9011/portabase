@@ -16,6 +16,7 @@ import {canonicalJson} from "@/fork/canonical";
 import type {ForkDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
 import {kidOfPublicKey} from "@/fork/manifest/sign";
+import {clearRestoreOverrides, setRestoreOverrides, type OverrideDeps} from "@/fork/config/service";
 import {createRestorePlan, loadPlanRow} from "@/fork/restore/service";
 import {enqueueRestoreTask, type RestoreTaskDeps} from "@/fork/restore-tasks/enqueue";
 import {freshForkDb, seedAgent, type W04Db} from "@/fork/__tests__/w04-helpers";
@@ -44,6 +45,8 @@ const stripAnsi = (s: string) => s.replaceAll(String.fromCharCode(27), "").repla
 const FX = JSON.parse(readFileSync(path.join(process.cwd(), "scripts/fork/recover/fixtures/fixtures.json"), "utf8")) as {master_key_b64: string; fixtures: {name: string; file: string; plaintext_sha256: string; plaintext_size: number}[]};
 const fxFile = (n: string) => readFileSync(path.join(process.cwd(), "scripts/fork/recover/fixtures", FX.fixtures.find((f) => f.name === n)!.file));
 const MASTER = Buffer.from(FX.master_key_b64, "base64");
+/** W16b: the per-key override value of the lab (random; contains a literal `$` to prove escaping): must reach the container and nowhere else */
+const CANARY3 = `W16B${randomBytes(9).toString("hex")}$x`;
 const SECRET_QS = `X-Amz-Signature=${randomBytes(12).toString("hex")}SECRETSIG`;
 
 let t: W04Db; let db: ForkDb; let child: ChildProcess; let out = ""; let priv = ""; let tmp = ""; let ROOT = ""; let base = ""; let org = ""; let adminId = "";
@@ -187,7 +190,7 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
     afterAll(async () => {
         const evidence = process.env.W17_EVIDENCE_DIR;
         const all = stripAnsi(logs(CLEAN)) + stripAnsi(logs(VPS)) + out;
-        const clean = ![SECRET_QS.split("=")[1], MASTER.toString("base64"), decodeBundle(cleanBundle || "e30").task_key_b64 ?? "~~", decodeBundle(cleanBundle || "e30").credential ?? "~~"].some((s) => s && s !== "~~" && all.includes(s));
+        const clean = ![CANARY3, SECRET_QS.split("=")[1], MASTER.toString("base64"), decodeBundle(cleanBundle || "e30").task_key_b64 ?? "~~", decodeBundle(cleanBundle || "e30").credential ?? "~~"].some((s) => s && s !== "~~" && all.includes(s));
         if (evidence && clean) {
             mkdirSync(evidence, {recursive: true});
             writeFileSync(path.join(evidence, "w17ii-agent-clean.log"), stripAnsi(logs(CLEAN))); writeFileSync(path.join(evidence, "w17ii-agent-vps.log"), stripAnsi(logs(VPS)));
@@ -220,6 +223,8 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
         const x = await finished(r.taskId);
         return {id: r.taskId, status: x.status as string, result: x.result as Record<string, any>};
     };
+    const ovDeps = (): OverrideDeps => ({db, principal: {userId: adminId, systemRole: "superadmin", memberships: [{organizationId: org, role: "admin"}]}, configAllowed: async () => true, now: () => new Date()});
+    const ovRows = async () => Number((await q("select count(*)::int n from fork_restore_override where plan_id=$1", [planId]))[0].n);
     const rows = async () => (await q("select task_id, rendered_sha256, policy_view from fork_compose_render where restore_id=$1 order by created_at", [restoreId]));
     const dc = (n: string, ...args: string[]) => { try { return docker([n, ...args]); } catch (e) { return String((e as {stderr?: string}).stderr ?? e); } };
     const psql = (sql: string) => docker(["exec", "app-db-1", "sh", "-c", `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "${sql}"`]);
@@ -299,6 +304,36 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
         RUN.push(`N5 verdict=${res.verdict} findings=${JSON.stringify(res.findings)} dashboard=approval_invalid agent=approval_invalid:none project_containers=0`);
     });
 
+    it("O1 (W16b) privileged override: stored set accepted by the raw check, the AGENT renders base + override ⇒ needs-explicit-override, the dashboard refuses compose_up without a token, nothing is started", async () => {
+        const set = await setRestoreOverrides(ovDeps(), {planId, planHash, overrideYml: "services:\n  web:\n    privileged: true\n"});
+        expect(set).toMatchObject({ok: true, view: {revision: 1, yml: {present: true}}});
+        const r = await run("compose_render"); // no `overrides` argument: the stored set is used
+        expect(r).toMatchObject({status: "succeeded"});
+        const res = (r as {result: Record<string, any>}).result;
+        expect(res.verdict).toBe("needs-explicit-override");
+        expect(res.findings).toEqual(expect.arrayContaining([{service: "web", rule: "privileged"}]));
+        expect(await enq("compose_up", {approval: null})).toMatchObject({ok: false, code: "approval_invalid"});
+        expect(docker(["ps", "-aq", "--filter", "label=com.docker.compose.project=app"]).trim()).toBe("");
+        expect(await clearRestoreOverrides(ovDeps(), {planId, planHash})).toMatchObject({ok: true});
+        expect(await ovRows()).toBe(0);
+        RUN.push(`O1 verdict=${res.verdict} findings=${JSON.stringify(res.findings)} dashboard=approval_invalid project_containers=0`);
+    });
+
+    it("O2 (W16b) compose tags are refused at set time (R-k, tag-free overrides): override_yaml_invalid, no row", async () => {
+        const r = await setRestoreOverrides(ovDeps(), {planId, planHash, overrideYml: "services:\n  web:\n    ports: !reset []\n"});
+        expect(r).toMatchObject({ok: false, code: "override_yaml_invalid"});
+        expect(await ovRows()).toBe(0);
+        RUN.push("O2 !reset refused: override_yaml_invalid (limit documented in ADR-015 note W16b R-k)");
+    });
+
+    it("O3 (W16b) real set: field web/A + override file merged into ONE environment map; compose_up before a re-render is refused (render_missing)", async () => {
+        const r = await setRestoreOverrides(ovDeps(), {planId, planHash, set: [{service: "web", key: "A", value: CANARY3}], overrideYml: "services:\n  web:\n    environment:\n      OVERRIDE_PROBE: w16b\n"});
+        expect(r).toMatchObject({ok: true, view: {revision: 1, fields: [{service: "web", key: "A", isSet: true}], yml: {present: true}}});
+        expect(JSON.stringify(r)).not.toContain(CANARY3);
+        expect(await enq("compose_up", {approval: null})).toMatchObject({ok: false, code: "render_missing"});
+        RUN.push("O3 set web/A + OVERRIDE_PROBE (value hidden); compose_up before re-render ⇒ render_missing");
+    });
+
     it("N6 restore_db (-Fc): the demo database is restored inside the stack's own db container and its content hash equals the fixture's expectation", async () => {
         expect(await run("compose_render")).toMatchObject({status: "succeeded"});
         const r = await run("restore_db", {approval: null});
@@ -334,6 +369,16 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
         expect(JSON.stringify(hc)).toContain("${POSTGRES_USER}"); // R-b: the compose file's `$${POSTGRES_USER}` reached the container as the literal `${POSTGRES_USER}` (one `$`, not two)
         expect(JSON.stringify(hc)).not.toContain("$$");
         RUN.push(`N7 containers=${ps.join(",")} healthcheck=${JSON.stringify(hc)}`);
+    });
+
+    it("O4 (W16b) effect: the injected environment entry reached the container ($ literal, environment beats env_file); the set is now frozen", async () => {
+        const {createHash} = await import("node:crypto");
+        const got = docker(["exec", "app-web-1", "sh", "-c", 'printf %s "$A" | sha256sum']).split(/\s+/)[0];
+        expect(got).toBe(createHash("sha256").update(CANARY3).digest("hex"));
+        expect(docker(["exec", "app-web-1", "printenv", "OVERRIDE_PROBE"]).trim()).toBe("w16b");
+        expect(STACK_ENV.A).toBeUndefined(); // the demo env file does not define A: only the override can have produced it
+        expect(await setRestoreOverrides(ovDeps(), {planId, planHash, set: [{service: "web", key: "A", value: "x"}]})).toMatchObject({ok: false, code: "overrides_frozen"});
+        RUN.push(`O4 sha256(printenv A in app-web-1) == sha256(override value) [${got.slice(0, 12)}…]; OVERRIDE_PROBE=w16b; set after freeze ⇒ overrides_frozen`);
     });
 
     it("N8 guard: a foreign container with the same container_name ⇒ container_conflict; the foreign container and the agent keep running", async () => {
@@ -375,9 +420,21 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
         docker(["rm", "-f", "w17ii-foreign"]);
     });
 
+    it("O5 (W16b) after cleanup the override row is purged (audited, reason cleanup) and the value is in no table, policy view, audit row or log", async () => {
+        expect(await ovRows()).toBe(0);
+        const purge = await q("select redacted_details d from fork_audit_event where action='fork.restore_override.purge' and resource_id=$1", [planId]);
+        expect(purge).toHaveLength(1);
+        expect(purge[0].d).toMatchObject({reason: "cleanup", plan_hash: planHash});
+        const tables = (await q("select table_name from information_schema.tables where table_schema='public' and table_name like 'fork\\_%' escape '\\'")).map((r) => r.table_name as string);
+        for (const n of tables) expect((await q(`select count(*)::int c from "${n}" x where x::text like $1`, [`%${CANARY3}%`]))[0].c, `canary in ${n}`).toBe(0);
+        expect((await rows()).some((r) => r.policy_view.includes(CANARY3))).toBe(false);
+        expect(stripAnsi(logs(CLEAN)) + stripAnsi(logs(VPS)) + out).not.toContain(CANARY3);
+        RUN.push(`O5 override row purged (audit reason=cleanup); canary absent from ${tables.length} fork_% tables, policy views, dashboard + agent logs`);
+    });
+
     it("N11 canary: no DB password, presigned query, master key, task key or credential in the agent or dashboard logs; secret/ never kept", async () => {
         const all = stripAnsi(logs(CLEAN)) + stripAnsi(logs(VPS)) + out;
-        for (const s of [STACK_ENV.POSTGRES_PASSWORD, SECRET_QS.split("=")[1], MASTER.toString("base64"), decodeBundle(cleanBundle).task_key_b64, decodeBundle(cleanBundle).credential]) expect(all.includes(s as string), `canary leaked`).toBe(false);
-        RUN.push("N11 canaries absent from agent + dashboard logs");
+        for (const s of [CANARY3, STACK_ENV.POSTGRES_PASSWORD, SECRET_QS.split("=")[1], MASTER.toString("base64"), decodeBundle(cleanBundle).task_key_b64, decodeBundle(cleanBundle).credential]) expect(all.includes(s as string), `canary leaked`).toBe(false);
+        RUN.push("N11 canaries (incl. the W16b override value) absent from agent + dashboard logs");
     });
 });

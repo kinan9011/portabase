@@ -1,0 +1,70 @@
+import type {OverrideRefusal} from "@/fork/config/vocab";
+
+/** Labels of the restore-time overrides panel (W16b). A NEW file on purpose: `src/fork/ui/labels.ts` is a shared, frequently edited file. Honest wording: nothing says "applied" before the server answered. */
+export const GENERIC_FAILURE = "Something went wrong. Nothing was changed on screen — try again.";
+
+export const REFUSAL_COPY: Record<OverrideRefusal, string> = {
+    invalid_input: "Some of the input is not valid. Check the values and try again.",
+    not_found: "This restore plan was not found.",
+    forbidden: "You are not allowed to change overrides for this restore plan.",
+    locked: "Fork configuration is locked, so overrides cannot be changed now.",
+    rate_limited: "Too many changes in a short time. Wait a moment and try again.",
+    rp_not_verified: "The recovery point of this plan is not available any more.",
+    rp_purged: "The recovery point of this plan was removed.",
+    test_restore_target_not_test: "This plan cannot take overrides.",
+    personal_data_no_opt_in: "This plan cannot take overrides.",
+    test_restore_mode_invalid: "This plan cannot take overrides.",
+    hash_mismatch: "This plan changed. Open the restore plan again and retry.",
+    plan_tampered: "This restore plan failed its integrity check and cannot be used.",
+    stale: "The stack changed since this plan was made. Create a new plan.",
+    expired: "This restore plan expired. Create a new plan.",
+    plan_blocked: "This plan is blocked, so it takes no overrides.",
+    approval_not_required: "This plan cannot take overrides.",
+    unknown_key: "One of the keys is not part of this plan. New variables go into the override file.",
+    override_field_invalid: "A value is not allowed: reserved names (COMPOSE_*, DOCKER_*, BUILDKIT_*, PATH, HOME, HOSTNAME), control characters and line breaks are refused.",
+    override_yaml_invalid: "The override file is not valid YAML. Compose tags such as !reset and !override are not supported yet.",
+    override_not_mapping: "The override file must be a YAML mapping, with services as a mapping too.",
+    override_duplicate_key: "A variable is set both in a field and in the override file. Keep it in one place.",
+    override_too_large: "The override file is too large (limit 64 KiB).",
+    override_raw_refused: "The override file reads files or paths that a restore may not read:",
+    overrides_frozen: "The restore already started, so overrides can no longer change. Create a new plan to use different values.",
+    overrides_not_applicable: "This plan does not take overrides.",
+    overrides_unreadable: "The stored overrides cannot be read any more. Enter them again.",
+};
+
+export const NOT_APPLICABLE_COPY = {
+    purpose: "Overrides apply to restores of a stack, not to data-only test restores.",
+    outcome: "This plan is blocked, so it takes no overrides.",
+    no_compose_up: "This plan does not start a compose stack, so there is nothing to override.",
+    no_restore_root: "This plan has no restore folder on the target, so there is nothing to override.",
+} as const;
+
+export const OVERRIDES = {
+    title: "Restore-time overrides",
+    intro: "Change individual values or add a compose override file for this restore only. Values are write-only: they are never shown again, and they are deleted after the restore or when the plan expires.",
+    readOnly: "Only organization admins can change overrides.",
+    frozen: REFUSAL_COPY.overrides_frozen,
+    fieldsTitle: "Values",
+    noFields: "This plan has no variables flagged as secrets. Use the override file to change anything else.",
+    fieldLabel: (key: string, service: string) => `${key} · ${service === "" ? "project .env" : service}`,
+    fieldHelp: "Leave empty to keep the value from the backup.",
+    state: {set: "Set — value hidden", notSet: "Not set — the backup value is used", needsValue: "Needs a value — not in the backup"},
+    removeValue: "Remove my value",
+    ymlTitle: "Override file",
+    ymlLabel: "Compose override (YAML)",
+    ymlFile: "Or choose a file (.yml, .yaml)",
+    ymlHelp: "Merged over the restored compose file. It can replace values and add entries, but it cannot remove ports, volumes or networks, and tags such as !reset and !override are not supported yet. Limit 64 KiB.",
+    ymlPresent: (bytes: number) => `An override file is set (${bytes} bytes). Its content is hidden.`,
+    ymlAbsent: "No override file is set.",
+    ymlBoth: "Use either the file or the text box, not both.",
+    ymlTooLarge: "The override file is too large (limit 64 KiB).",
+    removeYml: "Remove override file",
+    save: "Save overrides",
+    clearAll: "Clear all overrides",
+    working: "Working…",
+    nothingToSave: "Enter a value or an override file first.",
+    missingRequired: (n: number) => (n === 1 ? "1 value is needed that is not in the backup." : `${n} values are needed that are not in the backup.`),
+    saved: (rev: number) => `Overrides saved (revision ${rev}). Render the compose file again to see the policy result.`,
+    cleared: "Overrides cleared.",
+    removed: "Value removed.",
+} as const;

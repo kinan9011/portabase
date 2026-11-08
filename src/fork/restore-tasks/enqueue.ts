@@ -1,5 +1,5 @@
 import {createHash} from "node:crypto";
-import {eq} from "drizzle-orm";
+import {and, eq, sql} from "drizzle-orm";
 import {z} from "zod";
 import {agent} from "@/db/schema/08_agent";
 import {actorIn, ForkForbiddenError, ForkNotFoundError, forkCan} from "@/fork/acl";
@@ -10,6 +10,9 @@ import {checkChannelTransport} from "@/fork/agent-channel/transport-policy";
 import {MAX_PAYLOAD_BYTES, TASK_REQUIRES, type TaskType} from "@/fork/agent-channel/vocab";
 import {forkAgentEnrollment} from "@/fork/db/schema/agent-channel";
 import {forkRecoveryPointArtifact} from "@/fork/db/schema/recovery";
+import {forkRestoreOverride} from "@/fork/db/schema/restore-override";
+import {resolveOverridesForEnqueue, type ResolvedOverrides} from "@/fork/config/resolve";
+import {purgeRestoreOverrides} from "@/fork/config/service";
 import {recordAudit} from "@/fork/audit";
 import type {ForkDb} from "@/fork/db/handle";
 import {withForkLock} from "@/fork/locks";
@@ -44,7 +47,9 @@ export type RestoreTaskDeps = ChannelDeps & {
 export type RestoreRefusalCode = "forbidden" | "locked" | "rate_limited" | "invalid_input" | "not_enrolled" | "agent_disabled" | "capability_missing" | "insecure_transport" | "invalid_url" | "signing_unavailable"
     | "not_found" | "stale" | "expired" | "hash_mismatch" | "plan_tampered" | "plan_blocked" | "approval_missing" | "mode_unsupported" | "manifest_mismatch" | "artifact_unavailable" | "payload_too_large" | "target_mismatch"
     // W17-ii (compose types)
-    | "raw_refused" | "render_missing" | "policy_refused" | "approval_invalid";
+    | "raw_refused" | "render_missing" | "policy_refused" | "approval_invalid"
+    // W16b (stored restore-time overrides)
+    | "override_conflict" | "overrides_changed";
 export type RestoreRefusal = {ok: false; code: RestoreRefusalCode; retryAfterSeconds?: number};
 export type RestoreEnqueueResult = {ok: true; taskId: string; seq: number; notAfter: string} | RestoreRefusal;
 
@@ -108,6 +113,7 @@ export async function enqueueRestoreTask(d: RestoreTaskDeps, raw: unknown): Prom
     let plaintext: Buffer;
     let restoreId = "";
     let extra: Record<string, unknown> = {};
+    let stored: ResolvedOverrides | null = null; // W16b: the stored override set of this plan (server-side resolve helper only)
     if (input.type === "restore_probe") {
         plaintext = Buffer.from(JSON.stringify(buildProbePayload(input.workspace)), "utf8");
     } else {
@@ -129,8 +135,15 @@ export async function enqueueRestoreTask(d: RestoreTaskDeps, raw: unknown): Prom
                 if ("code" in rm) return deny(rm.code, rm.detail ? {detail: rm.detail} : {});
                 const withIndex: BuildInput = {...bi, indexOf: rm.indexOf};
                 if (input.type === "compose_render" || input.type === "restore_db" || input.type === "compose_up") {
+                    // W16b: a stored override set replaces the literal parameter; both at once is refused (no silent drop)
+                    const st = await resolveOverridesForEnqueue(d.db, {planId: row.id, planHash: row.planHash, now, kekDir: d.kekDir});
+                    if (!st.ok) return deny(st.code === "hash_mismatch" ? "hash_mismatch" : "invalid_input", {reason2: st.code});
+                    if (st.value && input.overrides !== undefined) return deny("invalid_input", {reason2: "overrides_both"});
+                    if (st.value?.restoreId && st.value.restoreId !== restoreId) return deny("override_conflict");
+                    stored = st.value;
+                    const literal = input.overrides ? {env: input.overrides.env, overrideYml: input.overrides.overrideYml} : null;
                     // W17-ii: override YAML is judged on BOTH sides (D46): the dashboard refuses a poisoned override before it is ever signed
-                    const ref = buildComposeRef(withIndex, input.overrides ? {env: input.overrides.env, overrideYml: input.overrides.overrideYml} : null);
+                    const ref = buildComposeRef(withIndex, stored ? stored.payload : literal);
                     const ws = workspaceOf(plan);
                     if (ref.override_yml !== null) {
                         const file = `${ws}/.portabase/secret/override.yml`;
@@ -142,6 +155,7 @@ export async function enqueueRestoreTask(d: RestoreTaskDeps, raw: unknown): Prom
                         // the render the operator saw, judged AGAIN right before enqueue (D-6): never trust a stored verdict
                         const row = await latestRender(d.db, {restoreId, agentId: plan.target.agent_id});
                         if (!row) return deny("render_missing");
+                        if (stored && row.taskId !== stored.renderTaskId) return deny("render_missing", {detail: "overrides_changed"}); // W16b: the render the operator saw must be of THIS set
                         const verdict = renderVerdict(row, ws);
                         if (verdict.hard.length > 0) return deny("policy_refused", {composeSha256: row.renderedSha256, hard: verdict.hard.map((h) => h.code)});
                         let approval: unknown = null;
@@ -192,17 +206,42 @@ export async function enqueueRestoreTask(d: RestoreTaskDeps, raw: unknown): Prom
     const ttlMs = chEnv(d).FORK_AGENT_TASK_TTL_MINUTES * 60_000;
 
     resourceId = input.type === "restore_probe" ? input.agentId : input.planId;
-    return withForkLock(d.db, `agent-task:${targetAgentId}`, async (tx): Promise<RestoreEnqueueResult> => {
-        const [e] = await tx.select().from(forkAgentEnrollment).where(eq(forkAgentEnrollment.agentId, targetAgentId));
-        if (!e || e.revokedAt) return deny("not_enrolled", {}, {}, tx);
-        if (!e.enabled) return deny("agent_disabled", {}, {}, tx);
-        const requires = [...TASK_REQUIRES[type]];
-        if (!requires.every((c) => e.capabilities.includes(c))) return deny("capability_missing", {requires}, {}, tx);
-        const taskKey = await loadTaskKey(d, e);
-        const t = await insertSignedTask(tx, {e, agentName: a.name, type, plaintext, targetAgentId, actorUserId: p.userId, signing, kid, taskKey, now, ttlMs});
-        await audit("success", {taskId: t.taskId, seq: t.seq, restoreId: restoreId || null, planHash: input.type === "restore_probe" ? null : input.planHash, ...extra}, tx);
-        return {ok: true, taskId: t.taskId, seq: t.seq, notAfter: t.notAfter.toISOString()};
-    });
+    try {
+        const res = await withForkLock(d.db, `agent-task:${targetAgentId}`, async (tx): Promise<RestoreEnqueueResult> => {
+            const [e] = await tx.select().from(forkAgentEnrollment).where(eq(forkAgentEnrollment.agentId, targetAgentId));
+            if (!e || e.revokedAt) return deny("not_enrolled", {}, {}, tx);
+            if (!e.enabled) return deny("agent_disabled", {}, {}, tx);
+            const requires = [...TASK_REQUIRES[type]];
+            if (!requires.every((c) => e.capabilities.includes(c))) return deny("capability_missing", {requires}, {}, tx);
+            const taskKey = await loadTaskKey(d, e);
+            const t = await insertSignedTask(tx, {e, agentName: a.name, type, plaintext, targetAgentId, actorUserId: p.userId, signing, kid, taskKey, now, ttlMs});
+            if (stored) await bindOverride(tx, {rowId: stored.rowId, revision: stored.revision, restoreId, type, taskId: t.taskId, now}); // throws OverrideRace ⇒ the insert rolls back
+            await audit("success", {taskId: t.taskId, seq: t.seq, restoreId: restoreId || null, planHash: input.type === "restore_probe" ? null : input.planHash, ...(stored ? {override_revision: stored.revision} : {}), ...extra}, tx);
+            return {ok: true, taskId: t.taskId, seq: t.seq, notAfter: t.notAfter.toISOString()};
+        });
+        if (res.ok && input.type === "restore_cleanup") await purgeRestoreOverrides(d.db, input.planId, "cleanup", now, p.userId); // W16b: overrides die with the restore
+        return res;
+    } catch (e) {
+        if (e instanceof OverrideRace) return deny("overrides_changed");
+        throw e;
+    }
+}
+
+/** Thrown inside the enqueue transaction when the override row changed after it was resolved: rolls the task insert back. */
+class OverrideRace extends Error {}
+
+/**
+ * W16b: bind the stored set to this restore. `compose_render` records `restore_id` + the render task; `restore_db` / `compose_up` FREEZE it (set/clear refuse afterwards).
+ * Conditional on the revision that was resolved, so a concurrent set/clear can never slip a different value under an already signed task.
+ */
+async function bindOverride(tx: ForkDb, a: {rowId: string; revision: number; restoreId: string; type: TaskType; taskId: string; now: Date}): Promise<void> {
+    const render = a.type === "compose_render";
+    const set = {
+        restoreId: sql`coalesce(${forkRestoreOverride.restoreId}, ${a.restoreId}::uuid)`,
+        ...(render ? {renderTaskId: a.taskId} : {frozenAt: sql`coalesce(${forkRestoreOverride.frozenAt}, ${a.now.toISOString()}::timestamptz)`}),
+    };
+    const rows = await tx.update(forkRestoreOverride).set(set).where(and(eq(forkRestoreOverride.id, a.rowId), eq(forkRestoreOverride.revision, a.revision))).returning({id: forkRestoreOverride.id});
+    if (rows.length !== 1) throw new OverrideRace();
 }
 
 /** Approvals recorded on the plan row for THIS hash (a record for another hash never counts). */
