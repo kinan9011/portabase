@@ -2,6 +2,7 @@ import Link from "next/link";
 import {RUNTIME_LABELS, PROTECTION_LABELS, STACKS_PAGE} from "@/fork/ui/labels";
 import {isFiltered, SORTS, type StackListParams} from "@/fork/stacks/params";
 import {STACKS_HREF} from "@/fork/ui/stacks/format";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 const FIELD = "border-input bg-background h-9 w-full rounded-md border px-3 text-sm";
 
@@ -44,7 +45,7 @@ export function StackFilters({params, environments}: {params: StackListParams; e
                 </select>
             </div>
             <div className="flex items-center gap-3">
-                <button type="submit" className="bg-primary text-primary-foreground h-9 rounded-md px-4 text-sm font-medium">{STACKS_PAGE.apply}</button>
+                <button type="submit" className={`${PRIMARY_AA} h-9 rounded-md px-4 text-sm font-medium`}>{STACKS_PAGE.apply}</button>
                 {isFiltered(params) && <Link href={STACKS_HREF} className="text-sm font-medium underline underline-offset-4">{STACKS_PAGE.clear}</Link>}
             </div>
         </form>

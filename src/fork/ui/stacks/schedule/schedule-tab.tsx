@@ -12,6 +12,7 @@ import type {QuiesceViewDto} from "@/fork/quiesce/view";
 import {QuiescePanel} from "@/fork/ui/stacks/quiesce/quiesce-panel.client";
 import type {TestRestoreView} from "@/fork/test-restore/view";
 import {TestRestorePanel} from "@/fork/ui/stacks/test-restore/test-restore-panel";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 const T = SCHEDULE_TAB;
 const when = (iso: string, tz: string) => { try { return new Intl.DateTimeFormat("en-GB", {timeZone: tz, dateStyle: "medium", timeStyle: "short"}).format(new Date(iso)); } catch { return iso; } };
@@ -24,7 +25,7 @@ export function ScheduleTab({policy, stackId, canConfigure, configureHref, runs 
         return (
             <section aria-labelledby="schedule-none" data-testid="schedule-tab" data-state="none" className="flex flex-col gap-3">
                 <StateNotice testId="schedule-none-notice" title={T.none.title} body={T.none.body}/>
-                {canConfigure && <Link href={configureHref} className="bg-primary text-primary-foreground inline-flex h-9 w-fit items-center rounded-md px-4 text-sm font-medium">{T.configure}</Link>}
+                {canConfigure && <Link href={configureHref} className={`${PRIMARY_AA} inline-flex h-9 w-fit items-center rounded-md px-4 text-sm font-medium`}>{T.configure}</Link>}
                 {trPanel}
             </section>
         );

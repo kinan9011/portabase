@@ -16,6 +16,7 @@ import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {SecretInput, type SecretHandle} from "@/fork/ui/secret-input";
 import {ToneBadge} from "@/fork/ui/tone-badge";
 import {AGENT_CHANNEL as L} from "@/fork/ui/agent-channel/labels";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 /**
  * Agent channel admin page body (W15b). Every control calls a real server action (CSRF = Next's origin check; the services re-check system admin,
@@ -77,7 +78,7 @@ function BundleBody({b, onClose}: {b: Bundle; onClose: () => void}) {
             <ol className="list-decimal pl-5 text-sm">{L.bundle.steps.map((s) => <li key={s}>{s}</li>)}</ol>
             <DialogFooter>
                 <Button type="button" variant="outline" onClick={download}>{L.bundle.download}</Button>
-                <Button type="button" onClick={onClose}>{L.actions.close}</Button>
+                <Button className={PRIMARY_AA} type="button" onClick={onClose}>{L.actions.close}</Button>
             </DialogFooter>
         </>
     );
@@ -144,10 +145,10 @@ function AgentCard({agent: a, signingKid, blockedReason, onBundle}: {agent: Agen
 
             <div role="status" aria-live="polite" className="min-h-5 text-sm" data-testid="agent-status">{msg && <span className={msg.kind === "error" ? "text-destructive" : ""}>{msg.text}</span>}</div>
 
-            <SecretInput ref={pw} label={L.password} name={`pw-${a.id}`}/>
+            <SecretInput ref={pw} label={L.password} name={`pw-${a.id}`} purpose="current-password"/>
 
             <div className="flex flex-wrap items-start gap-3">
-                {!a.enrolled && <ReasonButton reason={reason(null)} onClick={() => enrol(false)}>{busy ? L.actions.working : L.actions.enrol}</ReasonButton>}
+                {!a.enrolled && <ReasonButton className={PRIMARY_AA} reason={reason(null)} onClick={() => enrol(false)}>{busy ? L.actions.working : L.actions.enrol}</ReasonButton>}
                 {a.enrolled && <>
                     <ReasonButton reason={reason(a.revoked ? L.revoked : null)} variant="outline" onClick={() => setConfirm({kind: "reenroll"})}>{L.actions.reenrol}</ReasonButton>
                     <ReasonButton reason={reason(maintReason)} variant="outline" onClick={rotate}>{L.actions.rotate}</ReasonButton>

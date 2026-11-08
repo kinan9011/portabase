@@ -1,3 +1,4 @@
+import type {Metadata} from "next";
 import {notFound} from "next/navigation";
 import {Page, PageContent, PageDescription, PageHeader, PageTitle} from "@/features/layout/components/page";
 import {currentUser} from "@/lib/auth/current-user";
@@ -16,6 +17,7 @@ import {getServerUrl} from "@/utils/get-server-url";
 // Agent channel page (W15b, ADR-007). System administrators only (proxy P04 hides it with a real 404 under /dashboard/integrations; this page re-checks).
 // The page carries state and forms — never a credential, a task key or a bundle (strict view model).
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {title: AGENT_CHANNEL.page.title};
 
 export default async function AgentChannelPage() {
     const mode = await currentForkMode();

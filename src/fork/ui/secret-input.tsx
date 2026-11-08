@@ -15,10 +15,13 @@ export const SECRET_INPUT_PROPS = {
     "data-gramm": "false", "data-1p-ignore": true, "data-lpignore": "true", "data-form-type": "other", maxLength: 512,
 } as const;
 
+/** 1.3.5: an account-password step-up field states its purpose so password managers may fill it; every other secret keeps the suppressed set. */
+const {autoComplete: _ac, "data-1p-ignore": _1p, "data-lpignore": _lp, "data-form-type": _ft, ...PURPOSE_PROPS} = SECRET_INPUT_PROPS;
+
 export type SecretHandle = {take: () => string | undefined; clear: () => void; hasValue: () => boolean};
 
-export const SecretInput = React.forwardRef<SecretHandle, {label: string; name: string; required?: boolean; describedBy?: string; maxLength?: number; onPresenceChange?: (has: boolean) => void}>(
-    function SecretInput({label, name, required, describedBy, maxLength, onPresenceChange}, ref) {
+export const SecretInput = React.forwardRef<SecretHandle, {label: string; name: string; required?: boolean; describedBy?: string; maxLength?: number; onPresenceChange?: (has: boolean) => void; purpose?: "current-password"}>(
+    function SecretInput({label, name, required, describedBy, maxLength, onPresenceChange, purpose}, ref) {
         const id = React.useId();
         const el = React.useRef<HTMLInputElement>(null);
         React.useImperativeHandle(ref, () => ({
@@ -29,7 +32,7 @@ export const SecretInput = React.forwardRef<SecretHandle, {label: string; name: 
         return (
             <div className="flex flex-col gap-1.5">
                 <Label htmlFor={id}>{label}{required ? <span aria-hidden="true"> *</span> : null}</Label>
-                <Input {...SECRET_INPUT_PROPS} maxLength={maxLength ?? SECRET_INPUT_PROPS.maxLength} id={id} name={name} ref={el} defaultValue="" required={required} aria-describedby={describedBy} className="font-mono" onChange={(e) => onPresenceChange?.(e.currentTarget.value.length > 0)}/>
+                <Input {...(purpose ? {...PURPOSE_PROPS, autoComplete: purpose} : SECRET_INPUT_PROPS)} maxLength={maxLength ?? SECRET_INPUT_PROPS.maxLength} id={id} name={name} ref={el} defaultValue="" required={required} aria-describedby={describedBy} className="font-mono" onChange={(e) => onPresenceChange?.(e.currentTarget.value.length > 0)}/>
             </div>
         );
     },

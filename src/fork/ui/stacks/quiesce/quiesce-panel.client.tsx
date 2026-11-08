@@ -12,6 +12,7 @@ import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {GENERIC_FAILURE, QUIESCE as Q} from "@/fork/ui/labels";
 import {useAnnounce} from "@/fork/ui/status-announcer";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 const skipText = (r: string) => (Object.hasOwn(Q.skip, r) ? Q.skip[r as keyof typeof Q.skip] : GENERIC_FAILURE);
 
@@ -113,9 +114,9 @@ export function QuiescePanel({dto, isAdmin}: {dto: QuiesceViewDto; isAdmin: bool
             )}
             <div className="flex flex-wrap items-start gap-3">
                 {!view.enabled
-                    ? <ReasonButton type="button" reason={blockedReason ?? (plan && !plan.ok ? Q.errors.plan_blocked : null)} onClick={() => setDlg("enable")} data-testid="quiesce-enable">{Q.actions.enable}</ReasonButton>
+                    ? <ReasonButton className={PRIMARY_AA} type="button" reason={blockedReason ?? (plan && !plan.ok ? Q.errors.plan_blocked : null)} onClick={() => setDlg("enable")} data-testid="quiesce-enable">{Q.actions.enable}</ReasonButton>
                     : <ReasonButton type="button" variant="outline" reason={readOnly} onClick={() => setDlg("disable")} data-testid="quiesce-disable">{Q.actions.disable}</ReasonButton>}
-                {view.alert.canStartNow && <ReasonButton type="button" reason={readOnly} onClick={() => setDlg("start")} data-testid="quiesce-start-now">{Q.alert.startNow}</ReasonButton>}
+                {view.alert.canStartNow && <ReasonButton className={PRIMARY_AA} type="button" reason={readOnly} onClick={() => setDlg("start")} data-testid="quiesce-start-now">{Q.alert.startNow}</ReasonButton>}
             </div>
             {view.last && (
                 <div data-testid="quiesce-last" className="text-sm">
@@ -125,7 +126,7 @@ export function QuiescePanel({dto, isAdmin}: {dto: QuiesceViewDto; isAdmin: bool
                     {view.last.containers.length > 0 && <ul className="list-disc pl-5">{view.last.containers.map((c) => <li key={c.service}>{c.service}: {Q.lastResult.outcome[c.outcome as keyof typeof Q.lastResult.outcome] ?? c.outcome}</li>)}</ul>}
                 </div>
             )}
-            {msg && <p role="status" data-testid="quiesce-outcome" className={`text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}{msg.manual ? ` ${msg.manual}` : ""}</p>}
+            {msg && <p data-testid="quiesce-outcome" className={`text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}{msg.manual ? ` ${msg.manual}` : ""}</p>}
             <DangerousActionConfirm open={dlg !== null} onOpenChange={(o) => { if (!o) setDlg(null); }} title={dlg === "enable" ? Q.confirm.enableTitle : dlg === "disable" ? Q.confirm.disableTitle : Q.confirm.startNowTitle}
                 confirmLabel={dlg === "enable" ? Q.actions.enable : dlg === "disable" ? Q.actions.disable : Q.actions.startNow}
                 description={<><p>{dlg === "enable" ? Q.confirm.enableBody : dlg === "disable" ? Q.confirm.disableBody : Q.confirm.startNowBody}</p>

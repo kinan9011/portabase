@@ -8,6 +8,7 @@ import {beginKitGenerationAction, confirmKitFingerprintAction} from "@/fork/acti
 import type {KitView} from "@/fork/kit/service";
 import {KIT} from "@/fork/ui/labels";
 import {SecretInput, type SecretHandle} from "@/fork/ui/secret-input";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 /**
  * Kit page body (W14, controlled copy). Secrets handling:
@@ -104,26 +105,26 @@ export function KitPanel({view, canManage, lockedReason}: {view: KitView; canMan
                 <h2 id="kit-create" className="font-semibold">{KIT.create.heading}</h2>
                 <p className="text-sm text-muted-foreground">{KIT.create.help}</p>
                 <form method="post" onSubmit={begin} className="flex flex-col gap-3" aria-disabled={disabled}>
-                    <SecretInput ref={pw} label={KIT.create.password} name="kit-password" required/>
+                    <SecretInput ref={pw} label={KIT.create.password} name="kit-password" required purpose="current-password"/>
                     <fieldset className="flex flex-col gap-1.5" disabled={disabled}>
                         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={want.paper} onChange={(e) => setWant((w) => ({...w, paper: e.target.checked}))}/>{KIT.create.paper}</label>
                         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={want.digital} onChange={(e) => setWant((w) => ({...w, digital: e.target.checked}))}/>{KIT.create.digital}</label>
                     </fieldset>
-                    <Button type="submit" disabled={disabled || busy} className="w-fit">{busy ? KIT.create.working : KIT.create.start}</Button>
+                    <Button type="submit" disabled={disabled || busy} className={`w-fit ${PRIMARY_AA}`}>{busy ? KIT.create.working : KIT.create.start}</Button>
                 </form>
 
                 {grant?.paper && (
                     <div className="flex flex-col gap-2" data-testid="kit-paper-step">
                         <h3 className="font-medium">{KIT.create.paperHeading}</h3>
                         <p className="text-sm text-muted-foreground">{KIT.create.paperNote}</p>
-                        <Button type="button" onClick={showPaper} disabled={busy} className="w-fit">{KIT.create.paperButton}</Button>
+                        <Button type="button" onClick={showPaper} disabled={busy} className={`w-fit ${PRIMARY_AA}`}>{KIT.create.paperButton}</Button>
                     </div>
                 )}
                 {printOpen && paperHtml.current && (
                     <div className="flex flex-col gap-2" data-testid="kit-print-view">
                         <iframe ref={frame} title={KIT.create.paperHeading} sandbox="allow-same-origin allow-modals" srcDoc={paperHtml.current} className="h-[28rem] w-full rounded border bg-white"/>
                         <div className="flex gap-2">
-                            <Button type="button" onClick={() => frame.current?.contentWindow?.print()}>{KIT.create.printButton}</Button>
+                            <Button className={PRIMARY_AA} type="button" onClick={() => frame.current?.contentWindow?.print()}>{KIT.create.printButton}</Button>
                             <Button type="button" variant="outline" onClick={dropPaper}>{KIT.create.closeButton}</Button>
                         </div>
                     </div>
@@ -134,7 +135,7 @@ export function KitPanel({view, canManage, lockedReason}: {view: KitView; canMan
                         <SecretInput ref={pass} label={KIT.create.passphrase} name="kit-passphrase" required/>
                         <SecretInput ref={pass2} label={KIT.create.passphraseConfirm} name="kit-passphrase-confirm" required/>
                         <p className="text-sm text-muted-foreground">{KIT.create.digitalNote}</p>
-                        <Button type="submit" disabled={busy} className="w-fit">{KIT.create.digitalButton}</Button>
+                        <Button type="submit" disabled={busy} className={`w-fit ${PRIMARY_AA}`}>{KIT.create.digitalButton}</Button>
                     </form>
                 )}
             </section>
@@ -151,7 +152,7 @@ export function KitPanel({view, canManage, lockedReason}: {view: KitView; canMan
                         <legend className="text-sm">{KIT.confirm.type}</legend>
                         {(["paper", "digital"] as const).map((t) => <label key={t} className="flex items-center gap-1 text-sm"><input type="radio" name="kit-type" checked={type === t} onChange={() => setType(t)}/>{KIT.types[t]}</label>)}
                     </fieldset>
-                    <Button type="submit" disabled={disabled || busy || code.trim().length === 0} className="w-fit">{KIT.confirm.button}</Button>
+                    <Button type="submit" disabled={disabled || busy || code.trim().length === 0} className={`w-fit ${PRIMARY_AA}`}>{KIT.confirm.button}</Button>
                 </form>
             </section>
         </div>

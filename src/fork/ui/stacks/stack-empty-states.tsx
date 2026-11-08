@@ -12,7 +12,7 @@ export function StacksEmpty({kind, isAdmin}: {kind: Kind; isAdmin: boolean}) {
         <section aria-labelledby="stacks-empty-title" data-testid="stacks-empty" data-kind={kind} className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
             <h2 id="stacks-empty-title" className="text-lg font-semibold">{c.title}</h2>
             <p className="text-muted-foreground max-w-prose text-sm">{isAdmin ? c.admin : c.member}</p>
-            {isAdmin && <Link href={INTEGRATIONS_HREF} className="bg-primary text-primary-foreground inline-flex h-9 items-center rounded-md px-4 text-sm font-medium">{c.adminAction}</Link>}
+            {isAdmin && <Link href={INTEGRATIONS_HREF} className="bg-[#c2410c] text-white hover:bg-[#9a3412] dark:bg-[#c2410c] dark:hover:bg-[#9a3412] inline-flex h-9 items-center rounded-md px-4 text-sm font-medium">{c.adminAction}</Link>}
         </section>
     );
 }

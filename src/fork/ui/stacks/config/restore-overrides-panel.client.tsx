@@ -132,7 +132,7 @@ export function RestoreOverridesPanel({planId, planHash, view: viewProp, canEdit
                         {view.yml.present ? <div><Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => run.mutate({kind: "clear_yml"})}>{OVERRIDES.removeYml}</Button></div> : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <Button type="submit" disabled={busy}>{busy ? OVERRIDES.working : OVERRIDES.save}</Button>
+                        <Button className="bg-[#c2410c] text-white hover:bg-[#9a3412] dark:bg-[#c2410c] dark:hover:bg-[#9a3412]" type="submit" disabled={busy}>{busy ? OVERRIDES.working : OVERRIDES.save}</Button>
                         <Button type="button" variant="outline" disabled={busy || (view.revision === 0)} onClick={() => run.mutate({kind: "clear_all"})}>{OVERRIDES.clearAll}</Button>
                     </div>
                 </fieldset>
