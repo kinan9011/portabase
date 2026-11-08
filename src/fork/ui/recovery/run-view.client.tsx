@@ -66,6 +66,8 @@ export function RunView({initial, appName, canExecute, canApproveProduction, loc
         announce(h.text);
         if (prevState.current !== view.state) setAlertText(ALERT_STATES.has(view.state) ? h.text : null); // the alert never outlives its state (W18b-f2 D1)
         prevState.current = view.state;
+        // the focused control may have just left the page (cleanup finished, allow panel gone): never leave focus on <body> (W18b-f2 D4)
+        if (!document.activeElement || document.activeElement === document.body) document.getElementById("run-h")?.focus();
     }, [sig]);
 
     const head = runHeadline(view);

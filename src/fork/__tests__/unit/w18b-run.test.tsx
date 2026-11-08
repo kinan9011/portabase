@@ -177,6 +177,16 @@ describe("W18b run page: awaiting approval (ALLOW)", () => {
         expect(screen.queryByTestId("cancel-run")).toBeNull();
         expect(document.activeElement?.id).toBe("run-h");
     });
+    it("D4 cleanup finished: the cleanup control disappears while it held focus, focus lands on the run heading", async () => {
+        const failed = (cleanupStatus: string) => view({state: "failed", reason: "stale", failedStep: "stage", finishedAt: now.toISOString(), cleanup: {status: cleanupStatus, reason: null, requestedAt: now.toISOString(), finishedAt: null} as never});
+        h.get.mockResolvedValue(ok(failed("succeeded")));
+        ui(failed("running"));
+        const b = screen.getByTestId("cleanup-control").querySelector("button") as HTMLButtonElement; b.focus();
+        expect(document.activeElement).toBe(b);
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(screen.queryByTestId("cleanup-control")).toBeNull();
+        expect(document.activeElement?.id).toBe("run-h");
+    });
     it("m11 the alert region never outlives its state: awaiting -> succeeded and awaiting -> running clear it, the status region still announces", async () => {
         const done = [step("verify_manifest", "done"), step("probe", "done"), step("stage", "done"), step("apply", "done"), step("render", "done")];
         h.get.mockResolvedValueOnce(ok(aw())).mockResolvedValueOnce(ok(view({state: "succeeded", verification: "started", finishedAt: now.toISOString(), steps: done})));
