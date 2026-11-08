@@ -16,7 +16,7 @@ import {evaluateAlerts} from "@/fork/notifications/evaluate";
 import {enqueueQuiesceTask} from "@/fork/quiesce/enqueue";
 import {planQuiesce} from "@/fork/quiesce/plan";
 import {reconcileQuiesce} from "@/fork/quiesce/reconcile";
-import {enableQuiesce, startNow, type QuiesceAdminDeps} from "@/fork/quiesce/service";
+import {enableQuiesce, previewQuiesce, startNow, type QuiesceAdminDeps} from "@/fork/quiesce/service";
 import {hashUrl} from "@/fork/recovery-point/hash";
 import type {RunDeps} from "@/fork/runs/deps";
 import {tickAllRuns} from "@/fork/runs/service";
@@ -110,11 +110,22 @@ async function drive(what: string, cond: () => Promise<boolean>, ms = 300_000) {
     await waitFor(what, async () => { await q("update agents set last_contact=last_contact where id=$1", [agentId]); await tickAllRuns(runDeps()); return cond(); }, ms, 1500);
 }
 const finished = async (id: string, ms = 420_000) => drive(`run ${id} finished`, async () => !["starting", "running", "finalizing"].includes((await run(id)).state), ms);
+/** why a run would (not) use quiesce right now: sources, policy columns and the planner's verdict — written to the evidence on every start */
+async function diag(label: string) {
+    const srcs = (await q("select dbms, status, database_id is not null as linked from fork_stack_source where stack_id=$1 order by dbms", [stackId]));
+    const pol = (await q("select quiesce_enabled, quiesce_services, quiesce_max_stop_seconds, paused_at, pause_reason from fork_stack_policy where stack_id=$1", [stackId]))[0];
+    const pv = await previewQuiesce(adminDeps(), {stackId});
+    note(`DIAG ${label}: sources=${JSON.stringify(srcs)} policy=${JSON.stringify(pol)} availability=${pv.ok ? JSON.stringify(pv.dto.availability) : "?"} plan=${pv.ok ? JSON.stringify(pv.dto.plan) : "?"}`);
+}
 async function startRunNow() {
+    await diag("before run");
+    // the lab seeds the member rows by hand (no Arcane): the dashboard's own drift job would flag them as drifted (hash 0…0 ≠ a real plan hash); keep them active for each run
+    await q("update fork_stack_source set status='active', drift_reason=null where stack_id=$1", [stackId]);
     const r = await startRun(runDeps(), {stackId, trigger: "manual", userId: adminId});
     if (r.kind !== "started") throw new Error(`run not started: ${JSON.stringify(r)}`);
     return r.runId;
 }
+const notSkipped = async (id: string) => { const r = await run(id); if (r.quiesce_state === "skipped") throw new Error(`quiesce was SKIPPED: ${r.quiesce_reason}\n${EVID.filter((l) => l.includes("DIAG")).slice(-1)[0]}`); return true; };
 /** docker events (nano timestamps) of the two quiesced containers while `fn` runs */
 function watchEvents(names: string[]) {
     const lines: {t: number; action: string; name: string}[] = [];
@@ -236,15 +247,18 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
         expect(stops.map((l) => l.name)).toEqual([`${P}-app-1`, `${P}-db-1`]);
         expect(starts.map((l) => l.name)).toEqual([`${P}-db-1`, `${P}-app-1`]);
         expect(allUp(`${P}-db-1`, `${P}-app-1`)).toBe(true);
-        const items = await q("select dbms, started_at, finished_at, state from fork_stack_run_item where run_id=$1 order by dbms", [id]);
+        const items = await q("select dbms, queued_at, started_at, finished_at, state from fork_stack_run_item where run_id=$1 order by dbms", [id]);
         const vol = items.find((i) => i.dbms === "docker-volume")!;
         expect(items.every((i) => i.state === "succeeded")).toBe(true);
-        expect(new Date(vol.started_at).getTime()).toBeGreaterThanOrEqual(new Date(r.quiesce_stopped_at).getTime() - 2000);
+        expect(new Date(vol.queued_at).getTime()).toBeGreaterThanOrEqual(new Date(r.quiesce_stopped_at).getTime() - 2000); // the window member is queued only after the agent reported `stopped`
         expect(new Date(vol.finished_at).getTime()).toBeLessThanOrEqual(new Date(r.quiesce_release_at).getTime() + 60_000);
+        expect(stops[0].t).toBeLessThanOrEqual(new Date(vol.queued_at).getTime() + 2000); // already stopped when the copy was queued
         // the app was stopped while the volume was copied: the stop event precedes the copy start, the db start follows the release
-        expect(stops[0].t).toBeLessThanOrEqual(new Date(vol.started_at).getTime() + 2000);
         const [point] = await rpOf();
-        expect(point).toMatchObject({status: "pending_verification", consistency_level: "stopped"});
+        note(`Q1 RP: ${JSON.stringify({status: point.status, reason: point.downgrade_reason, consistency: point.consistency_level})}`);
+        expect(point.consistency_level).toBe("stopped");
+        expect([null, "validator_blocked"]).toContain(point.downgrade_reason); // the lab seeds no full completeness coverage: the only acceptable downgrade is the validator, never a quiesce one
+        expect(point.status).not.toBe("verified");
         expect(Number((r.quiesce_result as {downtime_ms: number}).downtime_ms)).toBeGreaterThan(0);
         // independent oracle: fetch + decrypt the volume artifact from MinIO, run integrity_check / count = max(id) / even count on it
         const [s] = await q("select s.path from backup_storage s join fork_stack_run_item i on i.backup_id = s.backup_id where i.run_id=$1 and i.dbms='docker-volume'", [id]);
@@ -262,7 +276,7 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
 
     it("Q2 agent killed mid-quiesce: containers stay stopped, alert raised, on restart the journal is replayed and the honest outcome reported", async () => {
         const id = await startRunNow();
-        await drive("quiesce stopped", async () => (await run(id)).quiesce_state === "stopped", 240_000);
+        await drive("quiesce stopped", async () => (await notSkipped(id)) && (await run(id)).quiesce_state === "stopped", 240_000);
         await sleep(1500);
         docker(["kill", AGENT_C]);
         note("Q2 agent killed");
@@ -295,7 +309,7 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
     it("Q3 dashboard unreachable: the agent-local deadline restarts the containers; the result says deadline, window_intact=false", async () => {
         await q("update fork_stack_policy set quiesce_max_stop_seconds=60 where stack_id=$1", [stackId]);
         const id = await startRunNow();
-        await drive("quiesce stopped", async () => (await run(id)).quiesce_state === "stopped", 240_000);
+        await drive("quiesce stopped", async () => (await notSkipped(id)) && (await run(id)).quiesce_state === "stopped", 240_000);
         const stoppedAt = Date.now();
         docker(["network", "disconnect", NET, AGENT_C]);
         note("Q3 agent disconnected from the dashboard network");
