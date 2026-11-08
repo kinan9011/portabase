@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {anyForkFlagOn, forkEnv} from "@/fork/env";
+import {anyForkFlagOn, FORK_AGENT_HEARTBEAT_SECONDS, forkEnv} from "@/fork/env";
 
 describe("fork env flags", () => {
     it("defaults everything off", () => {
@@ -32,5 +32,13 @@ describe("fork env flags", () => {
         for (const [v, want] of [["1", 1], ["48", 48], ["0", 12], ["49", 12], ["x", 12], ["", 12]] as const) expect(forkEnv({FORK_RESTORE_RUN_MAX_HOURS: v}).FORK_RESTORE_RUN_MAX_HOURS, v).toBe(want);
         expect(forkEnv({}).FORK_RESTORE_TICK_SECONDS).toBe(10);
         for (const [v, want] of [["0", 0], ["1", 1], ["300", 300], ["301", 10], ["-1", 10], ["x", 10], ["", 10], ["  ", 10]] as const) expect(forkEnv({FORK_RESTORE_TICK_SECONDS: v}).FORK_RESTORE_TICK_SECONDS, v).toBe(want);
+    });
+
+    it("W27a F-03: the lease floor is 45 s (>= 2 x the 20 s agent heartbeat + 5 s); anything below falls back to the default 60", () => {
+        expect(FORK_AGENT_HEARTBEAT_SECONDS).toBe(20);
+        expect(forkEnv({}).FORK_AGENT_LEASE_SECONDS).toBe(60);
+        for (const [v, want] of [["15", 60], ["30", 60], ["44", 60], ["45", 45], ["60", 60], ["600", 600], ["601", 60], ["x", 60], ["", 60]] as const) expect(forkEnv({FORK_AGENT_LEASE_SECONDS: v}).FORK_AGENT_LEASE_SECONDS, v).toBe(want);
+        expect(Math.min(...[45, 46, 600].filter((n) => forkEnv({FORK_AGENT_LEASE_SECONDS: String(n)}).FORK_AGENT_LEASE_SECONDS === n))).toBeGreaterThanOrEqual(2 * FORK_AGENT_HEARTBEAT_SECONDS + 5);
+        expect(forkEnv({FORK_AGENT_LEASE_SECONDS: "44"}).FORK_AGENT_LEASE_SECONDS).toBeGreaterThanOrEqual(2 * FORK_AGENT_HEARTBEAT_SECONDS + 5); // the fallback itself honours the rule
     });
 });
