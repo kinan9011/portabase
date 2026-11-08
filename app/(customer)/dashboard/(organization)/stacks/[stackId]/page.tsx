@@ -12,6 +12,9 @@ import {loadStackDetail} from "@/fork/stacks/queries";
 import {STACKS_EMPTY, STACKS_PAGE} from "@/fork/ui/labels";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
 import {forkEnv} from "@/fork/env";
+import {fileKeyProvider} from "@/fork/keys";
+import {getTestRestoreView} from "@/fork/test-restore/view";
+import {getServerUrl} from "@/utils/get-server-url";
 import {previewQuiesce} from "@/fork/quiesce/service";
 import {StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";
 import {parseRp, parseTab} from "@/fork/ui/stacks/tabs";
@@ -51,12 +54,14 @@ export default async function StackDetailsPage(props: {params: Promise<{stackId:
     const locked = forkBannerText(mode);
     // W17b: the Stop + copy panel exists only while the dashboard switch is on (flags-off parity: nothing renders otherwise)
     const quiesce = forkEnv().FORK_QUIESCE_ENABLED && detail.policy ? await previewQuiesce({db, principal}, {stackId}).then((r) => (r.ok ? r.dto : null), () => null) : null;
+    // W-TR-f: the test-restore panel's strict view (members get `admin: null`); a load error hides the panel, never the page
+    const testRestore = await getTestRestoreView({db, principal, keys: fileKeyProvider, serverUrl: getServerUrl}, {stackId}).then((r) => (r.ok ? r.view : null), () => null);
     return (
         <Page>
             <PageContent>
                 <StatusAnnouncer>
                     {locked && <p role="note" data-testid="locked-note" className="mb-4 rounded-lg border p-3 text-sm">{STACKS_EMPTY.locked}</p>}
-                    <StackDetailsClient detail={detail} initialTab={parseTab(search.tab)} canConfigure={forkCan(actor, "stacks.backup.manage")} configLocked={locked !== null} canRun={forkCan(actor, "backup.run")} canRestore={forkCan(actor, "restore.plan")} quiesce={quiesce}/>
+                    <StackDetailsClient detail={detail} initialTab={parseTab(search.tab)} canConfigure={forkCan(actor, "stacks.backup.manage")} configLocked={locked !== null} canRun={forkCan(actor, "backup.run")} canRestore={forkCan(actor, "restore.plan")} quiesce={quiesce} testRestore={testRestore}/>
                 </StatusAnnouncer>
             </PageContent>
         </Page>
