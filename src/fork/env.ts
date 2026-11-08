@@ -44,6 +44,9 @@ const tickSeconds = z
         return Number.isInteger(n) && n >= 5 && n <= 3600 ? n : 60; // W10 drift/probe job period; D30 "within one tick"
     });
 
+/** Mirror of the agent's `HEARTBEAT_EVERY` (portabase-agent `src/fork/exec.rs:8` is the source of truth; W27a F-03). The lease floor is derived from it. */
+export const FORK_AGENT_HEARTBEAT_SECONDS = 20;
+
 /** Integer env value within [min, max], else the default (fail closed to the documented default, never to 0). */
 const intRange = (min: number, max: number, dflt: number) =>
     z.string().optional().transform((v) => {
@@ -115,9 +118,10 @@ const schema = z.object({
     FORK_ALLOW_INSECURE_LOOPBACK: flag,
     /** W17b (D9a): dashboard-side switch of the opt-in quiesce. Config-plane: NOT part of `anyForkFlagOn` (parity). Default off. */
     FORK_QUIESCE_ENABLED: flag,
-    /** W15: how long a task may wait to be started (minutes, 1–60, default 10, ADR-007 D3) and how long one lease lasts without a heartbeat (seconds, 15–600, default 60). */
+    /** W15: how long a task may wait to be started (minutes, 1–60, default 10, ADR-007 D3) and how long one lease lasts without a heartbeat (seconds, 45–600, default 60; floor raised from 15 in W27a/F-03). */
     FORK_AGENT_TASK_TTL_MINUTES: intRange(1, 60, 10),
-    FORK_AGENT_LEASE_SECONDS: intRange(15, 600, 60),
+    // ≥ 2 × the agent heartbeat (20 s, FORK_AGENT_HEARTBEAT_SECONDS) + 5 s: a lease shorter than ~45 s lapses between two heartbeats of a long task (re-queue / `lease_lost`).
+    FORK_AGENT_LEASE_SECONDS: intRange(2 * FORK_AGENT_HEARTBEAT_SECONDS + 5, 600, 60),
     /** W16: restore plan lifetime (hours); a plan older than this is `expired` and must be re-planned. */
     FORK_RESTORE_PLAN_TTL_HOURS: intRange(1, 168, 24),
     /** W18a: hard cap of one restore run (hours, 1..48) and the orchestrator tick period (seconds, 1..300; `0` = the job never ticks: LIVE LAB ONLY). */

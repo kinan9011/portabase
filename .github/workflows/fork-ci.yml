@@ -194,3 +194,36 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --prod
+
+  # W27a F-02: the inherited `secrets-gitleaks` job of security.yml is skipped on every fork PR (`head.repo.fork == false`) and only runs after merge. This job scans the PR's own commit range.
+  gitleaks-pr:
+    name: gitleaks (commit range)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: scan the commits of this change (range from SHAs only; no PR text reaches the shell)
+        env:
+          RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || 'HEAD~1..HEAD' }}
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.2 git /repo --config /repo/.gitleaks.toml --redact --log-opts="$RANGE"
+
+  # W27a F-05 (OD-W27-9): blocking, but only for high/critical advisories on dependencies THIS FORK added (scripts/fork/audit-gate.mjs); upstream-owned paths stay in the informational `audit` job.
+  audit-gate:
+    name: audit gate (fork-added dependencies)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --json > audit.json || true
+      - run: node scripts/fork/audit-gate.mjs < audit.json

@@ -47,7 +47,7 @@ describe("W18b recovery pages (real build)", () => {
             await first.db.pool.query(`update "user" set role = 'user' where email = $1`, [u.email]);
         }
         const flagsOff = await signIn(first.base);
-        for (const p of ["/dashboard/recovery", "/dashboard/recovery/new", `/dashboard/recovery/plans/${randomUUID()}`, `/dashboard/recovery/runs/${randomUUID()}`]) expect((await get(first.base, p, flagsOff)).status, p).toBe(404); // E5
+        for (const p of ["/dashboard/recovery", "/dashboard/recovery/new", `/dashboard/recovery/plans/${randomUUID()}`, `/dashboard/recovery/runs/${randomUUID()}`, "/dashboard/recovery/plans", "/dashboard/recovery/runs"]) expect((await get(first.base, p, flagsOff)).status, p).toBe(404); // E5 (+ W27a P0 breadcrumb index routes)
         expect(await (await get(first.base, "/dashboard/home", flagsOff)).text()).not.toMatch(/\/dashboard\/recovery/);
 
         // ---- seed (fork lane exists even with flags off)
@@ -118,6 +118,11 @@ describe("W18b recovery pages (real build)", () => {
             expect(visible(body), p).toContain(title);
         }
         expect(await (await get(base, "/dashboard/home", admin)).text()).toContain('href="/dashboard/recovery"');
+        for (const p of ["/dashboard/recovery/plans", "/dashboard/recovery/runs"]) { // W27a P0: breadcrumb index routes lead to the home for a signed-in admin, never to a 404 (HTTP 307, or the streamed meta refresh)
+            const r = await get(base, p, admin);
+            const html = await r.text();
+            expect(r.status === 307 ? new URL(r.headers.get("location") ?? "", base).pathname : /http-equiv="refresh"[^>]*url=\/dashboard\/recovery"/.test(html) ? "/dashboard/recovery" : `${r.status}:${html.slice(0, 80)}`, p).toBe("/dashboard/recovery");
+        }
 
         // E2 canary: HTML and RSC payload of every page (admin session), plus the plan's override view
         const all = [...pages.map(([p]) => p)];

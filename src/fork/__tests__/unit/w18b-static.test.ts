@@ -70,7 +70,7 @@ describe("W18b static guards", () => {
     });
     it("6. every page exports force-dynamic and checks the fork mode before it reads the principal", () => {
         const pages = SCOPE.filter((f) => /\/page\.tsx$/.test(f));
-        expect(pages.length).toBe(4);
+        expect(pages.length).toBe(6); // 4 wizard pages + the W27a P0 breadcrumb index pages (recovery/plans, recovery/runs)
         for (const f of pages) {
             const code = src(f);
             expect(code, rel(f)).toMatch(/export const dynamic = "force-dynamic"/);

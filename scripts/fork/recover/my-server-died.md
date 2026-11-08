@@ -114,7 +114,7 @@ The tool does it in this order and says each step in plain words: checks the sig
 scripts/fork/recover/portabase-recover restore --yes --kit KIT --stack STACKID --root /srv/portabase-restore/mystack2 --allow-privileged=SERVICENAME
 ```
 
-(Use a fresh empty restore folder each time.) Never allow something you do not recognise. A Compose file that **reads** files outside the restore folder — also through an `include`d or `extends`ed file, an `env_file`, a `label_file` or a secret — is always refused, with no way around it. So is one whose paths the tool cannot prove safe (a variable such as `${HOME}`, `~`, or `..`).
+(Use a fresh empty restore folder each time.) Never allow something you do not recognise. A Compose file that **reads** files outside the restore folder — also through an `include`d or `extends`ed file, an `env_file`, a `label_file` or a secret — is always refused, with no way around it. So is one whose paths the tool cannot prove safe (a variable such as `${HOME}`, `~`, or `..`). The same goes for a restored folder or file that is itself a **link pointing outside the restore folder** (for example `data -> /etc`): the tool follows links before it trusts a path, and refuses it (exit `3` for a mounted folder, `4` when a Compose file would read it), with no way around it.
 
 **Your own project name.** To start the restored stack next to something else, add `--project-name newname`.
 

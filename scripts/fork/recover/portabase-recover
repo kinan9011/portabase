@@ -589,6 +589,7 @@ restore_compose_policy() {
   dc config --format json >"$W/compose.json" 2>"$W/compose.err" || die 4 "docker compose could not render the restored project: $(head -c 300 "$W/compose.err" | tr '\n' ' ')"
   local svc; while IFS= read -r svc; do [[ $svc =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]] || die 4 "a service name in the Compose file has unexpected characters"; done < <(jq -r '.services|keys[]' "$W/compose.json")
   remap_binds
+  check_bind_realpaths
   local findings; findings="$(evaluate_deny <"$W/compose.json")" || die 4 "the rendered Compose file could not be checked; refusing (not overridable)"
   if [ -n "$findings" ]; then
     local ok=1 f s rule detail plain hard_hit=0 h is_hard
@@ -614,6 +615,18 @@ allowed() {  # service -> 0 when --allow-privileged=<svc> given, or typed ALLOW 
   local s=$1 a; for a in "${ALLOW_SVCS[@]+"${ALLOW_SVCS[@]}"}"; do [ "$a" = "$s" ] && return 0; done
   if [ -r /dev/tty ] && [ -t 0 ]; then local ans; read -r -p "   Type exactly ALLOW $s to allow it, or press Enter to refuse: " ans </dev/tty >&2 || return 1; [ "$ans" = "ALLOW $s" ] && return 0; fi
   return 1
+}
+# W27a / F-01 (#142 CLI half, OD-W27-11): every HOST path the daemon will resolve as root (bind sources, local-driver volume devices, secret/config files) that is inside the restore
+# folder BY STRING must still resolve inside it after symlinks (a restored `data -> /etc` would otherwise be bind-mounted from the host). A hard stop, not overridable; nothing has
+# been started yet. Symlinks INSIDE a bind-mounted directory resolve in the container's namespace and are not checked.
+check_bind_realpaths() {
+  local r src; r="$(realpath -m -- "$RESTORE_ROOT")"
+  while IFS= read -r src; do
+    case "$(realpath -m -- "$src")" in "$r"|"$r"/*) ;; *) hard "a restored folder or file is a link that points outside the restore folder: $src";; esac
+  done < <(jq -r --arg root "$RESTORE_ROOT/" '
+      ( [ (.services // {})[]?.volumes[]? | select(.type == "bind") | .source ]
+      + [ (.volumes // {})[]? | .driver_opts.device? | strings ]
+      + [ ((.secrets // {}), (.configs // {}))[]? | .file? | strings ] )[] | select(startswith($root))' "$W/compose.json")
 }
 # binds that point at an ORIGINAL host path we restored are re-pointed into the restore folder (override file, `!override` needs compose >= 2.24)
 remap_binds() {
