@@ -506,37 +506,37 @@ describe.skipIf(!LAB)("W18a live: orchestrated restore on the fork agent image",
         expect(docker(["exec", "app-web-1", "sh", "-c", 'printf %s "$A" | sha256sum']).split(/\s+/)[0]).toBe(sha256(CANARY3));
         RUN.push(`L7 awaiting phrase="${web!.phrase}" org-admin=forbidden wrong-phrase=confirmation_mismatch right phrase ok ⇒ run ${r2.state}/${r2.verification}; app-web-1 Privileged=true; sha256(printenv A)==sha256(override)`);
         await hygiene(c, runId);
-        // poisoned raw override: the dashboard refuses to sign a render task for it
-        const c2 = await approvedPlanWith({overrideYml: "services:\n  web:\n    env_file: /etc/hostname\n"});
+        // poisoned raw override: observed — the dashboard refuses it already when it is SET (stronger than failing the render step), so no run can ever carry it
+        const c2 = await makePlan(world, {});
         const t0 = new Date();
-        const run2 = await begin(c2);
-        const r3 = await driveRun(run2, {ms: 240_000});
+        const bad = await setRestoreOverrides(ovDeps(), {planId: c2.planId, planHash: c2.planHash, overrideYml: "services:\n  web:\n    env_file: /etc/hostname\n"});
         const renders = Number((await q("select count(*)::int n from fork_agent_task where type='compose_render' and created_at >= $1", [t0]))[0].n);
-        RUN.push(`L7 poisoned raw override: state=${r3.state} reason=${r3.reason} step=${r3.failed_step} compose_render tasks created=${renders}`);
-        expect(r3).toMatchObject({state: "failed", failed_step: "render", reason: "raw_refused"});
+        const rows = Number((await q("select count(*)::int n from fork_restore_override where plan_id=$1", [c2.planId]))[0].n);
+        RUN.push(`L7 poisoned raw override (env_file outside the root): set ⇒ ${JSON.stringify(bad)}; override rows stored=${rows}; compose_render tasks created=${renders}`);
+        expect(bad).toMatchObject({ok: false, code: "override_raw_refused"});
+        expect(rows).toBe(0);
         expect(renders).toBe(0);
-        const cl = await cleanup(run2);
-        expect(cl.status).toBe("succeeded");
-        expect(owned(run2)).toEqual({containers: "", volumes: "", networks: ""});
     }, 900_000);
 
-    it("L9 container_name collision with a foreign container at compose_up: failed/container_conflict, the foreign container and the agent keep running, cleanup removes the owned db container only", async () => {
+    it("L9 container_name collision with a foreign container (guard fires at restore_db, before any container of the stack is started): failed/container_conflict, the foreign container and the agent keep running, cleanup leaves nothing owned", async () => {
         docker(["run", "-d", "--name", "w18a-foreign", "busybox", "sleep", "3600"]);
         try {
             const c = await approvedPlanWith({overrideYml: "services:\n  web:\n    container_name: w18a-foreign\n"});
             const runId = await begin(c);
             const r = await driveRun(runId, {ms: 360_000});
             RUN.push(`L9 state=${r.state} reason=${r.reason} step=${r.failed_step}`);
-            expect(r).toMatchObject({state: "failed", failed_step: "compose_up", reason: "container_conflict"});
-            expect(docker(["inspect", "-f", "{{.State.Running}}", "w18a-foreign"]).trim()).toBe("true");
-            expect(docker(["inspect", "-f", "{{.State.Running}}", CLEAN]).trim()).toBe("true");
             const before = owned(runId).containers;
-            expect(before).not.toBe(""); // restore_db brought app-db-1 up before compose_up refused
+            RUN.push(`L9 owned containers at failure=${before ? before.split("\n").length : 0}`);
+            try {
+                expect(r).toMatchObject({state: "failed", failed_step: "restore_db", reason: "container_conflict"}); // observed: the guard refuses at the first step that would start containers (restore_db), before compose_up
+                expect(docker(["inspect", "-f", "{{.State.Running}}", "w18a-foreign"]).trim()).toBe("true");
+                expect(docker(["inspect", "-f", "{{.State.Running}}", CLEAN]).trim()).toBe("true");
+            } catch (e) { await cleanup(runId).catch(() => undefined); throw e; }
             const cl = await cleanup(runId);
             expect(cl.status).toBe("succeeded");
             expect(owned(runId)).toEqual({containers: "", volumes: "", networks: ""});
             expect(docker(["inspect", "-f", "{{.State.Running}}", "w18a-foreign"]).trim()).toBe("true");
-            RUN.push(`L9 cleanup=${cl.status}; owned containers before=${before.split("\n").length} after=0; w18a-foreign + ${CLEAN} still running`);
+            RUN.push(`L9 cleanup=${cl.status}; owned containers before=${before ? before.split("\n").length : 0} after=0; w18a-foreign + ${CLEAN} still running`);
         } finally {
             try { docker(["rm", "-f", "w18a-foreign"]); } catch { /* gone */ }
         }
