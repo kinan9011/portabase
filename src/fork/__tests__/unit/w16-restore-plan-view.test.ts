@@ -33,7 +33,10 @@ describe("toRestorePlanView (flagged-only surfacing, §3.2 row 21)", () => {
     });
     it("explicit allowlist: no mappings echo, no inputs digest, no user ids, no hash-bound internals", () => {
         for (const bad of ["SECRET_MAPPING_MARKER", base.inputsDigest, "user-id-1", "inputs_digest", "mappings", "createdBy", "manifest_sha256", "deny_rules_sha256"]) expect(json, bad).not.toContain(bad);
-        expect(Object.keys(view).sort()).toEqual(["actions", "approvalsGiven", "approvalsRequired", "blockers", "composeFindings", "composeFindingsBasis", "createdAt", "decisions", "expiresAt", "freshness", "id", "mode", "outcome", "planHash", "preconditions", "purpose", "rp", "secrets", "target"].sort());
+        expect(Object.keys(view).sort()).toEqual(["actions", "approvalsGiven", "approvalsRequired", "blockers", "composeFindings", "composeFindingsBasis", "createdAt", "decisions", "expiresAt", "freshness", "id", "mode", "outcome", "planHash", "preconditions", "purpose", "rp", "secrets", "stackId", "target", "targetAgentId", "totals"].sort());
+        expect(view.stackId).toBe(base.plan.rp.stack_id);
+        expect(view.targetAgentId).toBe(base.plan.target.agent_id);
+        expect(view.totals).toEqual({artifacts: base.plan.totals.artifacts, actions: base.plan.totals.actions, plaintextBytes: base.plan.totals.plaintext_bytes});
         expect(view.approvalsGiven).toEqual([{kind: "production_target", approvedAt: "2026-11-07T10:00:00Z"}]);
         expect(view.rp).toEqual({id: u(1), sequence: 3, verifiedAt: "2026-11-07T01:00:00Z"});
     });

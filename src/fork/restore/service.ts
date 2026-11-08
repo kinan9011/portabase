@@ -213,6 +213,8 @@ const parseApprovals = (raw: unknown): ApprovalRecord[] => (Array.isArray(raw) ?
 export const RestorePlanView = z.strictObject({
     id: z.string(), planHash: z.string(), createdAt: z.string(), expiresAt: z.string(), freshness: z.enum(["fresh", "stale", "expired"]),
     outcome: z.enum(["ready", "blocked"]), purpose: z.string(), mode: z.string(),
+    stackId: z.string(), targetAgentId: z.string(), // W18b B3: re-plan links of the wizard
+    totals: z.strictObject({artifacts: z.number(), actions: z.number(), plaintextBytes: z.number().nullable()}),
     rp: z.strictObject({id: z.string(), sequence: z.number(), verifiedAt: z.string().nullable()}),
     target: z.strictObject({agentName: z.string(), hostRole: z.string(), hostRoleSource: z.string(), project: z.string(), restoreRoot: z.string().nullable()}),
     actions: z.array(Action),
@@ -232,6 +234,8 @@ export function toRestorePlanView(row: PlanRow, plan: RestorePlanV1, fresh: Fres
         id: row.id, planHash: row.planHash, createdAt: iso(row.createdAt), expiresAt: iso(row.expiresAt),
         freshness: fresh.fresh ? "fresh" : fresh.code === "expired" ? "expired" : "stale",
         outcome: plan.outcome, purpose: plan.purpose, mode: plan.mode,
+        stackId: plan.rp.stack_id, targetAgentId: plan.target.agent_id,
+        totals: {artifacts: plan.totals.artifacts, actions: plan.totals.actions, plaintextBytes: plan.totals.plaintext_bytes},
         rp: {id: plan.rp.id, sequence: plan.rp.sequence, verifiedAt: plan.rp.verified_at},
         target: {agentName: plan.target.agent_name, hostRole: plan.target.host_role, hostRoleSource: plan.target.host_role_source, project: plan.target.project, restoreRoot: plan.target.restore_root},
         actions: plan.actions, preconditions: plan.preconditions,

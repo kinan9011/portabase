@@ -85,9 +85,9 @@ describe("Integrations page (D35): mode × role matrix", () => {
     });
 });
 
-describe("navigation (P05) — Integrations visible, Recovery still hidden until W18b (D13/I14)", () => {
+describe("navigation (P05) — Integrations and Recovery visible (Recovery shipped in W18b, D13)", () => {
     it("nav defs", () => {
         expect(FORK_NAV_DEFS.find((d) => d.title === "Integrations")).toMatchObject({shipped: true, url: "/integrations"});
-        expect(FORK_NAV_DEFS.find((d) => d.title === "Recovery")).toMatchObject({shipped: false, wave: "W18b"});
+        expect(FORK_NAV_DEFS.find((d) => d.title === "Recovery")).toMatchObject({shipped: true, wave: "W18b"});
     });
 });

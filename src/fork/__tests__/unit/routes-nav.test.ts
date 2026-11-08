@@ -39,6 +39,11 @@ describe("proxy page gate (P04, real 404 status)", () => {
             }
         }
         expect(forkPageHidden("/dashboard/stacksx", "user", {})).toBe(false); // not ours
+        for (const p of ["/dashboard/recovery", "/dashboard/recovery/new", "/dashboard/recovery/plans/x", "/dashboard/recovery/runs/x"]) {
+            expect(forkPageHidden(p, "user", {}), p).toBe(true); // W18b: flags off ⇒ real 404
+            expect(forkPageHidden(p, "user", {FORK_STACKS_ENABLED: "true"}), p).toBe(false);
+        }
+        expect(forkPageHidden("/dashboard/recoveryx", "user", {})).toBe(false); // not ours
     });
     it("never touches upstream pages", () => {
         for (const p of ["/dashboard/home", "/dashboard/agents", "/dashboard/integrationsx", "/dashboard"]) expect(forkPageHidden(p, "user", {})).toBe(false);
@@ -60,19 +65,23 @@ describe("sidebar nav model", () => {
     });
     it("W08: any org member sees Docker Stacks; a system admin who is also a member sees both", () => {
         const stacks = {title: "Docker Stacks", url: "/stacks", iconKey: "layers"};
-        for (const orgRole of ["member", "admin", "owner"]) expect(buildForkNav("on", {systemRole: "user", orgRole})).toEqual([{label: "Stack Recovery", items: [stacks]}]);
-        expect(buildForkNav("on", {systemRole: "admin", orgRole: "owner"})[0].items.map((i) => i.title)).toEqual(["Integrations", "Agent channel", "Docker Stacks"]);
+        const recovery = {title: "Recovery", url: "/recovery", iconKey: "life-buoy"}; // W18b (D13): `recovery.view` is member+
+        for (const orgRole of ["member", "admin", "owner"]) expect(buildForkNav("on", {systemRole: "user", orgRole})).toEqual([{label: "Stack Recovery", items: [stacks, recovery]}]);
+        expect(buildForkNav("on", {systemRole: "admin", orgRole: "owner"})[0].items.map((i) => i.title)).toEqual(["Integrations", "Agent channel", "Docker Stacks", "Recovery"]);
     });
     it("pending, non-member users and anonymous see nothing", () => {
         expect(buildForkNav("on", {systemRole: "user"})).toEqual([]);
         expect(buildForkNav("on", {systemRole: "pending"})).toEqual([]);
         expect(buildForkNav("on", null)).toEqual([]);
     });
-    it("items of unshipped waves (Recovery W18b) are never rendered", () => {
+    it("W18b: Recovery is shipped and shown behind the flag + permission; items of unshipped waves would never render", () => {
         const hidden = FORK_NAV_DEFS.filter((d) => !d.shipped).map((d) => d.title);
-        expect(hidden).toEqual(["Recovery"]);
+        expect(hidden).toEqual([]);
         const titles = buildForkNav("on", {systemRole: "superadmin", orgRole: "owner"}).flatMap((g) => g.items.map((i) => i.title));
-        expect(titles).toEqual(["Integrations", "Agent channel", "Docker Stacks"]);
+        expect(titles).toEqual(["Integrations", "Agent channel", "Docker Stacks", "Recovery"]);
+        expect(buildForkNav("on", {systemRole: "admin"}).flatMap((g) => g.items.map((i) => i.title))).not.toContain("Recovery"); // no org membership ⇒ no recovery.view
+        expect(buildForkNav("locked", {systemRole: "superadmin", orgRole: "owner"})).toEqual([]); // OD-W18b-4: no Recovery nav while locked
+        expect(buildForkNav("off", {systemRole: "superadmin", orgRole: "owner"})).toEqual([]);
     });
     it("model is serialisable (no component functions cross the server/client boundary)", () => {
         expect(JSON.parse(JSON.stringify(buildForkNav("on", sys)))).toEqual(buildForkNav("on", sys));

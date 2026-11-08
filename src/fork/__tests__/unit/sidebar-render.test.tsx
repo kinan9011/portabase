@@ -43,12 +43,12 @@ describe("<ForkSidebarGroups/> rendered output (flags-off parity, P05)", () => {
         ON();
         user.current = {systemRole: "user", orgRole: "member"};
         let {container, unmount} = render(<SidebarProvider>{await ForkSidebarGroups()}</SidebarProvider>);
-        expect([...container.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([["Docker Stacks", "/dashboard/stacks"]]);
+        expect([...container.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([["Docker Stacks", "/dashboard/stacks"], ["Recovery", "/dashboard/recovery"]]); // W18b (D13): Recovery is member+ and shipped
         expect(await axeViolations(container, ["list", "listitem"])).toEqual([]);
         unmount();
         user.current = {systemRole: "admin", orgRole: "owner"};
         ({container, unmount} = render(<SidebarProvider>{await ForkSidebarGroups()}</SidebarProvider>));
-        expect([...container.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(["/dashboard/integrations", "/dashboard/integrations/agent-channel", "/dashboard/stacks"]);
+        expect([...container.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(["/dashboard/integrations", "/dashboard/integrations/agent-channel", "/dashboard/stacks", "/dashboard/recovery"]);
         unmount();
     });
 
