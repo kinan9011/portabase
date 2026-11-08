@@ -10,6 +10,8 @@ import {forkBannerText} from "@/fork/self-check";
 import {loadConfigureView} from "@/fork/stack-policy/configure-view";
 import {CONFIGURE, STACKS_EMPTY} from "@/fork/ui/labels";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
+import {forkEnv} from "@/fork/env";
+import {previewQuiesce} from "@/fork/quiesce/service";
 import {ConfigureForm} from "@/fork/ui/stacks/wizard/configure-form.client";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 
@@ -44,11 +46,13 @@ export default async function ConfigureBackupPage(props: {params: Promise<{stack
     if (!view) return <Page><PageContent><StateNotice testId="no-inventory" title={CONFIGURE.noInventory.title} body={CONFIGURE.noInventory.body}/></PageContent></Page>;
 
     const locked = forkBannerText(mode) !== null;
+    // W17b: read-only "Stop + copy" status line, only while the dashboard switch is on (flags-off parity: nothing renders otherwise); `no_policy` = "available after activation"
+    const quiesceReason = !forkEnv().FORK_QUIESCE_ENABLED ? undefined : await previewQuiesce({db, principal}, {stackId}).then((r) => (r.ok && r.dto.availability.state === "unavailable" && r.dto.availability.reason !== "no_policy" ? r.dto.availability.reason : null), () => undefined);
     return (
         <Page>
             <PageContent>
                 <StatusAnnouncer>
-                    <ConfigureForm view={view} locked={locked}/>
+                    <ConfigureForm view={view} locked={locked} quiesceReason={quiesceReason}/>
                 </StatusAnnouncer>
             </PageContent>
         </Page>

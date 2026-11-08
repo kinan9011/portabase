@@ -1,4 +1,5 @@
 import {appDb} from "@/fork/db/handle";
+import {fileKeyProvider} from "@/fork/keys";
 import {currentForkMode} from "@/fork/mode";
 import {retentionTick, type RetentionResult} from "@/fork/recovery-point/prune";
 import {registerForkRuntimeTask} from "@/fork/runtime";
@@ -50,7 +51,8 @@ export function registerStackRunsJob(): void {
                     running = true;
                     try {
                         if ((await currentForkMode()).mode === "off") return;
-                        const d: RunDeps = {db: await appDb()};
+                        const {getServerUrl} = await import("@/utils/get-server-url"); // lazy: the env-validating module must not load when tests import `runsTick`
+                        const d: RunDeps = {db: await appDb(), channel: {keys: fileKeyProvider, serverUrl: getServerUrl}}; // W17b: quiesce signs + enqueues its task
                         const retention = Date.now() - lastRetention >= RETENTION_EVERY_MS;
                         if (retention) lastRetention = Date.now();
                         const r = await runsTick(d, {retention});

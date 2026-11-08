@@ -50,7 +50,7 @@ export const ManifestV1 = z.strictObject({
         created_at: iso,
         finalized_at: iso.nullable(),
         verified_at: iso,
-        consistency_level: z.enum(["crash_consistent_files", "engine_dump", "mixed", "unknown"]),
+        consistency_level: z.enum(["crash_consistent_files", "engine_dump", "mixed", "unknown", "stopped"]),
         inventory_version: z.number().int().min(0).nullable(),
         inventory_hash: z.string().max(128).nullable(),
         required_artifact_count: z.number().int().min(0),

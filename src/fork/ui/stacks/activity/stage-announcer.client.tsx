@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import type {RunStep} from "@/fork/runs/vocab";
+import type {AnyRunStep} from "@/fork/runs/vocab";
 import {ACTIVITY, RUNS} from "@/fork/ui/labels";
 import {useAnnounce} from "@/fork/ui/status-announcer";
 
@@ -9,9 +9,9 @@ import {useAnnounce} from "@/fork/ui/status-announcer";
  * Feeds the page's ONE `role="status"` region (§8.2 rule 7) when the durable server state changes between two polls: the active stage moved, or the
  * run reached a final state. It announces what the server SAID (props come from the polled page), never a guess. Renders nothing.
  */
-export function StageAnnouncer({stage, runId, finalState}: {stage: RunStep | null; runId: string | null; finalState: keyof typeof RUNS.states | null}) {
+export function StageAnnouncer({stage, runId, finalState}: {stage: AnyRunStep | null; runId: string | null; finalState: keyof typeof RUNS.states | null}) {
     const announce = useAnnounce();
-    const prev = React.useRef<{runId: string | null; stage: RunStep | null; finalState: string | null} | null>(null);
+    const prev = React.useRef<{runId: string | null; stage: AnyRunStep | null; finalState: string | null} | null>(null);
     React.useEffect(() => {
         const p = prev.current;
         prev.current = {runId, stage, finalState};

@@ -16,7 +16,7 @@ export const AUDIT_ACTOR_KINDS = ["user", "system"] as const;
 export const RUN_STATUSES = ["running", "success", "partial", "failed"] as const;
 /** `suppressed` (W13): a record that is deliberately not a notification (not a §4.7 trigger) — never reported as delivered. */
 export const OUTBOX_STATES = ["pending", "delivered", "failed", "suppressed"] as const;
-export const CONSISTENCY_LEVELS = ["crash_consistent_files", "engine_dump", "mixed", "unknown"] as const;
+export const CONSISTENCY_LEVELS = ["crash_consistent_files", "engine_dump", "mixed", "unknown", "stopped"] as const;
 export const DUMP_FORMATS = ["pg_custom", "pg_directory"] as const;
 export const ARCHIVE_KINDS = ["restic_snapshot", "archive_enc", "archive_plain"] as const;
 

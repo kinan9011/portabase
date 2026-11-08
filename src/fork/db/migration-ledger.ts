@@ -27,6 +27,7 @@ export const MIGRATION_LEDGER: readonly LedgerEntry[] = [
     {tag: "0012_compose_render", wave: "W17-ii", note: "fork_compose_render (policy view of a rendered compose document uploaded by the restore-target agent, raw check result, sha256; ADR-007 A14)"},
     {tag: "0013_restore_override", wave: "W16b", note: "fork_restore_override (single-use, plan-bound, KEK-encrypted restore-time overrides; D28, SEC-08)"},
     {tag: "0014_restore_run", wave: "W18a", note: "fork_restore_run (durable restore orchestrator state: W12 steps, one active run per target agent, one run per plan) + fork_restore_run_task (step journal written in the enqueue transaction)"},
+    {tag: "0015_quiesce", wave: "W17b", note: "fork_stack_policy quiesce opt-in (services, max stop, enabler); fork_stack_run quiesce state/task/result; RP consistency 'stopped' + downgrade 'quiesce_unconfirmed' (D29)"},
     // R2: append here; one entry per generated migration, in order.
 ];
 

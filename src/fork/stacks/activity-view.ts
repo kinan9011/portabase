@@ -3,6 +3,11 @@ import {sql} from "drizzle-orm";
 import type {ForkDb} from "@/fork/db/handle";
 import {RpStatusSchema} from "@/fork/recovery/status";
 import {ITEM_STATES, REFRESH_OUTCOMES, RUN_REASONS, RUN_STATES, RUN_STEPS, RUN_TRIGGERS, SKIP_REASONS, STEP_STATES} from "@/fork/runs/vocab";
+import {QuiesceResultSchema} from "@/fork/quiesce/payload";
+import {QUIESCE_REASONS, QUIESCE_RUN_STEPS, QUIESCE_STATES} from "@/fork/quiesce/vocab";
+
+/** A run's steps are `RUN_STEPS` or (W17b) `QUIESCE_RUN_STEPS`; both lists are closed. */
+const ALL_STEPS = [...new Set([...RUN_STEPS, ...QUIESCE_RUN_STEPS])] as unknown as readonly [(typeof RUN_STEPS)[number] | (typeof QUIESCE_RUN_STEPS)[number], ...((typeof RUN_STEPS)[number] | (typeof QUIESCE_RUN_STEPS)[number])[]];
 
 /**
  * Read model of the Activity tab (W13): the stack's recent runs from DURABLE rows only (a reload shows exactly the same, UX-13), each with its
@@ -22,7 +27,7 @@ export const ActivityRunSchema = z.strictObject({
     startedAt: z.string(),
     finishedAt: z.string().nullable(),
     steps: z.array(z.strictObject({
-        name: z.enum(RUN_STEPS), status: z.enum(STEP_STATES), attempts: z.number().int().min(0),
+        name: z.enum(ALL_STEPS), status: z.enum(STEP_STATES), attempts: z.number().int().min(0),
         startedAt: z.string().nullable(), finishedAt: z.string().nullable(), code: z.enum(RUN_REASONS).nullable(),
     })).max(20),
     items: z.array(z.strictObject({
@@ -30,6 +35,8 @@ export const ActivityRunSchema = z.strictObject({
         startedAt: z.string().nullable(), finishedAt: z.string().nullable(), required: z.boolean(),
     })).max(500),
     rp: z.strictObject({sequence: z.number().int(), status: RpStatusSchema}).nullable(),
+    /** W17b: what the stop window did for this run (null = the run did not involve Stop + copy). Measured downtime in ms; closed codes only. */
+    quiesce: z.strictObject({state: z.enum(QUIESCE_STATES), reason: z.enum(QUIESCE_REASONS).nullable(), downtimeMs: z.number().int().min(0).nullable(), count: z.number().int().min(0).max(32)}).nullable().default(null),
 });
 export type ActivityRun = z.infer<typeof ActivityRunSchema>;
 
@@ -37,7 +44,7 @@ export const ActivityViewSchema = z.strictObject({
     runs: z.array(ActivityRunSchema).max(ACTIVITY_LIMIT),
     total: z.number().int().min(0),
     /** The step the active run is on (for the single status region), or null. */
-    activeStage: z.enum(RUN_STEPS).nullable(),
+    activeStage: z.enum(ALL_STEPS).nullable(),
 });
 export type ActivityView = z.infer<typeof ActivityViewSchema>;
 
@@ -50,7 +57,7 @@ export async function loadActivityView(db: ForkDb, organizationId: string, stack
     const own = await db.execute(sql`select 1 from fork_stack where id = ${stackId} and organization_id = ${organizationId}`);
     if (own.rows.length === 0) return null;
     const runs = (await db.execute(sql`
-        select r.id, r.trigger, r.state, r.skip_reason, r.reason, r.validator_blocked, r.inventory_refresh, r.started_at, r.finished_at, r.steps, p.sequence, p.status as rp_status
+        select r.id, r.trigger, r.state, r.skip_reason, r.reason, r.validator_blocked, r.inventory_refresh, r.started_at, r.finished_at, r.steps, r.quiesce_state, r.quiesce_reason, r.quiesce_result, p.sequence, p.status as rp_status
           from fork_stack_run r left join fork_recovery_point p on p.run_id = r.id
          where r.stack_id = ${stackId} order by r.started_at desc, r.id desc limit ${ACTIVITY_LIMIT}`)).rows as Record<string, any>[];
     const total = ((await db.execute(sql`select count(*)::int as n from fork_stack_run where stack_id = ${stackId}`)).rows[0] as {n: number}).n;
@@ -65,12 +72,16 @@ export async function loadActivityView(db: ForkDb, organizationId: string, stack
             id: r.id, trigger: r.trigger, state: r.state, skipReason: r.skip_reason ?? null, reason: r.reason ?? null, validatorBlocked: r.validator_blocked, inventoryRefresh: r.inventory_refresh ?? null,
             startedAt: iso(r.started_at), finishedAt: iso(r.finished_at),
             steps: stepsRaw.flatMap((s) => {
-                const name = known(RUN_STEPS, s.name); const status = known(STEP_STATES, s.status);
+                const name = known(ALL_STEPS, s.name); const status = known(STEP_STATES, s.status);
                 if (!name || !status) return [];
                 return [{name, status, attempts: typeof s.attempts === "number" ? Math.max(0, Math.floor(s.attempts)) : 0, startedAt: typeof s.startedAt === "string" ? iso(s.startedAt) : null, finishedAt: typeof s.finishedAt === "string" ? iso(s.finishedAt) : null, code: known(RUN_REASONS, s.code)}];
             }),
             items: items.filter((i) => i.run_id === r.id).map((i) => ({source: i.source_name, dbms: i.dbms, state: i.state, reason: i.reason ?? null, startedAt: iso(i.started_at), finishedAt: iso(i.finished_at), required: i.required})),
             rp: r.sequence !== null && r.sequence !== undefined ? {sequence: Number(r.sequence), status: r.rp_status} : null,
+            quiesce: known(QUIESCE_STATES, r.quiesce_state) ? (() => {
+                const res = QuiesceResultSchema.safeParse(r.quiesce_result ?? {});
+                return {state: known(QUIESCE_STATES, r.quiesce_state), reason: known(QUIESCE_REASONS, r.quiesce_reason), downtimeMs: res.success ? res.data.downtime_ms ?? null : null, count: res.success ? res.data.stopped_count ?? 0 : 0};
+            })() : null,
         });
     });
     const active = out.find((r) => r.state === "starting" || r.state === "running" || r.state === "finalizing");

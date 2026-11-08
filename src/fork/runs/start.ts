@@ -7,7 +7,8 @@ import {touchScheduleState} from "@/fork/schedule-state";
 import {cfgOf, modeOf, nowOf, type RunDeps} from "./deps";
 import {initialSteps} from "./engine";
 import {loadStackFacts, pausePolicy, reauthorize, type StackFacts} from "./reauth";
-import {RUN_STEPS, type PauseReason, type RunTrigger} from "./vocab";
+import {RUN_STEPS, QUIESCE_RUN_STEPS, type PauseReason, type RunTrigger} from "./vocab";
+import {loadQuiesceDecision} from "@/fork/quiesce/service";
 
 /**
  * Starts (or skips) a run. The run row is created ONLY after re-authorization (F7) and the capacity check; the step engine
@@ -58,13 +59,19 @@ export async function startRun(d: RunDeps, i: {stackId: string; trigger: RunTrig
     if (!cap.ok) return {kind: "refused", code: "capacity", scope: cap.scope};
 
     const now = nowOf(d);
+    // W17b (D11): a policy with quiesce off keeps the plain W12 step list byte-identical; an enabled one either uses the composite task or says why not
+    const q = await loadQuiesceDecision(d, i.stackId);
     try {
         const runId = await withForkLock(d.db, `run-start:${i.stackId}`, async (tx) => {
             const [row] = await tx.insert(forkStackRun).values({
                 stackId: i.stackId, trigger: i.trigger, state: "starting", scheduledFor: i.scheduledFor ?? null, triggeredBy: i.userId ?? null,
-                steps: initialSteps(RUN_STEPS), startedAt: now, updatedAt: now, deadlineAt: new Date(now.getTime() + cfgOf(d).maxRunMs),
+                steps: initialSteps(q.decision.use && d.channel ? QUIESCE_RUN_STEPS : RUN_STEPS),
+                ...(q.decision.use ? {} : {quiesceState: q.decision.reason ? ("skipped" as const) : null, quiesceReason: q.decision.reason}), startedAt: now, updatedAt: now, deadlineAt: new Date(now.getTime() + cfgOf(d).maxRunMs),
             }).returning({id: forkStackRun.id});
-            await recordAudit(tx, {organizationId: facts.organizationId, actorUserId: i.userId ?? null, actorKind: i.userId ? "user" : "system", action: "fork.stack_run.start", resourceType: "stack_run", resourceId: row.id, result: "success", details: {trigger: i.trigger, stackId: i.stackId}, now});
+            await recordAudit(tx, {organizationId: facts.organizationId, actorUserId: i.userId ?? null, actorKind: i.userId ? "user" : "system", action: "fork.stack_run.start", resourceType: "stack_run", resourceId: row.id, result: "success", details: {trigger: i.trigger, stackId: i.stackId, quiesce: q.decision.use ? "planned" : q.decision.reason ?? "off"}, now});
+            if (!q.decision.use && q.decision.reason && q.decision.reason !== "flag_off") {
+                await enqueueForkNotification(tx, {kind: "quiesce.failed", dedupeKey: `quiesce.failed:${row.id}:skipped`, payload: {state: "skipped", reason: q.decision.reason, stackId: i.stackId, link: `/dashboard/stacks/${i.stackId}`}});
+            }
             await touchScheduleState(tx, i.stackId, {lastRunStartedAt: now, lastRunStatus: "running", ...(i.scheduledFor ? {lastScheduledAt: i.scheduledFor} : {})});
             return row.id;
         });

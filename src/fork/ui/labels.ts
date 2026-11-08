@@ -823,6 +823,8 @@ export const NOTIFY = {
         "kit.key_rotated": {title: "Recovery kit needs re-verification", sentence: "The backup key was rotated; verify the recovery kit again."},
         "fork.selfcheck.failed": {title: "Fork configuration locked", sentence: "Stack Recovery configuration is locked. Scheduled backups keep running."},
         "fork.selfcheck.recovered": {title: "Fork configuration unlocked", sentence: "Stack Recovery configuration is open again."},
+        "quiesce.failed": {title: "App could not be paused or restarted safely", sentence: "A backup could not pause or restart the app safely."},
+        "stack.quiesce_stopped": {title: "Containers are stopped", sentence: "A backup stopped containers of this stack and they are not running again yet."},
     },
     /** Short reason phrases keyed by the closed recovery-point / skip / pause codes. */
     reasons: {
@@ -866,7 +868,7 @@ export const BACKUPS = {
     mirror: {label: "Create test mirror", reason: "Test mirrors are not part of this release."},
     columns: {id: "Recovery point", time: "Created", consistency: "Consistency", destinations: "Stored in", size: "Size", duration: "Took", verification: "Verification", status: "Status"},
     consistency: {
-        crash_consistent_files: "Files copied while running", engine_dump: "Database saved safely", mixed: "Database dump plus files copied while running", unknown: "Not recorded",
+        crash_consistent_files: "Files copied while running", engine_dump: "Database saved safely", mixed: "Database dump plus files copied while running", unknown: "Not recorded", stopped: "App paused during copy",
     } as const,
     verification: {
         verified: (when: string) => `Verified ${when}`,
@@ -881,6 +883,7 @@ export const BACKUPS = {
         member_failed: "At least one part of the stack could not be backed up.", member_timeout: "An agent did not start or finish a backup in time.",
         unencrypted: "A backup file is not encrypted.", checksum_unavailable: "A backup checksum could not be computed.", run_cancelled: "The run was cancelled.",
         run_not_started: "No part of the stack could be started.", run_error: "The run stopped because of an internal error.",
+        quiesce_unconfirmed: "The app was paused for the copy, but it was never confirmed that it started again.",
     } as const,
     trigger: {manual: "Started by an administrator", schedule: "Started by the schedule"},
     detail: {
@@ -922,7 +925,10 @@ export const ACTIVITY = {
     noItems: "No part of the stack was started in this run.",
     stage: {
         refresh_inventory: "Discover: refresh the stack inventory", validate: "Validate: check what is covered", trigger: "Start the member backups",
-        track: "Database dump, file copy and upload (run by the agent)", hash: "Checksums of the stored files", finalize: "Commit the recovery point",
+        track: "Database dump, file copy and upload (run by the agent)",
+        quiesce_stop: "Pause the app: stop the selected containers (run by the agent)", trigger_window: "Start the file and volume copies while the app is paused",
+        track_window: "File and volume copy and upload (run by the agent)", quiesce_release: "Start the app again and check it is running",
+        hash: "Checksums of the stored files", finalize: "Commit the recovery point",
     } as const,
     verifyStage: "Verify: not available yet (arrives with the verify job)",
     stepStatus: {pending: "Waiting", running: "In progress", done: "Done", failed: "Failed"} as const,
@@ -1106,4 +1112,62 @@ export const RECOVER_STEPS = {
     policy: "Checking the stack's Compose file for risky settings",
     databases: "Restoring databases",
     start: "Starting the stack",
+} as const;
+
+/**
+ * W17b: stop-during-backup ("Stop + copy"). Every sentence the panel, the wizard status row, Activity and Backups show for the composite quiesce task.
+ * Product copy never claims a restore or a backup is "safe": it states what the agent did and what was measured.
+ */
+const QUIESCE_SKIP = {
+    flag_off: "Stop + copy is switched off on this dashboard.", locked: "Stop + copy is paused while Stack Recovery configuration is locked.", capability_missing: "The agent on this host has not been set up for Stop + copy.",
+    agent_unenrolled: "The agent is not connected to this dashboard's task channel.", plan_blocked: "The selected services cannot be stopped safely right now.", enabler_lost: "The administrator who enabled Stop + copy no longer has the right to.",
+    restore_busy: "A restore is running on this host.", no_policy: "Set up and activate the backup first.", no_inventory: "There is no inventory of this stack yet.", no_agent: "This stack has no agent.",
+} as const;
+export const QUIESCE = {
+    heading: "Stop + copy",
+    intro: "While files and volumes are copied, the selected services are stopped, then started again. Databases are dumped before the stop. Off unless an administrator turns it on for this stack.",
+    status: {off: "Off", on: "On", unavailable: "Unavailable"} as const,
+    skip: QUIESCE_SKIP,
+    unavailableBecause: (reason: string) => `Unavailable: ${reason}`,
+    statusRow: {
+        available: "Stop + copy: available after activation, on the Schedule tab.",
+        blocked: (reason: string) => `Stop + copy: not available. ${reason}`,
+    },
+    fields: {services: "Services to stop", maxStop: "Longest pause", maxStopChoices: {300: "5 minutes", 600: "10 minutes", 900: "15 minutes", 1800: "30 minutes", 3600: "60 minutes"} as Record<number, string>,
+        servicesHint: "Pre-selected from the stack's labels. They are only suggestions: what you tick here is what runs.", confirmName: "Type the stack name to confirm", confirmNameHint: "This host is marked as production."},
+    preview: {heading: "What will happen", stopOrder: "Stop order", startOrder: "Start order", during: "Copied while the app is paused", before: "Copied before the pause", notRunning: "Not running, left alone", none: "none"},
+    blockers: {
+        no_services: "Choose at least one running service.", service_unknown: "A chosen service is not part of this stack.", no_container_id: "A chosen service has no known container.",
+        dependency_cycle: "The chosen services depend on each other in a circle.", writer_not_stopped: "A service that writes to a copied folder is not selected, so the copy would not be paused.",
+        manager_in_stack: "This stack contains Portabase, its agent or Arcane. Those are never stopped.", too_many: "At most 32 services can be stopped.", no_window_members: "There are no file or volume copies to pause the app for.",
+    } as const,
+    actions: {enable: "Turn on Stop + copy", disable: "Turn off Stop + copy", startNow: "Start now", save: "Save"},
+    confirm: {enableTitle: "Turn on Stop + copy?", enableBody: "Backups of this stack will stop the selected services for up to the chosen time, then start them again.", disableTitle: "Turn off Stop + copy?",
+        disableBody: "Backups go back to copying files while the app runs.", startNowTitle: "Start the stopped services now?", startNowBody: "The agent starts the services that this backup stopped."},
+    readOnly: "Only a system administrator can change this.",
+    lastResult: {heading: "Last backup with a pause", paused: (d: string, n: number) => `App paused for ${d} (${n} container${n === 1 ? "" : "s"}).`, notPaused: (why: string) => `App was not paused: ${why}`,
+        outcome: {verified: "Running again", unhealthy: "Started but unhealthy", still_starting: "Started, still starting", not_running: "Did not start", replaced: "Replaced by a new container", not_running_before: "Was not running"} as const},
+    states: {
+        skipped: "Not paused", requested: "Waiting for the agent", stopped: "Paused", not_started: "Agent did not start it", refused: "Refused by the agent", stop_failed: "Could not stop everything",
+        restarted: "Started again", restart_failed: "Some services did not start again", unconfirmed: "Not confirmed",
+    } as const,
+    agentCodes: {
+        not_in_project: "A chosen container is not part of this stack.", protected_in_project: "This stack contains Portabase, its agent, Arcane or a container with Docker access. Nothing was stopped.", container_changed: "A chosen container changed since the plan.",
+        replica_not_listed: "A second copy of a chosen service is running.", container_unstable: "A chosen container is paused or restarting.", restore_owned: "A chosen container belongs to a restore.", quiesce_pending: "An earlier pause is still waiting to be resolved on the host.",
+        journal_unavailable: "The agent could not write its safety journal. Nothing was stopped.", stop_failed: "A service could not be stopped.", restart_unverified: "Some services did not come back healthy.", quiesce_interrupted: "The agent was interrupted and started the services again.",
+        protected_container: "A chosen container is protected and was not touched.", docker_unavailable: "The agent cannot reach Docker.", deadline_exceeded: "The pause took too long; the agent started the services again.", payload_invalid: "The request was not valid.",
+        capability_missing_at_lease: "The agent no longer offers Stop + copy.", execution_error: "The agent failed unexpectedly.", lease_lost: "The agent lost contact during the pause.", expired: "The request expired before the agent picked it up.", agent_did_not_start: "The agent did not pick up the request in time.",
+    } as Record<string, string>,
+    releasedBy: {dashboard: "Copies finished", lost_dashboard: "The dashboard no longer knew this pause", deadline: "The longest pause was reached", window_broken: "A stopped service was started by someone else", stop_failed: "A service could not be stopped", replay: "Started again after the agent restarted"} as Record<string, string>,
+    alert: {line: (since: string) => `Stopped since ${since} UTC`, startNow: "Start now", mail: "Start them from the dashboard, or run docker start on the host.", manual: (names: string) => `Start them on the host: docker start ${names}`,
+        agentOffline: "The agent is not reachable right now.", startInProgress: "A start request is already waiting for the agent.", nothingStopped: "Nothing is waiting to be started.",
+        started: "Start requested.", requested: "The agent will start the services within a few seconds."},
+    errors: {forbidden: "Only a system administrator can do this.", not_found: "Stack not found.", locked: "Configuration is locked until the single-organization check passes.", rate_limited: "Too many attempts. Wait a moment and try again.",
+        invalid_input: "Check the values you entered.", flag_off: "Stop + copy is switched off on this dashboard.", not_active: "Set up and activate the backup first.", plan_blocked: "These services cannot be stopped safely.",
+        confirmation_mismatch: "The name does not match. Type the stack name exactly.", nothing_stopped: "Nothing is waiting to be started.", agent_offline: "The agent is not reachable right now.", start_in_progress: "A start request is already waiting for the agent.",
+        not_enabled: "Stop + copy is not turned on.", not_enrolled: "The agent is not connected.", agent_disabled: "The agent's task channel is switched off.", capability_missing: "The agent has not been set up for Stop + copy.", insecure_transport: "The dashboard address must be https.",
+        signing_unavailable: "The dashboard cannot sign tasks right now.", payload_too_large: "The request is too large.",
+    } as Record<string, string>,
+    duration: (ms: number): string => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; },
+    app: "App",
 } as const;

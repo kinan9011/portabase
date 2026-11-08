@@ -1,0 +1,4434 @@
+{
+  "id": "01965fce-7297-4620-b73f-99935884cf53",
+  "prevId": "97aa025a-1635-48ae-9a9a-b9ffdbb134d9",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.fork_meta": {
+      "name": "fork_meta",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.fork_arcane_connection": {
+      "name": "fork_arcane_connection",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_url": {
+          "name": "base_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "api_key_enc": {
+          "name": "api_key_enc",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pinned_api_version": {
+          "name": "pinned_api_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "health_status": {
+          "name": "health_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "last_error_class": {
+          "name": "last_error_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tls_insecure": {
+          "name": "tls_insecure",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "allow_projects_read": {
+          "name": "allow_projects_read",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "key_id": {
+          "name": "key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_checked_at": {
+          "name": "last_checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_sync_attempt_at": {
+          "name": "last_sync_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sync_failure_streak": {
+          "name": "sync_failure_streak",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "circuit_open_until": {
+          "name": "circuit_open_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "fork_arcane_connection_organization_id_organization_id_fk": {
+          "name": "fork_arcane_connection_organization_id_organization_id_fk",
+          "tableFrom": "fork_arcane_connection",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_arcane_connection_org_name_uq": {
+          "name": "fork_arcane_connection_org_name_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "organization_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_arcane_connection_health_ck": {
+          "name": "fork_arcane_connection_health_ck",
+          "value": "\"health_status\" IN ('unknown', 'healthy', 'degraded', 'unreachable', 'auth_failed')"
+        },
+        "fork_arcane_connection_name_ck": {
+          "name": "fork_arcane_connection_name_ck",
+          "value": "char_length(\"fork_arcane_connection\".\"name\") BETWEEN 1 AND 128"
+        },
+        "fork_arcane_connection_streak_ck": {
+          "name": "fork_arcane_connection_streak_ck",
+          "value": "\"fork_arcane_connection\".\"sync_failure_streak\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_arcane_environment": {
+      "name": "fork_arcane_environment",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "host_role": {
+          "name": "host_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'production'"
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "agent_name": {
+          "name": "agent_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "allowed_path_roots": {
+          "name": "allowed_path_roots",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "last_sync_at": {
+          "name": "last_sync_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_sync_status": {
+          "name": "last_sync_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_sync_error_class": {
+          "name": "last_sync_error_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_sync_summary": {
+          "name": "last_sync_summary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "fork_arcane_environment_agent_idx": {
+          "name": "fork_arcane_environment_agent_idx",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_arcane_environment_connection_id_fork_arcane_connection_id_fk": {
+          "name": "fork_arcane_environment_connection_id_fork_arcane_connection_id_fk",
+          "tableFrom": "fork_arcane_environment",
+          "tableTo": "fork_arcane_connection",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_arcane_environment_agent_id_agents_id_fk": {
+          "name": "fork_arcane_environment_agent_id_agents_id_fk",
+          "tableFrom": "fork_arcane_environment",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_arcane_environment_conn_ext_uq": {
+          "name": "fork_arcane_environment_conn_ext_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "connection_id",
+            "external_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_arcane_environment_host_role_ck": {
+          "name": "fork_arcane_environment_host_role_ck",
+          "value": "\"host_role\" IN ('production', 'test')"
+        },
+        "fork_arcane_environment_sync_status_ck": {
+          "name": "fork_arcane_environment_sync_status_ck",
+          "value": "\"last_sync_status\" IS NULL OR \"last_sync_status\" IN ('ok', 'partial', 'error')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_stack": {
+      "name": "fork_stack",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "environment_id": {
+          "name": "environment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "environment_name": {
+          "name": "environment_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "compose_project": {
+          "name": "compose_project",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "runtime_state": {
+          "name": "runtime_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "protection_state": {
+          "name": "protection_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unprotected'"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "project_name": {
+          "name": "project_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stale_since": {
+          "name": "stale_since",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "contains_personal_data": {
+          "name": "contains_personal_data",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "test_restore_opt_in_at": {
+          "name": "test_restore_opt_in_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "test_restore_opt_in_by": {
+          "name": "test_restore_opt_in_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "fork_stack_org_idx": {
+          "name": "fork_stack_org_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_stack_organization_id_organization_id_fk": {
+          "name": "fork_stack_organization_id_organization_id_fk",
+          "tableFrom": "fork_stack",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_stack_environment_id_fork_arcane_environment_id_fk": {
+          "name": "fork_stack_environment_id_fork_arcane_environment_id_fk",
+          "tableFrom": "fork_stack",
+          "tableTo": "fork_arcane_environment",
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "fork_stack_project_id_projects_id_fk": {
+          "name": "fork_stack_project_id_projects_id_fk",
+          "tableFrom": "fork_stack",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_stack_env_project_uq": {
+          "name": "fork_stack_env_project_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "environment_id",
+            "compose_project"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_stack_opt_in_ck": {
+          "name": "fork_stack_opt_in_ck",
+          "value": "(\"fork_stack\".\"test_restore_opt_in_at\" IS NULL) = (\"fork_stack\".\"test_restore_opt_in_by\" IS NULL)"
+        },
+        "fork_stack_runtime_state_ck": {
+          "name": "fork_stack_runtime_state_ck",
+          "value": "\"runtime_state\" IN ('running', 'partial', 'stopped', 'absent', 'unknown')"
+        },
+        "fork_stack_protection_state_ck": {
+          "name": "fork_stack_protection_state_ck",
+          "value": "\"protection_state\" IN ('unprotected', 'configured', 'active', 'paused')"
+        },
+        "fork_stack_compose_project_ck": {
+          "name": "fork_stack_compose_project_ck",
+          "value": "\"fork_stack\".\"compose_project\" ~ '^[a-z0-9][a-z0-9_-]{0,127}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_stack_inventory": {
+      "name": "fork_stack_inventory",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "stack_id": {
+          "name": "stack_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inventory": {
+          "name": "inventory",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "warnings": {
+          "name": "warnings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "discovered_at": {
+          "name": "discovered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "fork_stack_inventory_stack_id_fork_stack_id_fk": {
+          "name": "fork_stack_inventory_stack_id_fork_stack_id_fk",
+          "tableFrom": "fork_stack_inventory",
+          "tableTo": "fork_stack",
+          "columnsFrom": [
+            "stack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_stack_inventory_stack_version_uq": {
+          "name": "fork_stack_inventory_stack_version_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "stack_id",
+            "version"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_stack_inventory_version_ck": {
+          "name": "fork_stack_inventory_version_ck",
+          "value": "\"fork_stack_inventory\".\"version\" >= 1"
+        },
+        "fork_stack_inventory_hash_ck": {
+          "name": "fork_stack_inventory_hash_ck",
+          "value": "\"fork_stack_inventory\".\"content_hash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_stack_policy": {
+      "name": "fork_stack_policy",
+      "schema": "",
+      "columns": {
+        "stack_id": {
+          "name": "stack_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "policy": {
+          "name": "policy",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "activated_at": {
+          "name": "activated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "activated_by": {
+          "name": "activated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deactivated_at": {
+          "name": "deactivated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "selection": {
+          "name": "selection",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "storage_channel_ids": {
+          "name": "storage_channel_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "consistency_profile": {
+          "name": "consistency_profile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'crash'"
+        },
+        "applied_plan_hash": {
+          "name": "applied_plan_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "materialized_at": {
+          "name": "materialized_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "materialize_state": {
+          "name": "materialize_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "schedule": {
+          "name": "schedule",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "accepted_exclusions": {
+          "name": "accepted_exclusions",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "activation": {
+          "name": "activation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "paused_at": {
+          "name": "paused_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pause_reason": {
+          "name": "pause_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiesce_enabled": {
+          "name": "quiesce_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "quiesce_services": {
+          "name": "quiesce_services",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "quiesce_max_stop_seconds": {
+          "name": "quiesce_max_stop_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 600
+        },
+        "quiesce_enabled_by": {
+          "name": "quiesce_enabled_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiesce_enabled_at": {
+          "name": "quiesce_enabled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "fork_stack_policy_active_idx": {
+          "name": "fork_stack_policy_active_idx",
+          "columns": [
+            {
+              "expression": "stack_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "activated_at IS NOT NULL AND deactivated_at IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_stack_policy_stack_id_fork_stack_id_fk": {
+          "name": "fork_stack_policy_stack_id_fork_stack_id_fk",
+          "tableFrom": "fork_stack_policy",
+          "tableTo": "fork_stack",
+          "columnsFrom": [
+            "stack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_stack_policy_quiesce_stop_ck": {
+          "name": "fork_stack_policy_quiesce_stop_ck",
+          "value": "\"fork_stack_policy\".\"quiesce_max_stop_seconds\" BETWEEN 60 AND 3600"
+        },
+        "fork_stack_policy_quiesce_ck": {
+          "name": "fork_stack_policy_quiesce_ck",
+          "value": "\"fork_stack_policy\".\"quiesce_enabled\" = false OR (\"fork_stack_policy\".\"quiesce_enabled_by\" IS NOT NULL AND \"fork_stack_policy\".\"quiesce_enabled_at\" IS NOT NULL AND jsonb_array_length(\"fork_stack_policy\".\"quiesce_services\") BETWEEN 1 AND 32)"
+        },
+        "fork_stack_policy_materialize_state_ck": {
+          "name": "fork_stack_policy_materialize_state_ck",
+          "value": "\"materialize_state\" IN ('none', 'ready', 'inventory_changed', 'blocked')"
+        },
+        "fork_stack_policy_consistency_ck": {
+          "name": "fork_stack_policy_consistency_ck",
+          "value": "\"consistency_profile\" IN ('crash', 'dump', 'stop')"
+        },
+        "fork_stack_policy_pause_reason_ck": {
+          "name": "fork_stack_policy_pause_reason_ck",
+          "value": "\"pause_reason\" IS NULL OR \"pause_reason\" IN ('user_missing', 'user_blocked', 'capability_lost', 'agent_acl_lost', 'encryption_off', 'channels_unavailable', 'agent_gone')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_stack_source": {
+      "name": "fork_stack_source",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "stack_id": {
+          "name": "stack_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_key": {
+          "name": "resource_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'discovered'"
+        },
+        "required": {
+          "name": "required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'planned'"
+        },
+        "database_id": {
+          "name": "database_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dbms": {
+          "name": "dbms",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "engine": {
+          "name": "engine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'archive'"
+        },
+        "member_name": {
+          "name": "member_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "covers_keys": {
+          "name": "covers_keys",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "desired_hash": {
+          "name": "desired_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "drift_reason": {
+          "name": "drift_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_probe": {
+          "name": "last_probe",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_probe_at": {
+          "name": "last_probe_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "fork_stack_source_db_idx": {
+          "name": "fork_stack_source_db_idx",
+          "columns": [
+            {
+              "expression": "database_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_stack_source_stack_id_fork_stack_id_fk": {
+          "name": "fork_stack_source_stack_id_fork_stack_id_fk",
+          "tableFrom": "fork_stack_source",
+          "tableTo": "fork_stack",
+          "columnsFrom": [
+            "stack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_stack_source_database_id_databases_id_fk": {
+          "name": "fork_stack_source_database_id_databases_id_fk",
+          "tableFrom": "fork_stack_source",
+          "tableTo": "databases",
+          "columnsFrom": [
+            "database_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_stack_source_stack_key_uq": {
+          "name": "fork_stack_source_stack_key_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "stack_id",
+            "resource_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_stack_source_role_ck": {
+          "name": "fork_stack_source_role_ck",
+          "value": "\"role\" IN ('compose', 'env', 'bind', 'volume', 'db')"
+        },
+        "fork_stack_source_origin_ck": {
+          "name": "fork_stack_source_origin_ck",
+          "value": "\"origin\" IN ('discovered', 'manual')"
+        },
+        "fork_stack_source_status_ck": {
+          "name": "fork_stack_source_status_ck",
+          "value": "\"status\" IN ('planned', 'canary', 'active', 'drifted', 'orphaned', 'blocked')"
+        },
+        "fork_stack_source_probe_ck": {
+          "name": "fork_stack_source_probe_ck",
+          "value": "\"last_probe\" IS NULL OR \"last_probe\" IN ('readable', 'unreadable')"
+        },
+        "fork_stack_source_hash_ck": {
+          "name": "fork_stack_source_hash_ck",
+          "value": "\"fork_stack_source\".\"desired_hash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_stack_run": {
+      "name": "fork_stack_run",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "stack_id": {
+          "name": "stack_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'starting'"
+        },
+        "scheduled_for": {
+          "name": "scheduled_for",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skip_reason": {
+          "name": "skip_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "triggered_by": {
+          "name": "triggered_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inventory_version": {
+          "name": "inventory_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inventory_refresh": {
+          "name": "inventory_refresh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "validator_blocked": {
+          "name": "validator_blocked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "steps": {
+          "name": "steps",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deadline_at": {
+          "name": "deadline_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "quiesce_state": {
+          "name": "quiesce_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiesce_reason": {
+          "name": "quiesce_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiesce_task_id": {
+          "name": "quiesce_task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiesce_start_task_id": {
+          "name": "quiesce_start_task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiesce_stopped_at": {
+          "name": "quiesce_stopped_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiesce_release_at": {
+          "name": "quiesce_release_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiesce_release_reason": {
+          "name": "quiesce_release_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiesce_result": {
+          "name": "quiesce_result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "fork_stack_run_quiesce_idx": {
+          "name": "fork_stack_run_quiesce_idx",
+          "columns": [
+            {
+              "expression": "stack_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "quiesce_task_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fork_stack_run_one_active_uq": {
+          "name": "fork_stack_run_one_active_uq",
+          "columns": [
+            {
+              "expression": "stack_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "state IN ('starting','running','finalizing')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fork_stack_run_stack_started_idx": {
+          "name": "fork_stack_run_stack_started_idx",
+          "columns": [
+            {
+              "expression": "stack_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_stack_run_stack_id_fork_stack_id_fk": {
+          "name": "fork_stack_run_stack_id_fork_stack_id_fk",
+          "tableFrom": "fork_stack_run",
+          "tableTo": "fork_stack",
+          "columnsFrom": [
+            "stack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_stack_run_quiesce_task_id_fork_agent_task_id_fk": {
+          "name": "fork_stack_run_quiesce_task_id_fork_agent_task_id_fk",
+          "tableFrom": "fork_stack_run",
+          "tableTo": "fork_agent_task",
+          "columnsFrom": [
+            "quiesce_task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "fork_stack_run_quiesce_start_task_id_fork_agent_task_id_fk": {
+          "name": "fork_stack_run_quiesce_start_task_id_fork_agent_task_id_fk",
+          "tableFrom": "fork_stack_run",
+          "tableTo": "fork_agent_task",
+          "columnsFrom": [
+            "quiesce_start_task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_stack_run_slot_uq": {
+          "name": "fork_stack_run_slot_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "stack_id",
+            "scheduled_for"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_stack_run_quiesce_state_ck": {
+          "name": "fork_stack_run_quiesce_state_ck",
+          "value": "\"quiesce_state\" IS NULL OR \"quiesce_state\" IN ('skipped', 'requested', 'stopped', 'not_started', 'refused', 'stop_failed', 'restarted', 'restart_failed', 'unconfirmed')"
+        },
+        "fork_stack_run_quiesce_reason_ck": {
+          "name": "fork_stack_run_quiesce_reason_ck",
+          "value": "\"quiesce_reason\" IS NULL OR \"quiesce_reason\" IN ('flag_off', 'locked', 'capability_missing', 'agent_unenrolled', 'plan_blocked', 'enabler_lost', 'restore_busy', 'not_in_project', 'protected_in_project', 'container_changed', 'replica_not_listed', 'container_unstable', 'restore_owned', 'quiesce_pending', 'journal_unavailable', 'stop_failed', 'restart_unverified', 'quiesce_interrupted', 'protected_container', 'docker_unavailable', 'deadline_exceeded', 'payload_invalid', 'capability_missing_at_lease', 'execution_error', 'lease_lost', 'expired', 'agent_did_not_start')"
+        },
+        "fork_stack_run_quiesce_release_ck": {
+          "name": "fork_stack_run_quiesce_release_ck",
+          "value": "\"quiesce_release_reason\" IS NULL OR \"quiesce_release_reason\" IN ('capture_done', 'start_now', 'cancelled')"
+        },
+        "fork_stack_run_quiesce_result_ck": {
+          "name": "fork_stack_run_quiesce_result_ck",
+          "value": "\"fork_stack_run\".\"quiesce_result\" IS NULL OR octet_length(\"fork_stack_run\".\"quiesce_result\"::text) <= 16384"
+        },
+        "fork_stack_run_trigger_ck": {
+          "name": "fork_stack_run_trigger_ck",
+          "value": "\"trigger\" IN ('schedule', 'manual')"
+        },
+        "fork_stack_run_state_ck": {
+          "name": "fork_stack_run_state_ck",
+          "value": "\"state\" IN ('starting', 'running', 'finalizing', 'succeeded', 'incomplete', 'failed', 'cancelled', 'skipped')"
+        },
+        "fork_stack_run_skip_reason_ck": {
+          "name": "fork_stack_run_skip_reason_ck",
+          "value": "\"skip_reason\" IS NULL OR \"skip_reason\" IN ('overlap', 'missed')"
+        },
+        "fork_stack_run_reason_ck": {
+          "name": "fork_stack_run_reason_ck",
+          "value": "\"reason\" IS NULL OR \"reason\" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity', 'internal_error')"
+        },
+        "fork_stack_run_refresh_ck": {
+          "name": "fork_stack_run_refresh_ck",
+          "value": "\"inventory_refresh\" IS NULL OR \"inventory_refresh\" IN ('ok', 'failed', 'skipped_locked', 'not_attempted')"
+        },
+        "fork_stack_run_skipped_ck": {
+          "name": "fork_stack_run_skipped_ck",
+          "value": "\"fork_stack_run\".\"state\" <> 'skipped' OR \"fork_stack_run\".\"skip_reason\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_stack_run_item": {
+      "name": "fork_stack_run_item",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stack_source_id": {
+          "name": "stack_source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "backup_id": {
+          "name": "backup_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_name": {
+          "name": "source_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dbms": {
+          "name": "dbms",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "required": {
+          "name": "required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "queued_at": {
+          "name": "queued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_progress_at": {
+          "name": "last_progress_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checksums": {
+          "name": "checksums",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {
+        "fork_stack_run_item_run_idx": {
+          "name": "fork_stack_run_item_run_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fork_stack_run_item_backup_idx": {
+          "name": "fork_stack_run_item_backup_idx",
+          "columns": [
+            {
+              "expression": "backup_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_stack_run_item_run_id_fork_stack_run_id_fk": {
+          "name": "fork_stack_run_item_run_id_fork_stack_run_id_fk",
+          "tableFrom": "fork_stack_run_item",
+          "tableTo": "fork_stack_run",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_stack_run_item_stack_source_id_fork_stack_source_id_fk": {
+          "name": "fork_stack_run_item_stack_source_id_fork_stack_source_id_fk",
+          "tableFrom": "fork_stack_run_item",
+          "tableTo": "fork_stack_source",
+          "columnsFrom": [
+            "stack_source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "fork_stack_run_item_backup_id_backups_id_fk": {
+          "name": "fork_stack_run_item_backup_id_backups_id_fk",
+          "tableFrom": "fork_stack_run_item",
+          "tableTo": "backups",
+          "columnsFrom": [
+            "backup_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_stack_run_item_state_ck": {
+          "name": "fork_stack_run_item_state_ck",
+          "value": "\"state\" IN ('queued', 'running', 'succeeded', 'failed', 'skipped')"
+        },
+        "fork_stack_run_item_reason_ck": {
+          "name": "fork_stack_run_item_reason_ck",
+          "value": "\"reason\" IS NULL OR \"reason\" IN ('agent_did_not_start', 'agent_made_no_progress', 'run_timeout', 'member_failed', 'member_busy', 'member_method_conflict', 'member_not_active', 'member_vanished', 'storage_failed', 'nothing_queued', 'cancelled', 'interrupted', 'capacity', 'internal_error')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_audit_event": {
+      "name": "fork_audit_event",
+      "schema": "",
+      "columns": {
+        "seq": {
+          "name": "seq",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_type": {
+          "name": "resource_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resource_id": {
+          "name": "resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result": {
+          "name": "result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redacted_details": {
+          "name": "redacted_details",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "prev_hash": {
+          "name": "prev_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_hash": {
+          "name": "event_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "fork_audit_event_created_idx": {
+          "name": "fork_audit_event_created_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fork_audit_event_org_idx": {
+          "name": "fork_audit_event_org_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_audit_event_id_unique": {
+          "name": "fork_audit_event_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id"
+          ]
+        },
+        "fork_audit_event_event_hash_unique": {
+          "name": "fork_audit_event_event_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "event_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_audit_event_result_ck": {
+          "name": "fork_audit_event_result_ck",
+          "value": "\"result\" IN ('success', 'denied', 'failure')"
+        },
+        "fork_audit_event_actor_kind_ck": {
+          "name": "fork_audit_event_actor_kind_ck",
+          "value": "\"actor_kind\" IN ('user', 'system')"
+        },
+        "fork_audit_event_hash_ck": {
+          "name": "fork_audit_event_hash_ck",
+          "value": "\"fork_audit_event\".\"prev_hash\" ~ '^[0-9a-f]{64}$' AND \"fork_audit_event\".\"event_hash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_alert_state": {
+      "name": "fork_alert_state",
+      "schema": "",
+      "columns": {
+        "stack_id": {
+          "name": "stack_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "epoch": {
+          "name": "epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "since": {
+          "name": "since",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "fork_alert_state_stack_id_fork_stack_id_fk": {
+          "name": "fork_alert_state_stack_id_fork_stack_id_fk",
+          "tableFrom": "fork_alert_state",
+          "tableTo": "fork_stack",
+          "columnsFrom": [
+            "stack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "fork_alert_state_stack_id_kind_pk": {
+          "name": "fork_alert_state_stack_id_kind_pk",
+          "columns": [
+            "stack_id",
+            "kind"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_alert_state_epoch_ck": {
+          "name": "fork_alert_state_epoch_ck",
+          "value": "\"fork_alert_state\".\"epoch\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_lock": {
+      "name": "fork_lock",
+      "schema": "",
+      "columns": {
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "acquired_at": {
+          "name": "acquired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.fork_notification_outbox": {
+      "name": "fork_notification_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "claimed_until": {
+          "name": "claimed_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error_code": {
+          "name": "last_error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_notification_outbox_dedupe_key_unique": {
+          "name": "fork_notification_outbox_dedupe_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "dedupe_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_notification_outbox_state_ck": {
+          "name": "fork_notification_outbox_state_ck",
+          "value": "\"state\" IN ('pending', 'delivered', 'failed', 'suppressed')"
+        },
+        "fork_notification_outbox_attempts_ck": {
+          "name": "fork_notification_outbox_attempts_ck",
+          "value": "\"fork_notification_outbox\".\"attempts\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_schedule_state": {
+      "name": "fork_schedule_state",
+      "schema": "",
+      "columns": {
+        "stack_id": {
+          "name": "stack_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last_scheduled_at": {
+          "name": "last_scheduled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_run_started_at": {
+          "name": "last_run_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_run_finished_at": {
+          "name": "last_run_finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_run_status": {
+          "name": "last_run_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_verified_rp_at": {
+          "name": "last_verified_rp_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "consecutive_failures": {
+          "name": "consecutive_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "fork_schedule_state_stack_id_fork_stack_id_fk": {
+          "name": "fork_schedule_state_stack_id_fork_stack_id_fk",
+          "tableFrom": "fork_schedule_state",
+          "tableTo": "fork_stack",
+          "columnsFrom": [
+            "stack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_schedule_state_status_ck": {
+          "name": "fork_schedule_state_status_ck",
+          "value": "\"last_run_status\" IS NULL OR \"last_run_status\" IN ('running', 'success', 'partial', 'failed')"
+        },
+        "fork_schedule_state_failures_ck": {
+          "name": "fork_schedule_state_failures_ck",
+          "value": "\"fork_schedule_state\".\"consecutive_failures\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_recovery_point": {
+      "name": "fork_recovery_point",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "stack_id": {
+          "name": "stack_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stack_name": {
+          "name": "stack_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inventory_version": {
+          "name": "inventory_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inventory_hash": {
+          "name": "inventory_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'incomplete'"
+        },
+        "downgrade_reason": {
+          "name": "downgrade_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "consistency_level": {
+          "name": "consistency_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "required_artifact_count": {
+          "name": "required_artifact_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "present_artifact_count": {
+          "name": "present_artifact_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "total_size_bytes": {
+          "name": "total_size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "manifest_sha256": {
+          "name": "manifest_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "manifest_sig_kid": {
+          "name": "manifest_sig_kid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "manifest_refs": {
+          "name": "manifest_refs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finalized_at": {
+          "name": "finalized_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verify_report": {
+          "name": "verify_report",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retention_bucket": {
+          "name": "retention_bucket",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "purged_at": {
+          "name": "purged_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "fork_recovery_point_stack_status_idx": {
+          "name": "fork_recovery_point_stack_status_idx",
+          "columns": [
+            {
+              "expression": "stack_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_recovery_point_stack_id_fork_stack_id_fk": {
+          "name": "fork_recovery_point_stack_id_fork_stack_id_fk",
+          "tableFrom": "fork_recovery_point",
+          "tableTo": "fork_stack",
+          "columnsFrom": [
+            "stack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "fork_recovery_point_run_id_fork_stack_run_id_fk": {
+          "name": "fork_recovery_point_run_id_fork_stack_run_id_fk",
+          "tableFrom": "fork_recovery_point",
+          "tableTo": "fork_stack_run",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_recovery_point_stack_seq_uq": {
+          "name": "fork_recovery_point_stack_seq_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "stack_id",
+            "sequence"
+          ]
+        },
+        "fork_recovery_point_run_uq": {
+          "name": "fork_recovery_point_run_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "run_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_recovery_point_status_ck": {
+          "name": "fork_recovery_point_status_ck",
+          "value": "\"status\" IN ('incomplete', 'pending_verification', 'verified', 'failed')"
+        },
+        "fork_recovery_point_reason_ck": {
+          "name": "fork_recovery_point_reason_ck",
+          "value": "\"downgrade_reason\" IS NULL OR \"downgrade_reason\" IN ('fk_null', 'artifact_missing', 'count_mismatch', 'retention_partial', 'stack_removed', 'verify_failed', 'plaintext_hash_mismatch', 'validator_blocked', 'member_failed', 'member_timeout', 'unencrypted', 'checksum_unavailable', 'run_cancelled', 'run_not_started', 'run_error', 'quiesce_unconfirmed')"
+        },
+        "fork_recovery_point_consistency_ck": {
+          "name": "fork_recovery_point_consistency_ck",
+          "value": "\"consistency_level\" IN ('crash_consistent_files', 'engine_dump', 'mixed', 'unknown', 'stopped')"
+        },
+        "fork_recovery_point_counts_ck": {
+          "name": "fork_recovery_point_counts_ck",
+          "value": "\"fork_recovery_point\".\"required_artifact_count\" >= 0 AND \"fork_recovery_point\".\"present_artifact_count\" >= 0"
+        },
+        "fork_recovery_point_verified_ck": {
+          "name": "fork_recovery_point_verified_ck",
+          "value": "\"fork_recovery_point\".\"status\" <> 'verified' OR (\"fork_recovery_point\".\"verified_at\" IS NOT NULL AND \"fork_recovery_point\".\"downgrade_reason\" IS NULL)"
+        },
+        "fork_recovery_point_failed_ck": {
+          "name": "fork_recovery_point_failed_ck",
+          "value": "\"fork_recovery_point\".\"status\" <> 'failed' OR \"fork_recovery_point\".\"downgrade_reason\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_recovery_point_artifact": {
+      "name": "fork_recovery_point_artifact",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "rp_id": {
+          "name": "rp_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stack_source_id": {
+          "name": "stack_source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "backup_id": {
+          "name": "backup_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "backup_storage_id": {
+          "name": "backup_storage_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_name": {
+          "name": "source_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "engine": {
+          "name": "engine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dump_format": {
+          "name": "dump_format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archive_kind": {
+          "name": "archive_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archive_format_version": {
+          "name": "archive_format_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "encrypted": {
+          "name": "encrypted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "channel_kind": {
+          "name": "channel_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "path_or_snapshot_id": {
+          "name": "path_or_snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "generated_id": {
+          "name": "generated_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ciphertext_sha256": {
+          "name": "ciphertext_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "plaintext_sha256": {
+          "name": "plaintext_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "plaintext_size": {
+          "name": "plaintext_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "required": {
+          "name": "required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "presence": {
+          "name": "presence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        }
+      },
+      "indexes": {
+        "fork_rp_artifact_rp_idx": {
+          "name": "fork_rp_artifact_rp_idx",
+          "columns": [
+            {
+              "expression": "rp_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fork_rp_artifact_backup_idx": {
+          "name": "fork_rp_artifact_backup_idx",
+          "columns": [
+            {
+              "expression": "backup_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_recovery_point_artifact_rp_id_fork_recovery_point_id_fk": {
+          "name": "fork_recovery_point_artifact_rp_id_fork_recovery_point_id_fk",
+          "tableFrom": "fork_recovery_point_artifact",
+          "tableTo": "fork_recovery_point",
+          "columnsFrom": [
+            "rp_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_recovery_point_artifact_stack_source_id_fork_stack_source_id_fk": {
+          "name": "fork_recovery_point_artifact_stack_source_id_fork_stack_source_id_fk",
+          "tableFrom": "fork_recovery_point_artifact",
+          "tableTo": "fork_stack_source",
+          "columnsFrom": [
+            "stack_source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "fork_recovery_point_artifact_backup_id_backups_id_fk": {
+          "name": "fork_recovery_point_artifact_backup_id_backups_id_fk",
+          "tableFrom": "fork_recovery_point_artifact",
+          "tableTo": "backups",
+          "columnsFrom": [
+            "backup_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "fork_recovery_point_artifact_backup_storage_id_backup_storage_id_fk": {
+          "name": "fork_recovery_point_artifact_backup_storage_id_backup_storage_id_fk",
+          "tableFrom": "fork_recovery_point_artifact",
+          "tableTo": "backup_storage",
+          "columnsFrom": [
+            "backup_storage_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_rp_artifact_dump_format_ck": {
+          "name": "fork_rp_artifact_dump_format_ck",
+          "value": "\"dump_format\" IS NULL OR \"dump_format\" IN ('pg_custom', 'pg_directory')"
+        },
+        "fork_rp_artifact_archive_kind_ck": {
+          "name": "fork_rp_artifact_archive_kind_ck",
+          "value": "\"archive_kind\" IN ('restic_snapshot', 'archive_enc', 'archive_plain')"
+        },
+        "fork_rp_artifact_presence_ck": {
+          "name": "fork_rp_artifact_presence_ck",
+          "value": "\"presence\" IN ('present', 'missing', 'unknown')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_dashboard_db_source": {
+      "name": "fork_dashboard_db_source",
+      "schema": "",
+      "columns": {
+        "singleton": {
+          "name": "singleton",
+          "type": "boolean",
+          "primaryKey": true,
+          "notNull": true,
+          "default": true
+        },
+        "database_id": {
+          "name": "database_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "declared_by": {
+          "name": "declared_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "declared_at": {
+          "name": "declared_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "fork_dashboard_db_source_database_id_databases_id_fk": {
+          "name": "fork_dashboard_db_source_database_id_databases_id_fk",
+          "tableFrom": "fork_dashboard_db_source",
+          "tableTo": "databases",
+          "columnsFrom": [
+            "database_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_dashboard_db_source_singleton_ck": {
+          "name": "fork_dashboard_db_source_singleton_ck",
+          "value": "\"fork_dashboard_db_source\".\"singleton\" = true"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_kit": {
+      "name": "fork_kit",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signing_kid": {
+          "name": "signing_kid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kek_kids": {
+          "name": "kek_kids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "types": {
+          "name": "types",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'issued'"
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "issued_by": {
+          "name": "issued_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verified_type": {
+          "name": "verified_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_attempts": {
+          "name": "failed_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "locked_until": {
+          "name": "locked_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "epoch": {
+          "name": "epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "stale_reason": {
+          "name": "stale_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_checked_at": {
+          "name": "last_checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "superseded_at": {
+          "name": "superseded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "fork_kit_current_uq": {
+          "name": "fork_kit_current_uq",
+          "columns": [
+            {
+              "expression": "(true)",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"fork_kit\".\"superseded_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_kit_status_ck": {
+          "name": "fork_kit_status_ck",
+          "value": "\"status\" IN ('issued', 'verified', 'stale')"
+        },
+        "fork_kit_verified_type_ck": {
+          "name": "fork_kit_verified_type_ck",
+          "value": "\"verified_type\" IS NULL OR \"verified_type\" IN ('paper', 'digital')"
+        },
+        "fork_kit_verified_ck": {
+          "name": "fork_kit_verified_ck",
+          "value": "\"fork_kit\".\"status\" <> 'verified' OR (\"fork_kit\".\"verified_at\" IS NOT NULL AND \"fork_kit\".\"verified_type\" IS NOT NULL)"
+        },
+        "fork_kit_attempts_ck": {
+          "name": "fork_kit_attempts_ck",
+          "value": "\"fork_kit\".\"failed_attempts\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_kit_token": {
+      "name": "fork_kit_token",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "fork_kit_token_expiry_idx": {
+          "name": "fork_kit_token_expiry_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_kit_token_token_hash_unique": {
+          "name": "fork_kit_token_token_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_kit_token_kind_ck": {
+          "name": "fork_kit_token_kind_ck",
+          "value": "\"kind\" IN ('paper', 'digital')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_trust_anchor": {
+      "name": "fork_trust_anchor",
+      "schema": "",
+      "columns": {
+        "kid": {
+          "name": "kid",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "public_key_pem": {
+          "name": "public_key_pem",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "retired_at": {
+          "name": "retired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "fork_trust_anchor_live_uq": {
+          "name": "fork_trust_anchor_live_uq",
+          "columns": [
+            {
+              "expression": "(true)",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"fork_trust_anchor\".\"retired_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_trust_anchor_kid_ck": {
+          "name": "fork_trust_anchor_kid_ck",
+          "value": "\"fork_trust_anchor\".\"kid\" ~ '^[0-9a-f]{12}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_agent_enrollment": {
+      "name": "fork_agent_enrollment",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enroll_id": {
+          "name": "enroll_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "credential_hash": {
+          "name": "credential_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prev_credential_hash": {
+          "name": "prev_credential_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prev_valid_until": {
+          "name": "prev_valid_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pending_credential_hash": {
+          "name": "pending_credential_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pending_task_id": {
+          "name": "pending_task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pending_valid_until": {
+          "name": "pending_valid_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "task_key_enc": {
+          "name": "task_key_enc",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pinned_kids": {
+          "name": "pinned_kids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "pin_fingerprint": {
+          "name": "pin_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "channel_version": {
+          "name": "channel_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "capabilities": {
+          "name": "capabilities",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "capabilities_seen_at": {
+          "name": "capabilities_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "next_seq": {
+          "name": "next_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "enrolled_by": {
+          "name": "enrolled_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enrolled_at": {
+          "name": "enrolled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "fork_agent_enrollment_agent_id_agents_id_fk": {
+          "name": "fork_agent_enrollment_agent_id_agents_id_fk",
+          "tableFrom": "fork_agent_enrollment",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_agent_enrollment_agent_id_unique": {
+          "name": "fork_agent_enrollment_agent_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "agent_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_agent_enrollment_hash_ck": {
+          "name": "fork_agent_enrollment_hash_ck",
+          "value": "\"fork_agent_enrollment\".\"credential_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "fork_agent_enrollment_prev_ck": {
+          "name": "fork_agent_enrollment_prev_ck",
+          "value": "(\"fork_agent_enrollment\".\"prev_credential_hash\" IS NULL) = (\"fork_agent_enrollment\".\"prev_valid_until\" IS NULL)"
+        },
+        "fork_agent_enrollment_pending_ck": {
+          "name": "fork_agent_enrollment_pending_ck",
+          "value": "(\"fork_agent_enrollment\".\"pending_credential_hash\" IS NULL) = (\"fork_agent_enrollment\".\"pending_task_id\" IS NULL) AND (\"fork_agent_enrollment\".\"pending_task_id\" IS NULL) = (\"fork_agent_enrollment\".\"pending_valid_until\" IS NULL)"
+        },
+        "fork_agent_enrollment_pending_hash_ck": {
+          "name": "fork_agent_enrollment_pending_hash_ck",
+          "value": "\"fork_agent_enrollment\".\"pending_credential_hash\" IS NULL OR \"fork_agent_enrollment\".\"pending_credential_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "fork_agent_enrollment_seq_ck": {
+          "name": "fork_agent_enrollment_seq_ck",
+          "value": "\"fork_agent_enrollment\".\"next_seq\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_agent_hash_report": {
+      "name": "fork_agent_hash_report",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "backup_id": {
+          "name": "backup_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reported_at": {
+          "name": "reported_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "fork_agent_hash_report_backup_id_backups_id_fk": {
+          "name": "fork_agent_hash_report_backup_id_backups_id_fk",
+          "tableFrom": "fork_agent_hash_report",
+          "tableTo": "backups",
+          "columnsFrom": [
+            "backup_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "fork_agent_hash_report_agent_id_agents_id_fk": {
+          "name": "fork_agent_hash_report_agent_id_agents_id_fk",
+          "tableFrom": "fork_agent_hash_report",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_agent_hash_report_backup_uq": {
+          "name": "fork_agent_hash_report_backup_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "backup_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_agent_hash_report_sha_ck": {
+          "name": "fork_agent_hash_report_sha_ck",
+          "value": "\"fork_agent_hash_report\".\"sha256\" ~ '^[0-9a-f]{64}$'"
+        },
+        "fork_agent_hash_report_size_ck": {
+          "name": "fork_agent_hash_report_size_ck",
+          "value": "\"fork_agent_hash_report\".\"size_bytes\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_agent_task": {
+      "name": "fork_agent_task",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "agent_name": {
+          "name": "agent_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enroll_id": {
+          "name": "enroll_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requires": {
+          "name": "requires",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "envelope_text": {
+          "name": "envelope_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signature": {
+          "name": "signature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kid": {
+          "name": "kid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_enc": {
+          "name": "payload_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payload_sha256": {
+          "name": "payload_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_agent_id": {
+          "name": "target_agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "lease_id": {
+          "name": "lease_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "not_after": {
+          "name": "not_after",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "fork_agent_task_agent_status_idx": {
+          "name": "fork_agent_task_agent_status_idx",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_agent_task_agent_id_agents_id_fk": {
+          "name": "fork_agent_task_agent_id_agents_id_fk",
+          "tableFrom": "fork_agent_task",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_agent_task_enroll_seq_uq": {
+          "name": "fork_agent_task_enroll_seq_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "enroll_id",
+            "seq"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_agent_task_status_ck": {
+          "name": "fork_agent_task_status_ck",
+          "value": "\"status\" IN ('queued', 'leased', 'running', 'succeeded', 'failed', 'rejected', 'expired', 'cancelled')"
+        },
+        "fork_agent_task_lease_ck": {
+          "name": "fork_agent_task_lease_ck",
+          "value": "\"fork_agent_task\".\"status\" NOT IN ('leased', 'running') OR (\"fork_agent_task\".\"lease_id\" IS NOT NULL AND \"fork_agent_task\".\"lease_until\" IS NOT NULL)"
+        },
+        "fork_agent_task_final_ck": {
+          "name": "fork_agent_task_final_ck",
+          "value": "\"fork_agent_task\".\"status\" NOT IN ('succeeded', 'failed', 'rejected', 'expired', 'cancelled') OR \"fork_agent_task\".\"finished_at\" IS NOT NULL"
+        },
+        "fork_agent_task_result_ck": {
+          "name": "fork_agent_task_result_ck",
+          "value": "\"fork_agent_task\".\"result\" IS NULL OR octet_length(\"fork_agent_task\".\"result\"::text) <= 65536"
+        },
+        "fork_agent_task_hash_ck": {
+          "name": "fork_agent_task_hash_ck",
+          "value": "\"fork_agent_task\".\"payload_sha256\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_restore_plan": {
+      "name": "fork_restore_plan",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stack_id": {
+          "name": "stack_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rp_id": {
+          "name": "rp_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rp_sequence": {
+          "name": "rp_sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_agent_id": {
+          "name": "target_agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_agent_name": {
+          "name": "target_agent_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_version": {
+          "name": "plan_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mappings": {
+          "name": "mappings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "plan": {
+          "name": "plan",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_hash": {
+          "name": "plan_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inputs_digest": {
+          "name": "inputs_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approvals": {
+          "name": "approvals",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "fork_restore_plan_stack_idx": {
+          "name": "fork_restore_plan_stack_idx",
+          "columns": [
+            {
+              "expression": "stack_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fork_restore_plan_hash_idx": {
+          "name": "fork_restore_plan_hash_idx",
+          "columns": [
+            {
+              "expression": "plan_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_restore_plan_organization_id_organization_id_fk": {
+          "name": "fork_restore_plan_organization_id_organization_id_fk",
+          "tableFrom": "fork_restore_plan",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_restore_plan_stack_id_fork_stack_id_fk": {
+          "name": "fork_restore_plan_stack_id_fork_stack_id_fk",
+          "tableFrom": "fork_restore_plan",
+          "tableTo": "fork_stack",
+          "columnsFrom": [
+            "stack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_restore_plan_rp_id_fork_recovery_point_id_fk": {
+          "name": "fork_restore_plan_rp_id_fork_recovery_point_id_fk",
+          "tableFrom": "fork_restore_plan",
+          "tableTo": "fork_recovery_point",
+          "columnsFrom": [
+            "rp_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "fork_restore_plan_target_agent_id_agents_id_fk": {
+          "name": "fork_restore_plan_target_agent_id_agents_id_fk",
+          "tableFrom": "fork_restore_plan",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "target_agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_restore_plan_purpose_ck": {
+          "name": "fork_restore_plan_purpose_ck",
+          "value": "\"purpose\" IN ('restore', 'test_restore')"
+        },
+        "fork_restore_plan_mode_ck": {
+          "name": "fork_restore_plan_mode_ck",
+          "value": "\"mode\" IN ('selective', 'new_stack', 'existing_stack')"
+        },
+        "fork_restore_plan_outcome_ck": {
+          "name": "fork_restore_plan_outcome_ck",
+          "value": "\"outcome\" IN ('ready', 'blocked')"
+        },
+        "fork_restore_plan_hash_ck": {
+          "name": "fork_restore_plan_hash_ck",
+          "value": "\"fork_restore_plan\".\"plan_hash\" ~ '^[0-9a-f]{64}$' AND \"fork_restore_plan\".\"inputs_digest\" ~ '^[0-9a-f]{64}$'"
+        },
+        "fork_restore_plan_size_ck": {
+          "name": "fork_restore_plan_size_ck",
+          "value": "octet_length(\"fork_restore_plan\".\"plan\"::text) <= 1048576"
+        },
+        "fork_restore_plan_expiry_ck": {
+          "name": "fork_restore_plan_expiry_ck",
+          "value": "\"fork_restore_plan\".\"expires_at\" > \"fork_restore_plan\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_compose_render": {
+      "name": "fork_compose_render",
+      "schema": "",
+      "columns": {
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "restore_id": {
+          "name": "restore_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "policy_view": {
+          "name": "policy_view",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rendered_sha256": {
+          "name": "rendered_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raw": {
+          "name": "raw",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "roots": {
+          "name": "roots",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "files": {
+          "name": "files",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "compose_version": {
+          "name": "compose_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "agent_rules_sha256": {
+          "name": "agent_rules_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "fork_compose_render_restore_idx": {
+          "name": "fork_compose_render_restore_idx",
+          "columns": [
+            {
+              "expression": "restore_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_compose_render_task_id_fork_agent_task_id_fk": {
+          "name": "fork_compose_render_task_id_fork_agent_task_id_fk",
+          "tableFrom": "fork_compose_render",
+          "tableTo": "fork_agent_task",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_compose_render_agent_id_agents_id_fk": {
+          "name": "fork_compose_render_agent_id_agents_id_fk",
+          "tableFrom": "fork_compose_render",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fork_compose_render_size": {
+          "name": "fork_compose_render_size",
+          "value": "octet_length(\"fork_compose_render\".\"policy_view\") <= 2097152"
+        },
+        "fork_compose_render_sha": {
+          "name": "fork_compose_render_sha",
+          "value": "\"fork_compose_render\".\"rendered_sha256\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_restore_override": {
+      "name": "fork_restore_override",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_hash": {
+          "name": "plan_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "env_keys": {
+          "name": "env_keys",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "yml_present": {
+          "name": "yml_present",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "yml_bytes": {
+          "name": "yml_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "values_enc": {
+          "name": "values_enc",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "restore_id": {
+          "name": "restore_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "render_task_id": {
+          "name": "render_task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "frozen_at": {
+          "name": "frozen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "fork_restore_override_expiry_idx": {
+          "name": "fork_restore_override_expiry_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_restore_override_organization_id_organization_id_fk": {
+          "name": "fork_restore_override_organization_id_organization_id_fk",
+          "tableFrom": "fork_restore_override",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_restore_override_plan_id_fork_restore_plan_id_fk": {
+          "name": "fork_restore_override_plan_id_fork_restore_plan_id_fk",
+          "tableFrom": "fork_restore_override",
+          "tableTo": "fork_restore_plan",
+          "columnsFrom": [
+            "plan_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_restore_override_render_task_id_fork_agent_task_id_fk": {
+          "name": "fork_restore_override_render_task_id_fork_agent_task_id_fk",
+          "tableFrom": "fork_restore_override",
+          "tableTo": "fork_agent_task",
+          "columnsFrom": [
+            "render_task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_restore_override_plan_id_unique": {
+          "name": "fork_restore_override_plan_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "plan_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_restore_override_hash_ck": {
+          "name": "fork_restore_override_hash_ck",
+          "value": "\"fork_restore_override\".\"plan_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "fork_restore_override_size_ck": {
+          "name": "fork_restore_override_size_ck",
+          "value": "octet_length(\"fork_restore_override\".\"values_enc\"::text) <= 262144"
+        },
+        "fork_restore_override_rev_ck": {
+          "name": "fork_restore_override_rev_ck",
+          "value": "\"fork_restore_override\".\"revision\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_restore_run": {
+      "name": "fork_restore_run",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stack_id": {
+          "name": "stack_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_hash": {
+          "name": "plan_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rp_id": {
+          "name": "rp_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rp_sequence": {
+          "name": "rp_sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_agent_id": {
+          "name": "target_agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_agent_name": {
+          "name": "target_agent_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_step": {
+          "name": "failed_step",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verification": {
+          "name": "verification",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "steps": {
+          "name": "steps",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "confirmation": {
+          "name": "confirmation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accept_missing_inputs": {
+          "name": "accept_missing_inputs",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "policy_approval": {
+          "name": "policy_approval",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_approval_sha256": {
+          "name": "policy_approval_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_approved_by": {
+          "name": "policy_approved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_approved_at": {
+          "name": "policy_approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "services": {
+          "name": "services",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "cancel_requested_at": {
+          "name": "cancel_requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_requested_by": {
+          "name": "cancel_requested_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_by": {
+          "name": "started_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deadline_at": {
+          "name": "deadline_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "fork_restore_run_one_active_target_uq": {
+          "name": "fork_restore_run_one_active_target_uq",
+          "columns": [
+            {
+              "expression": "target_agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "state IN ('running','awaiting_approval') AND target_agent_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fork_restore_run_stack_created_idx": {
+          "name": "fork_restore_run_stack_created_idx",
+          "columns": [
+            {
+              "expression": "stack_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fork_restore_run_organization_id_organization_id_fk": {
+          "name": "fork_restore_run_organization_id_organization_id_fk",
+          "tableFrom": "fork_restore_run",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_restore_run_stack_id_fork_stack_id_fk": {
+          "name": "fork_restore_run_stack_id_fork_stack_id_fk",
+          "tableFrom": "fork_restore_run",
+          "tableTo": "fork_stack",
+          "columnsFrom": [
+            "stack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_restore_run_plan_id_fork_restore_plan_id_fk": {
+          "name": "fork_restore_run_plan_id_fork_restore_plan_id_fk",
+          "tableFrom": "fork_restore_run",
+          "tableTo": "fork_restore_plan",
+          "columnsFrom": [
+            "plan_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_restore_run_rp_id_fork_recovery_point_id_fk": {
+          "name": "fork_restore_run_rp_id_fork_recovery_point_id_fk",
+          "tableFrom": "fork_restore_run",
+          "tableTo": "fork_recovery_point",
+          "columnsFrom": [
+            "rp_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "fork_restore_run_target_agent_id_agents_id_fk": {
+          "name": "fork_restore_run_target_agent_id_agents_id_fk",
+          "tableFrom": "fork_restore_run",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "target_agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_restore_run_plan_id_unique": {
+          "name": "fork_restore_run_plan_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "plan_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_restore_run_state_ck": {
+          "name": "fork_restore_run_state_ck",
+          "value": "\"state\" IN ('running', 'awaiting_approval', 'succeeded', 'incomplete', 'failed', 'cancelled')"
+        },
+        "fork_restore_run_purpose_ck": {
+          "name": "fork_restore_run_purpose_ck",
+          "value": "\"purpose\" IN ('restore', 'test_restore')"
+        },
+        "fork_restore_run_mode_ck": {
+          "name": "fork_restore_run_mode_ck",
+          "value": "\"fork_restore_run\".\"mode\" IN ('new_stack','selective')"
+        },
+        "fork_restore_run_verification_ck": {
+          "name": "fork_restore_run_verification_ck",
+          "value": "\"verification\" IS NULL OR \"verification\" IN ('started', 'data_only')"
+        },
+        "fork_restore_run_confirmation_ck": {
+          "name": "fork_restore_run_confirmation_ck",
+          "value": "\"fork_restore_run\".\"confirmation\" IN ('typed','not_required')"
+        },
+        "fork_restore_run_reason_ck": {
+          "name": "fork_restore_run_reason_ck",
+          "value": "\"fork_restore_run\".\"reason\" IS NULL OR \"fork_restore_run\".\"reason\" ~ '^[a-z_]{1,64}$'"
+        },
+        "fork_restore_run_hash_ck": {
+          "name": "fork_restore_run_hash_ck",
+          "value": "\"fork_restore_run\".\"plan_hash\" ~ '^[0-9a-f]{64}$' AND (\"fork_restore_run\".\"policy_approval_sha256\" IS NULL OR \"fork_restore_run\".\"policy_approval_sha256\" ~ '^[0-9a-f]{64}$')"
+        },
+        "fork_restore_run_final_ck": {
+          "name": "fork_restore_run_final_ck",
+          "value": "\"fork_restore_run\".\"state\" IN ('running','awaiting_approval') OR \"fork_restore_run\".\"finished_at\" IS NOT NULL"
+        },
+        "fork_restore_run_failed_ck": {
+          "name": "fork_restore_run_failed_ck",
+          "value": "\"fork_restore_run\".\"state\" NOT IN ('failed','incomplete') OR \"fork_restore_run\".\"reason\" IS NOT NULL"
+        },
+        "fork_restore_run_size_ck": {
+          "name": "fork_restore_run_size_ck",
+          "value": "octet_length(\"fork_restore_run\".\"steps\"::text) <= 65536 AND octet_length(\"fork_restore_run\".\"services\"::text) <= 65536 AND (\"fork_restore_run\".\"policy_approval\" IS NULL OR octet_length(\"fork_restore_run\".\"policy_approval\"::text) <= 262144)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.fork_restore_run_task": {
+      "name": "fork_restore_run_task",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "step": {
+          "name": "step",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_type": {
+          "name": "task_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "override_revision": {
+          "name": "override_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "fork_restore_run_task_run_id_fork_restore_run_id_fk": {
+          "name": "fork_restore_run_task_run_id_fork_restore_run_id_fk",
+          "tableFrom": "fork_restore_run_task",
+          "tableTo": "fork_restore_run",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fork_restore_run_task_task_id_fork_agent_task_id_fk": {
+          "name": "fork_restore_run_task_task_id_fork_agent_task_id_fk",
+          "tableFrom": "fork_restore_run_task",
+          "tableTo": "fork_agent_task",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "fork_restore_run_task_task_id_unique": {
+          "name": "fork_restore_run_task_task_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "task_id"
+          ]
+        },
+        "fork_restore_run_task_step_attempt_uq": {
+          "name": "fork_restore_run_task_step_attempt_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "run_id",
+            "step",
+            "attempt"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "fork_restore_run_task_step_ck": {
+          "name": "fork_restore_run_task_step_ck",
+          "value": "\"step\" IN ('probe', 'stage', 'apply', 'render', 'restore_db', 'compose_up', 'cleanup')"
+        },
+        "fork_restore_run_task_attempt_ck": {
+          "name": "fork_restore_run_task_attempt_ck",
+          "value": "\"fork_restore_run_task\".\"attempt\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

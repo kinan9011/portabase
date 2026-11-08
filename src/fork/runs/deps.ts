@@ -3,6 +3,7 @@ import {syncConnection} from "@/fork/discovery/sync";
 import {currentForkMode, type ForkMode} from "@/fork/mode";
 import {hashViaUpstream, type HashArtifact} from "@/fork/recovery-point/hash";
 import {deleteBackupViaUpstream, encryptionEnabled, readPrincipal, type DeleteBackup, type PrincipalLookup} from "@/fork/upstream";
+import type {ChannelDeps} from "@/fork/agent-channel/deps";
 import {runConfig, type RunConfig} from "./config";
 
 /** Everything the run services need, with a seam for each side effect so every path runs on a fake clock / fake storage in tests. */
@@ -19,6 +20,10 @@ export type RunDeps = {
     principalOf?: (userId: string) => Promise<PrincipalLookup>;
     /** lease owner token of this process (default: unique per process) */
     owner?: string;
+    /** W17b: what the composite quiesce step needs to sign + enqueue a task (the job wires the real keys / server URL; tests inject their own). Absent ⇒ quiesce is never used. */
+    channel?: Pick<ChannelDeps, "keys" | "serverUrl" | "env" | "kekDir">;
+    /** W17b test seam: the dashboard-side quiesce switch (default: `FORK_QUIESCE_ENABLED`). */
+    flag?: () => boolean;
 };
 
 export const nowOf = (d: Pick<RunDeps, "now">): Date => d.now?.() ?? new Date();

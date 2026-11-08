@@ -89,7 +89,15 @@ export const forkStackPolicy = pgTable("fork_stack_policy", {
     /** W12: run-time re-authorization failed (F7/D31): the policy is paused (`fork_stack.protection_state='paused'`); only an authorized re-activation clears these. */
     pausedAt: ts("paused_at"),
     pauseReason: text("pause_reason"),
+    /** W17b (D9b): opt-in composite quiesce, enabled per stack by a system admin. Off by default. The stored explicit service list is the ONLY input a run uses (labels are prefill only). */
+    quiesceEnabled: boolean("quiesce_enabled").notNull().default(false),
+    quiesceServices: jsonb("quiesce_services").notNull().default(sql`'[]'::jsonb`),
+    quiesceMaxStopSeconds: integer("quiesce_max_stop_seconds").notNull().default(600),
+    quiesceEnabledBy: text("quiesce_enabled_by"),
+    quiesceEnabledAt: ts("quiesce_enabled_at"),
 }, (t) => [
+    check("fork_stack_policy_quiesce_stop_ck", sql`${t.quiesceMaxStopSeconds} BETWEEN 60 AND 3600`),
+    check("fork_stack_policy_quiesce_ck", sql`${t.quiesceEnabled} = false OR (${t.quiesceEnabledBy} IS NOT NULL AND ${t.quiesceEnabledAt} IS NOT NULL AND jsonb_array_length(${t.quiesceServices}) BETWEEN 1 AND 32)`),
     index("fork_stack_policy_active_idx").on(t.stackId).where(sql`activated_at IS NOT NULL AND deactivated_at IS NULL`),
     check("fork_stack_policy_materialize_state_ck", inList("materialize_state", MATERIALIZE_STATES)),
     check("fork_stack_policy_consistency_ck", inList("consistency_profile", ["crash", "dump", "stop"])),

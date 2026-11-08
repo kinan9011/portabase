@@ -19,6 +19,7 @@ import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
 import {ApplyPayload, CleanupPayload, DbPayload, ProbePayload, RenderPayload, StagePayload, UpPayload} from "@/fork/restore-tasks/payload-schema";
 import {CAPABILITY_RE, KID_RE, MAX_CAPABILITIES, MAX_PAYLOAD_BYTES, MAX_PINS, MAX_RESULT_BYTES, NOOP_ECHO_RE, PIN_PEM_MAX, PUBLIC_TASK_TYPES, TARGETED_TASK_TYPES, TASK_REQUIRES, type TaskType} from "./vocab";
 import {redactDetails} from "@/fork/audit";
+import {QuiescePayloadSchema, QuiesceStartPayloadSchema} from "@/fork/quiesce/payload";
 
 /**
  * Task queue (ADR-007 D1/D3/D4/D7). Enqueue is an audited, admin-gated MUTATION; lease / heartbeat / result are agent calls already authenticated by
@@ -45,6 +46,7 @@ const PAYLOAD_SCHEMAS: Record<TaskType, z.ZodType> = {
     rotate_credential: z.strictObject({credential: z.string().regex(/^fork\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/)}),
     restore_probe: ProbePayload, restore_stage: StagePayload, restore_apply: ApplyPayload, restore_cleanup: CleanupPayload,
     compose_render: RenderPayload, restore_db: DbPayload, compose_up: UpPayload,
+    quiesce: QuiescePayloadSchema, quiesce_start: QuiesceStartPayloadSchema,
 };
 
 /** Per-type payload validation (closed: unknown keys are refused). */

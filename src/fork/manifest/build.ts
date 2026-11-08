@@ -13,7 +13,7 @@ export type ArtifactFacts = {
 };
 
 const iso = (d: Date) => d.toISOString();
-const CONSISTENCY = ["crash_consistent_files", "engine_dump", "mixed", "unknown"] as const;
+const CONSISTENCY = ["crash_consistent_files", "engine_dump", "mixed", "unknown", "stopped"] as const;
 
 export function buildManifest(rp: RpFacts, artifacts: readonly ArtifactFacts[], inventory: StackInventoryV1 | null, o: {kid: string; signedAt: Date; verifiedAt: Date}): ManifestV1 {
     const rows: ManifestArtifact[] = artifacts.map((a) => ({

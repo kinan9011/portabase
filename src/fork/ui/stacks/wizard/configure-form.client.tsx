@@ -41,7 +41,7 @@ function Section({id, title, children}: {id: string; title: string; children: Re
  * through server actions that re-validate everything; success is shown only for an `ok: true` answer, partial outcomes are listed, refusals are
  * explained with their reason. Passwords stay in uncontrolled inputs, are read once at submit and cleared after every submit.
  */
-export function ConfigureForm({view, locked}: {view: ConfigureView; locked: boolean}) {
+export function ConfigureForm({view, locked, quiesceReason}: {view: ConfigureView; locked: boolean; quiesceReason?: string | null}) {
     const router = useRouter();
     const announce = useAnnounce();
     const [st, setSt] = React.useState<WizardState>(() => initialState(view));
@@ -122,7 +122,7 @@ export function ConfigureForm({view, locked}: {view: ConfigureView; locked: bool
             </header>
 
             <Section id="resources" title={T.sections.resources}><ResourcesSection view={view} st={st} set={set} preview={preview} serverIssues={serverIssues}/></Section>
-            <Section id="consistency" title={T.sections.consistency}><ConsistencySection view={view} st={st} set={set} preview={preview} dbErrors={dbErrors} serverIssues={serverIssues} secretRefs={secretRefs} secretPresent={secretPresent} setPresent={setPresent}/></Section>
+            <Section id="consistency" title={T.sections.consistency}><ConsistencySection quiesceReason={quiesceReason} view={view} st={st} set={set} preview={preview} dbErrors={dbErrors} serverIssues={serverIssues} secretRefs={secretRefs} secretPresent={secretPresent} setPresent={setPresent}/></Section>
 
             <Section id="schedule" title={T.sections.schedule}>
                 <p className="text-muted-foreground text-sm">{T.schedule.intro}</p>

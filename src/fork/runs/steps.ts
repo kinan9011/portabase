@@ -10,7 +10,9 @@ import {cancelWaitingBackups, queueWaitingBackups, readBackupFacts} from "@/fork
 import {cfgOf, defaultRefresh, hasherOf, modeOf, nowOf, ownerOf, type RunDeps} from "./deps";
 import {done, wait, type Handlers} from "./engine";
 import type {StackFacts} from "./reauth";
-import {TERMINAL_ITEM_STATES, type ItemState, type RefreshOutcome, type RunReason, type RunStep} from "./vocab";
+import {TERMINAL_ITEM_STATES, type AnyRunStep, type ItemState, type RefreshOutcome, type RunReason} from "./vocab";
+import {isWindowDbms} from "@/fork/quiesce/vocab";
+import {quiesceRelease, quiesceStop} from "@/fork/quiesce/steps";
 
 /**
  * The run's step handlers (ARCH-13). Every handler is IDEMPOTENT: after a crash between "work done" and "state persisted" the step runs
@@ -57,12 +59,19 @@ async function validate(c: StepCtx) {
     return done();
 }
 
-async function trigger(c: StepCtx) {
+/**
+ * `part` (W17b D2): a plain run triggers ALL members at once (`"all"`, unchanged). A quiesce run triggers the engine dumps BEFORE the stop (`"pre"`) and the
+ * file / volume members INSIDE the stop window (`"window"`); idempotency = "an item of THIS partition exists".
+ */
+type Part = "all" | "pre" | "window";
+const inPart = (part: Part, dbms: string): boolean => part === "all" || (part === "window") === isWindowDbms(dbms);
+
+async function triggerPart(c: StepCtx, part: Part) {
     const now = nowOf(c.d);
     await withForkLock(c.d.db, `run-trigger:${c.runId}`, async (tx) => {
-        const existing = await tx.select({id: forkStackRunItem.id}).from(forkStackRunItem).where(eq(forkStackRunItem.runId, c.runId)).limit(1);
+        const existing = (await tx.select({id: forkStackRunItem.id, dbms: forkStackRunItem.dbms}).from(forkStackRunItem).where(eq(forkStackRunItem.runId, c.runId))).filter((i) => inPart(part, i.dbms));
         if (existing.length > 0) return; // idempotent: a crash after this transaction committed
-        const links = (await tx.select().from(forkStackSource).where(eq(forkStackSource.stackId, c.facts.stackId))).filter((l) => l.status !== "orphaned");
+        const links = (await tx.select().from(forkStackSource).where(eq(forkStackSource.stackId, c.facts.stackId))).filter((l) => l.status !== "orphaned" && inPart(part, l.dbms));
         const runnable = links.filter((l) => l.status === "active" && l.databaseId !== null);
         const q = await queueWaitingBackups(tx, runnable.map((l) => l.databaseId as string));
         const queued = new Map(q.queued.map((x) => [x.databaseId, x.backupId]));
@@ -154,6 +163,15 @@ async function hash(c: StepCtx) {
     return retry ? wait() : done();
 }
 
-export function runHandlers(finalize: (c: StepCtx) => Promise<ReturnType<typeof done>>): Handlers<RunStep, StepCtx> {
-    return {refresh_inventory: refreshInventory, validate, trigger, track, hash, finalize};
+/** One handler map for BOTH step lists: a plain run never reaches the quiesce steps; a quiesce run's `trigger` is the "pre" partition (decided by its persisted step list). */
+export function runHandlers(finalize: (c: StepCtx) => Promise<ReturnType<typeof done>>): Handlers<AnyRunStep, StepCtx> {
+    const quiesceRun = async (c: StepCtx): Promise<boolean> => ((await c.d.db.select({steps: forkStackRun.steps}).from(forkStackRun).where(eq(forkStackRun.id, c.runId)))[0]?.steps as {name: string}[] | undefined)?.some((s) => s.name === "quiesce_stop") ?? false;
+    return {
+        refresh_inventory: refreshInventory, validate, track, hash, finalize,
+        trigger: async (c) => triggerPart(c, (await quiesceRun(c)) ? "pre" : "all"),
+        trigger_window: (c) => triggerPart(c, "window"),
+        track_window: track,
+        quiesce_stop: quiesceStop,
+        quiesce_release: quiesceRelease,
+    };
 }

@@ -12,6 +12,7 @@ import {TIMEOUT_REASONS} from "@/fork/runs/steps";
 import type {RunReason} from "@/fork/runs/vocab";
 import {channelsByIds, readBackupFacts, readMembers} from "@/fork/upstream";
 import {buildArtifacts, type ItemFacts} from "./build";
+import {QuiesceResultSchema} from "@/fork/quiesce/payload";
 import {consistencyOf, decideRecoveryPoint} from "./decide";
 
 /**
@@ -49,13 +50,20 @@ export async function finalizeRun(d: RunDeps, runId: string, forced?: FinalizeFo
         checksums: i.checksums as ItemFacts["checksums"],
     }));
     const built = buildArtifacts(itemFacts, backups, channels);
+    // W17b (D12): what the stop window proved. `confirmed` = the agent reported a terminal result (restart verified or honestly failed); only an INTACT window
+    // (released by the dashboard, every container stayed stopped) makes the file / volume copies `stopped`. `unconfirmed` never reaches `pending_verification`.
+    const qState = run.quiesceState;
+    const qResult = QuiesceResultSchema.safeParse(run.quiesceResult ?? {});
+    const qConfirmed = (qState === "restarted" || qState === "restart_failed") && qResult.success && qResult.data.all_verified !== undefined;
+    const quiesce = qState === "unconfirmed" ? ("unconfirmed" as const) : qConfirmed ? ("confirmed" as const) : ("none" as const);
     const decision = decideRecoveryPoint({
+        quiesce,
         cancelled: forced === "cancelled", errored: forced === "internal_error",
         timedOut: items.some((i) => i.reason !== null && TIMEOUT_REASONS.includes(i.reason as RunReason)),
         timeoutReason: items.map((i) => i.reason as RunReason | null).find((r): r is RunReason => r !== null && TIMEOUT_REASONS.includes(r)),
         queuedMembers: items.filter((i) => i.backupId !== null).length, validatorComplete: !run.validatorBlocked, encryptionOn, artifacts: built.inputs,
     });
-    const consistency = consistencyOf(built.rows.filter((r) => r.presence === "present").map((r) => r.engine));
+    const consistency = consistencyOf(built.rows.filter((r) => r.presence === "present").map((r) => r.engine), {stoppedWindow: qConfirmed && qResult.success && qResult.data.window_intact === true});
     const [inv] = run.inventoryVersion !== null ? (await d.db.execute(sql`select content_hash from fork_stack_inventory where stack_id = ${run.stackId} and version = ${run.inventoryVersion}`)).rows as {content_hash: string}[] : [];
 
     return withForkLock(d.db, `rp:${run.stackId}`, async (tx) => {

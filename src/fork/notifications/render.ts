@@ -1,4 +1,4 @@
-import {NOTIFY} from "@/fork/ui/labels";
+import {NOTIFY, QUIESCE} from "@/fork/ui/labels";
 import {z} from "zod";
 import {isDeliverableKind, type DeliverableKind, type NotifyEvent, type NotifyLevel} from "./vocab";
 
@@ -24,9 +24,11 @@ const KIND_META: Record<DeliverableKind, {level: NotifyLevel; event: NotifyEvent
     "restore.finished": {level: "info", event: "success_backup_recovered", stackScoped: true},
     "restore.failed": {level: "critical", event: "error_backup", stackScoped: true},
     "restore.needs_approval": {level: "warning", event: "error_backup", stackScoped: true},
+    "quiesce.failed": {level: "critical", event: "error_backup", stackScoped: true},
+    "stack.quiesce_stopped": {level: "critical", event: "error_backup", stackScoped: true},
 };
 
-const PayloadSchema = z.looseObject({stackId: z.uuid().optional(), reason: z.string().max(64).nullish(), hours: z.number().finite().optional()});
+const PayloadSchema = z.looseObject({stackId: z.uuid().optional(), reason: z.string().max(64).nullish(), hours: z.number().finite().optional(), state: z.string().max(32).optional(), since: z.iso.datetime().optional()});
 
 /** Display name → a body-safe label: letters, digits, space, `_` and `-` only (a name that looks like a host or a URL would be auto-linked by chat channels), ≤ 60 chars. */
 export function safeStackName(name: string | null | undefined): string {
@@ -55,10 +57,17 @@ export function renderNotification(i: {kind: string; payload: unknown; stackName
     const path = meta.stackScoped && payload.stackId ? `/dashboard/stacks/${payload.stackId}` : "/dashboard/stacks";
     const reason = typeof payload.reason === "string" && Object.hasOwn(NOTIFY.reasons, payload.reason) ? NOTIFY.reasons[payload.reason] : null;
     const hours = i.kind === "stack.no_good_backup" && typeof payload.hours === "number" ? Math.max(0, Math.min(100_000, Math.floor(payload.hours))) : null;
+    // W17b: state + closed reason sentences + (for the alert) the fixed-format UTC minute. Never a container name, id, path or raw error.
+    const qState = typeof payload.state === "string" && Object.hasOwn(QUIESCE.states, payload.state) ? QUIESCE.states[payload.state as keyof typeof QUIESCE.states] : null;
+    const qReasonKey = typeof payload.reason === "string" ? payload.reason : "";
+    const qReason = Object.hasOwn(QUIESCE.skip, qReasonKey) ? QUIESCE.skip[qReasonKey as keyof typeof QUIESCE.skip] : Object.hasOwn(QUIESCE.agentCodes, qReasonKey) ? QUIESCE.agentCodes[qReasonKey] : null;
+    const since = i.kind === "stack.quiesce_stopped" && payload.since ? QUIESCE.alert.line(payload.since.slice(0, 16).replace("T", " ")) : null;
+    const quiesceLines = i.kind === "quiesce.failed" ? [...(qState ? [qState] : []), ...(qReason ? [qReason] : [])] : since ? [since] : [];
     const lines = [
         meta.stackScoped ? `${safeStackName(i.stackName)}: ${copy.sentence}` : copy.sentence,
         ...(hours !== null ? [NOTIFY.noGoodBackupHours(hours)] : []),
-        ...(reason ? [reason] : []),
+        ...(reason && !i.kind.startsWith("quiesce") ? [reason] : []),
+        ...quiesceLines,
         origin ? `${origin}${path}` : NOTIFY.generic,
     ];
     return {title: `${NOTIFY.titlePrefix} · ${copy.title}`, message: lines.join("\n"), level: meta.level, event: meta.event};
