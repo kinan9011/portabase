@@ -140,7 +140,7 @@ export function RestoreOverridesPanel({planId, planHash, view: viewProp, canEdit
             {result && result.kind !== "ok" ? (
                 <div role="alert" className="text-destructive text-sm" data-testid="override-result">
                     <p>{result.message}</p>
-                    {result.kind === "refused" && result.violations.length > 0 ? <ul className="list-disc pl-5">{result.violations.map((v, i) => <li key={`${v.kind}-${v.service ?? ""}-${i}`}>{v.kind}{v.service ? ` · ${v.service}` : ""}</li>)}</ul> : null}
+                    {result.kind === "refused" && result.violations.length > 0 ? <ul className="list-disc pl-5">{[...new Set(result.violations.map((v) => (v.service ? `${v.kind} · ${v.service}` : v.kind)))].map((text) => <li key={text}>{text}</li>)}</ul> : null}
                 </div>
             ) : result ? <p className="text-sm" data-testid="override-result">{result.what === "clear_all" ? OVERRIDES.cleared : result.what === "save" ? OVERRIDES.saved(result.view.revision) : OVERRIDES.removed}</p> : null}
         </section>

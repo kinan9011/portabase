@@ -65,7 +65,7 @@ async function completeRender(w: W17, taskId: string, restoreId: string, doc: un
     // earlier queued tasks of this agent (restore_db …) would be leased first: they are not under test here
     await pool.query("update fork_agent_task set status='succeeded', finished_at=now() where agent_id=$1 and id<>$2 and status='queued'", [w.agent, taskId]);
     const l = await leaseTask(t.db, e, {capabilities: CAPS, leaseSeconds: 60, now: t0});
-    expect(l?.task_id ?? l?.id ?? taskId).toBeTruthy();
+    expect(l).toBeTruthy();
     const view = Buffer.from(JSON.stringify(blankPolicyView(doc)));
     const r = await submitRender(t.db, e, {taskId, organizationId: org, now: t0, body: {lease_id: l!.lease_id, restore_id: restoreId, view_b64: view.toString("base64"), view_sha256: sha(view), raw: {refused: false, violations: [], reason: null}, roots: [W], files: ["compose.yml"], compose_version: "5.4.0", rules_sha256: "e".repeat(64)}});
     expect(r).toMatchObject({ok: true});
