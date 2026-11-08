@@ -5,7 +5,8 @@ import {forkAgentTask} from "@/fork/db/schema/agent-channel";
 import {forkRestoreOverride} from "@/fork/db/schema/restore-override";
 import {forkRestoreRun, forkRestoreRunTask} from "@/fork/db/schema/restore-run";
 import {confirmationPhrase, groupOverrides} from "@/fork/policy/approval";
-import {ForkForbiddenError, ForkNotFoundError} from "@/fork/acl";
+import {actorIn, forkCan, ForkForbiddenError, ForkNotFoundError} from "@/fork/acl";
+import {soleOrganization} from "@/fork/arcane/connection-service";
 import {assertForkResource} from "@/fork/resource-scope";
 import {workspaceOf} from "@/fork/restore-tasks/build";
 import {latestRender, renderVerdict} from "@/fork/restore-tasks/render";
@@ -26,7 +27,7 @@ const StepView = z.strictObject({
     task: z.strictObject({status: z.string(), reason: z.string().nullable()}).nullable(),
 });
 export const RestoreRunView = z.strictObject({
-    id: z.string(), planHash: z.string(), stackId: z.string(), rpSequence: z.number(), targetAgentName: z.string(), purpose: z.string(), mode: z.string(),
+    id: z.string(), planId: z.string(), planHash: z.string(), stackId: z.string(), rpSequence: z.number(), targetAgentName: z.string(), targetProject: z.string().nullable(), purpose: z.string(), mode: z.string(),
     state: z.string(), reason: z.string().nullable(), failedStep: z.string().nullable(), verification: z.string().nullable(),
     createdAt: iso, deadlineAt: iso, finishedAt: iso.nullable(), cancelRequested: z.boolean(),
     steps: z.array(StepView),
@@ -39,7 +40,7 @@ export const RestoreRunView = z.strictObject({
 export type RestoreRunView = z.infer<typeof RestoreRunView>;
 
 export const RestoreRunSummary = z.strictObject({
-    id: z.string(), state: z.string(), createdAt: iso, finishedAt: iso.nullable(), targetAgentName: z.string(), rpSequence: z.number(), verification: z.string().nullable(),
+    id: z.string(), stackId: z.string(), state: z.string(), createdAt: iso, finishedAt: iso.nullable(), targetAgentName: z.string(), rpSequence: z.number(), verification: z.string().nullable(),
 });
 export type RestoreRunSummary = z.infer<typeof RestoreRunSummary>;
 
@@ -57,7 +58,7 @@ export async function journalOfRun(db: RestoreRunDeps["db"], runId: string): Pro
     return rows.map((r) => ({step: r.j.step, attempt: r.j.attempt, status: r.t?.status ?? null, reason: r.t?.status && (r.t.status === "failed" || r.t.status === "rejected") ? reasonOf(r.t.result) : null, attempts: r.t?.attempts ?? null}));
 }
 
-export function toRestoreRunView(run: RunRow, journal: readonly JournalView[], extra: {awaiting: RestoreRunView["awaiting"]; overrides: RestoreRunView["overrides"]}): RestoreRunView {
+export function toRestoreRunView(run: RunRow, journal: readonly JournalView[], extra: {awaiting: RestoreRunView["awaiting"]; overrides: RestoreRunView["overrides"]; targetProject: string | null}): RestoreRunView {
     const newest = (step: string) => journal.find((j) => j.step === step) ?? null; // journal is newest-attempt first
     const steps = (run.steps as StepRecord[]).map((s) => {
         const j = s.name in STEP_TASK_TYPE ? newest(s.name) : null;
@@ -65,7 +66,7 @@ export function toRestoreRunView(run: RunRow, journal: readonly JournalView[], e
     });
     const c = newest("cleanup" satisfies JournalStep);
     return RestoreRunView.parse({
-        id: run.id, planHash: run.planHash, stackId: run.stackId, rpSequence: run.rpSequence, targetAgentName: run.targetAgentName, purpose: run.purpose, mode: run.mode,
+        id: run.id, planId: run.planId, planHash: run.planHash, stackId: run.stackId, rpSequence: run.rpSequence, targetAgentName: run.targetAgentName, targetProject: extra.targetProject, purpose: run.purpose, mode: run.mode,
         state: run.state, reason: run.reason, failedStep: run.failedStep, verification: run.verification,
         createdAt: run.createdAt.toISOString(), deadlineAt: run.deadlineAt.toISOString(), finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null, cancelRequested: run.cancelRequestedAt !== null,
         steps, awaiting: extra.awaiting, services: parseServices({services: run.services}) ?? [], overrides: extra.overrides,
@@ -91,6 +92,7 @@ export async function getRestoreRunView(d: RestoreRunDeps, raw: unknown): Promis
     let awaiting: RestoreRunView["awaiting"] = null;
     let overrides: RestoreRunView["overrides"] = {applicable: false, missingRequired: 0, frozen: false};
     const plan = await loadPlanRow(d, run.planId, run.planHash);
+    const targetProject = plan.ok ? plan.plan.target.project : null; // W18b B4: from the hash-checked plan; null when the plan fails its check
     if (plan.ok) {
         const [ov] = await d.db.select().from(forkRestoreOverride).where(eq(forkRestoreOverride.planId, run.planId));
         const v = buildOverridesView(plan.plan, ov);
@@ -105,17 +107,28 @@ export async function getRestoreRunView(d: RestoreRunDeps, raw: unknown): Promis
             }
         }
     }
-    return {ok: true, view: toRestoreRunView(run, journal, {awaiting, overrides})};
+    return {ok: true, view: toRestoreRunView(run, journal, {awaiting, overrides, targetProject})};
 }
 
+/** `{stackId}` / `{planId}`: resource-gated as before. Neither: org-wide (single org, D21), `restore.plan` holders only, filtered by organization in SQL. */
 export async function listRestoreRuns(d: RestoreRunDeps, raw: unknown): Promise<{ok: true; runs: RestoreRunSummary[]} | Refusal> {
-    const input = z.strictObject({stackId: z.uuid()}).safeParse(raw);
+    const input = z.strictObject({stackId: z.uuid().optional(), planId: z.uuid().optional()}).refine((x) => !(x.stackId && x.planId)).safeParse(raw);
     if (!input.success) return {ok: false, code: "invalid_input"};
-    try { await assertForkResource(d.db, d.principal, "restore.plan", {kind: "stack", id: input.data.stackId}); } catch (e) {
-        if (e instanceof ForkNotFoundError) return {ok: false, code: "not_found"};
-        if (e instanceof ForkForbiddenError) return {ok: false, code: "forbidden"};
-        throw e;
+    const {stackId, planId} = input.data;
+    let where;
+    if (stackId || planId) {
+        try { await assertForkResource(d.db, d.principal, "restore.plan", stackId ? {kind: "stack", id: stackId} : {kind: "restore_plan", id: planId as string}); } catch (e) {
+            if (e instanceof ForkNotFoundError) return {ok: false, code: "not_found"};
+            if (e instanceof ForkForbiddenError) return {ok: false, code: "forbidden"};
+            throw e;
+        }
+        where = stackId ? eq(forkRestoreRun.stackId, stackId) : eq(forkRestoreRun.planId, planId as string);
+    } else {
+        const org = await soleOrganization(d.db);
+        if (!org) return {ok: false, code: "not_found"};
+        if (!forkCan(actorIn(d.principal, org), "restore.plan")) return {ok: false, code: "forbidden"};
+        where = eq(forkRestoreRun.organizationId, org);
     }
-    const rows = await d.db.select().from(forkRestoreRun).where(eq(forkRestoreRun.stackId, input.data.stackId)).orderBy(desc(forkRestoreRun.createdAt)).limit(20);
-    return {ok: true, runs: rows.map((r) => RestoreRunSummary.parse({id: r.id, state: r.state, createdAt: r.createdAt.toISOString(), finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null, targetAgentName: r.targetAgentName, rpSequence: r.rpSequence, verification: r.verification}))};
+    const rows = await d.db.select().from(forkRestoreRun).where(where).orderBy(desc(forkRestoreRun.createdAt)).limit(20);
+    return {ok: true, runs: rows.map((r) => RestoreRunSummary.parse({id: r.id, stackId: r.stackId, state: r.state, createdAt: r.createdAt.toISOString(), finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null, targetAgentName: r.targetAgentName, rpSequence: r.rpSequence, verification: r.verification}))};
 }
