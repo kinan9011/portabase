@@ -70,7 +70,7 @@ const q = async (s: string, a: unknown[] = []) => (await t.pool.query(s, a)).row
 const PROJECT_URL = () => `http://forklab-dashboard.localhost:${P}`;
 const dashEnvOf = (): NodeJS.ProcessEnv => ({...process.env, NODE_ENV: "production", DATABASE_URL: t.url, PROJECT_URL: PROJECT_URL(), PROJECT_SECRET: DASH_SECRET, PRIVATE_PATH: priv,
     AUTH_DEFAULT_USER: ADMIN.email, AUTH_DEFAULT_PASSWORD: ADMIN.password, AUTH_DEFAULT_USER_NAME: "W18b Lab", SKIP_ONBOARDING: "true", AUTH_SIGNUP_ENABLED: "false", FORK_STACKS_ENABLED: "true", FORK_ARCANE_ENABLED: "true",
-    FORK_ALLOW_INSECURE_LOOPBACK: "true", FORK_MIGRATE_DUMP: "off", FORK_VERIFY_TICK_SECONDS: "3600", FORK_KIT_WATCH_MINUTES: "1440", FORK_RUN_TICK_SECONDS: "300", FORK_RESTORE_TICK_SECONDS: process.env.W18B_TICK_SECONDS ?? "2", FORK_AGENT_TASK_TTL_MINUTES: String(TTL_MIN)});
+    FORK_ALLOW_INSECURE_LOOPBACK: "true", FORK_MIGRATE_DUMP: "off", FORK_VERIFY_TICK_SECONDS: "3600", FORK_KIT_WATCH_MINUTES: "1440", FORK_RUN_TICK_SECONDS: "300", TZ: "UTC", FORK_RESTORE_TICK_SECONDS: process.env.W18B_TICK_SECONDS ?? "2", FORK_AGENT_TASK_TTL_MINUTES: String(TTL_MIN)});
 async function waitFor<T>(what: string, fn: () => Promise<T | null | undefined | false>, ms = 90_000): Promise<T> {
     const end = Date.now() + ms;
     for (;;) {
@@ -81,7 +81,7 @@ async function waitFor<T>(what: string, fn: () => Promise<T | null | undefined |
 }
 async function startDashboard() {
     const before = out.length;
-    child = spawn("pnpm", ["exec", "next", "start", "-p", String(P), "-H", GW], {cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"], env: dashEnvOf()});
+    child = spawn("pnpm", ["exec", "next", "start", "-p", String(P), "-H", GW], {cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"], env: dashEnvOf(), detached: true}); // own process group: next-server + rclone die with it
     child.stdout!.on("data", (d) => { out += d; }); child.stderr!.on("data", (d) => { out += d; });
     await waitFor("dashboard ready", async () => out.slice(before).includes("Fork initialised") && (await fetch(`${base}/api/health`).then((r) => r.ok).catch(() => false)), 180_000);
 }
@@ -342,7 +342,9 @@ describe.skipIf(!LAB)("W18b live: Flow C through the real server job, MinIO mani
         for (const id of [...runIds.map((r) => `com.portabase.fork.restore_id=${r}`), `com.docker.compose.project=${PROJECT}`]) for (const n of docker(["network", "ls", "-q", "--filter", `label=${id}`]).split("\n").filter(Boolean)) { try { docker(["network", "rm", n]); } catch { /* gone */ } }
         for (const v of [ST_CLEAN, REF_VOL, "notes_data"]) { try { docker(["volume", "rm", "-f", v]); } catch { /* gone */ } }
         try { docker(["network", "rm", NET]); } catch { /* gone */ }
-        forwarder?.close(); child?.kill("SIGTERM"); await sleep(500); if (child?.exitCode === null) child?.kill("SIGKILL");
+        forwarder?.close();
+        const killGroup = (sig: NodeJS.Signals) => { try { if (child?.pid) process.kill(-child.pid, sig); } catch { /* gone */ } };
+        killGroup("SIGTERM"); await sleep(1500); killGroup("SIGKILL");
         await t?.drop();
         try { rootSh("rm -rf " + ROOT + "/*"); } catch { /* none */ }
         rmSync(tmp, {recursive: true, force: true});
