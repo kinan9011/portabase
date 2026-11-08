@@ -25,6 +25,7 @@ export const MIGRATION_LEDGER: readonly LedgerEntry[] = [
     {tag: "0010_agent_channel_rotation", wave: "W15b", note: "fork_agent_enrollment: pending_credential_hash, pending_task_id, pending_valid_until (signed rotate_credential overlap slot, ADR-007 A12)"},
     {tag: "0011_restore_plan", wave: "W16", note: "fork_restore_plan (hash-bound dry-run plans, approvals, expiry); fork_stack: contains_personal_data, test_restore_opt_in_at/_by (D44, §4.8)"},
     {tag: "0012_compose_render", wave: "W17-ii", note: "fork_compose_render (policy view of a rendered compose document uploaded by the restore-target agent, raw check result, sha256; ADR-007 A14)"},
+    {tag: "0013_restore_override", wave: "W16b", note: "fork_restore_override (single-use, plan-bound, KEK-encrypted restore-time overrides; D28, SEC-08)"},
     // R2: append here; one entry per generated migration, in order.
 ];
 
