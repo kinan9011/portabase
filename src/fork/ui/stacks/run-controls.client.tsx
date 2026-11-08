@@ -51,7 +51,7 @@ export function RunNowButton({stackId, label, reason, testId}: {stackId: string;
     return (
         <span className="inline-flex flex-col items-start gap-1">
             <ReasonButton type="button" variant="outline" reason={reason} onClick={onClick} aria-busy={pending || undefined} data-testid={testId ?? "run-now"}>{pending ? RUNS.action.running : label}</ReasonButton>
-            {msg && <span role="status" data-testid="run-now-outcome" className={`max-w-64 text-xs ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</span>}
+            {msg && <span data-testid="run-now-outcome" className={`max-w-64 text-xs ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</span>}
         </span>
     );
 }

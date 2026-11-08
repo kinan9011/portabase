@@ -7,6 +7,7 @@ import {rotateKekAction} from "@/fork/actions/kit.action";
 import type {Candidate, DashboardDbView} from "@/fork/dashboard-db/service";
 import {DASHBOARD_DB, KEK_ROTATION} from "@/fork/ui/labels";
 import {SecretInput, type SecretHandle} from "@/fork/ui/secret-input";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 /** D40 card: choose which existing source backs up the dashboard DB, and see the honest verdict. */
 export function DashboardDbCard({view, candidates, disabled}: {view: DashboardDbView; candidates: Candidate[]; disabled: boolean}) {
@@ -31,7 +32,7 @@ export function DashboardDbCard({view, candidates, disabled}: {view: DashboardDb
                     <option value="">{DASHBOARD_DB.none}</option>
                     {candidates.map((c) => <option key={c.id} value={c.id}>{c.name}{c.agentName ? ` (${c.agentName})` : ""}</option>)}
                 </select>
-                <Button type="submit" disabled={disabled} className="w-fit">{DASHBOARD_DB.save}</Button>
+                <Button type="submit" disabled={disabled} className={`w-fit ${PRIMARY_AA}`}>{DASHBOARD_DB.save}</Button>
             </form>
             <p role="status" className="min-h-5 text-sm">{msg}</p>
             <p className="text-xs text-muted-foreground">{DASHBOARD_DB.restoreNote}</p>
@@ -56,7 +57,7 @@ export function KekCard({disabled}: {disabled: boolean}) {
             <h2 id="kek" className="font-semibold">{KEK_ROTATION.heading}</h2>
             <p className="text-sm text-muted-foreground">{KEK_ROTATION.intro}</p>
             <form method="post" onSubmit={rotate} className="flex flex-col gap-3">
-                <SecretInput ref={pw} label={KEK_ROTATION.password} name="kek-password" required/>
+                <SecretInput ref={pw} label={KEK_ROTATION.password} name="kek-password" required purpose="current-password"/>
                 <Button type="submit" disabled={disabled} variant="outline" className="w-fit">{KEK_ROTATION.button}</Button>
             </form>
             <p role="status" className="min-h-5 text-sm">{msg}</p>

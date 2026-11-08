@@ -82,7 +82,7 @@ export function TestRestorePanel({view, stackId, isAdmin, configLocked}: {view: 
                     <Link href={`/dashboard/recovery/runs/${view.last.runId}`} className="w-fit font-medium underline underline-offset-4">{TR.last.link}</Link>
                 </div>
             )}
-            <TestRestorePoller active={isTestRestoreActive(view)}/>
+            <TestRestorePoller active={isTestRestoreActive(view)} headline={view.last ? res.headline : null}/>
             <TestRestoreActions view={view} stackId={stackId} configLocked={configLocked} active={isTestRestoreActive(view)}/>
             <TestRestoreEditor view={view} stackId={stackId} reason={editReason}/>
         </section>

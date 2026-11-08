@@ -14,6 +14,7 @@ import {type SecretKeyHandle, SecretKeyInput } from "@/fork/ui/integrations/secr
 import {CONNECTION_STATE_LABELS, type ConnectionState, SYNC_COPY, SYNC_NOW } from "@/fork/ui/labels";
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge, ToneIcon} from "@/fork/ui/tone-badge";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 const fmt = (iso: string | null) => (iso ? `${new Date(iso).toLocaleString("en-US", {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"})} UTC` : "Never");
 
@@ -73,7 +74,7 @@ function RotateDialog({open, onOpenChange, keyRef, pending, onRotate, error}: {o
                     <PermissionList/>
                     <DialogFooter>
                         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-                        <Button type="submit" aria-disabled={pending || undefined}>{pending ? "Verifying…" : "Verify and rotate"}</Button>
+                        <Button className={PRIMARY_AA} type="submit" aria-disabled={pending || undefined}>{pending ? "Verifying…" : "Verify and rotate"}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

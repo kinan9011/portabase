@@ -18,6 +18,7 @@ import type {ActivateResult} from "@/fork/stack-policy/activate";
 import type {ConfigureView} from "@/fork/stack-policy/configure-view";
 import type {PreviewResult} from "@/fork/stack-policy/preview-service";
 import {RetentionPolicySchema} from "@/fork/recovery/retention-policy";
+import {retentionFieldErrors} from "@/fork/ui/a11y/retention-errors";
 import {checkChannelRule} from "@/fork/stack-policy/channels";
 import {ConsistencySection} from "./consistency-section";
 import {blockers, dbFieldErrors, initialState, toActivateInput, toSelection, type WizardState} from "./model";
@@ -111,6 +112,7 @@ export function ConfigureForm({view, locked, quiesceReason}: {view: ConfigureVie
 
     const setRetention = (k: (typeof RETENTION_KEYS)[number], raw: string) => { const n = Number(raw); if (Number.isInteger(n)) set({retention: {...st.retention, [k]: n}}); };
     const retentionOk = RetentionPolicySchema.safeParse(st.retention).success;
+    const retErrs = retentionFieldErrors(st.retention, (k) => T.schedule.retention[k]);
 
     return (
         <div className="flex flex-col gap-5" data-testid="configure-form">
@@ -134,8 +136,9 @@ export function ConfigureForm({view, locked, quiesceReason}: {view: ConfigureVie
                         {RETENTION_KEYS.map((k) => (
                             <div key={k} className="flex flex-col gap-1.5">
                                 <Label htmlFor={`ret-${k}`}>{T.schedule.retention[k]}</Label>
-                                <Input id={`ret-${k}`} type="number" min={k === "keep_last" ? 1 : 0} value={st.retention[k]} onChange={(e) => setRetention(k, e.target.value)} aria-describedby={`ret-${k}-unit`}/>
+                                <Input id={`ret-${k}`} type="number" min={k === "keep_last" ? 1 : 0} value={st.retention[k]} onChange={(e) => setRetention(k, e.target.value)} aria-invalid={retErrs[k] ? true : undefined} aria-describedby={retErrs[k] ? `ret-${k}-unit ret-${k}-err` : `ret-${k}-unit`}/>
                                 <span id={`ret-${k}-unit`} className="text-muted-foreground text-xs">{T.schedule.retention.unit[k]}</span>
+                                {retErrs[k] && <span id={`ret-${k}-err`} className="text-destructive text-xs">{retErrs[k]}</span>}
                             </div>
                         ))}
                     </div>

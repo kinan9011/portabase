@@ -11,6 +11,7 @@ import {Textarea} from "@/components/ui/textarea";
 import {SecretInput, SECRET_INPUT_PROPS, type SecretHandle} from "@/fork/ui/secret-input";
 import {useAnnounce} from "@/fork/ui/status-announcer";
 import {GENERIC_FAILURE, NOT_APPLICABLE_COPY, OVERRIDES, REFUSAL_COPY} from "./labels";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 /**
  * Restore-time overrides panel (W16b, D28) — the component W18b embeds; there is no page or route here.
@@ -132,7 +133,7 @@ export function RestoreOverridesPanel({planId, planHash, view: viewProp, canEdit
                         {view.yml.present ? <div><Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => run.mutate({kind: "clear_yml"})}>{OVERRIDES.removeYml}</Button></div> : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <Button type="submit" disabled={busy}>{busy ? OVERRIDES.working : OVERRIDES.save}</Button>
+                        <Button className={PRIMARY_AA} type="submit" disabled={busy}>{busy ? OVERRIDES.working : OVERRIDES.save}</Button>
                         <Button type="button" variant="outline" disabled={busy || (view.revision === 0)} onClick={() => run.mutate({kind: "clear_all"})}>{OVERRIDES.clearAll}</Button>
                     </div>
                 </fieldset>

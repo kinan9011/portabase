@@ -9,6 +9,7 @@ import {fmtBytes, fmtPort} from "@/fork/ui/stacks/format";
 import {ScrollRegion} from "@/fork/ui/stacks/scroll-region";
 import {ServiceStateBadge} from "@/fork/ui/stacks/stack-status-badges";
 import {ToneBadge} from "@/fork/ui/tone-badge";
+import {FOCUS_RING_AA} from "@/fork/ui/a11y/focus";
 
 const R = STACK_DETAILS.resources;
 const C = R.columns;
@@ -164,7 +165,7 @@ export function ResourcesTabs({view}: {view: InventoryView}) {
                 <div className="max-w-full overflow-x-auto"><TabsList aria-label={R.tabsLabel}>
                     {(Object.keys(R.sections) as Key[]).map((k) => <TabsTrigger key={k} value={k}>{R.sections[k]} <span className="ml-1 tabular-nums">({COUNT[k](view)})</span></TabsTrigger>)}
                 </TabsList></div>
-                {(Object.keys(R.sections) as Key[]).map((k) => { const P = PANELS[k]; return <TabsContent key={k} value={k}><P v={view}/></TabsContent>; })}
+                {(Object.keys(R.sections) as Key[]).map((k) => { const P = PANELS[k]; return <TabsContent key={k} value={k} className={FOCUS_RING_AA}><P v={view}/></TabsContent>; })}
             </Tabs>
         </section>
     );

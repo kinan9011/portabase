@@ -17,7 +17,7 @@ function Entry({item}: {item: StripItem}) {
                     {item.reasons.map((r) => (
                         <li key={r} className="flex flex-wrap items-baseline gap-x-2" data-reason={r}>
                             <span>{S.reasons[r].label}</span>
-                            <Link href={fixHref(r, item.stackId)} className="text-muted-foreground text-xs font-medium underline underline-offset-4">{S.reasons[r].fix}</Link>
+                            <Link href={fixHref(r, item.stackId)} className="text-xs font-medium underline underline-offset-4">{S.reasons[r].fix}</Link>
                         </li>
                     ))}
                 </ul>
@@ -52,7 +52,7 @@ export function SafetyStripView({strip, noChannel = false}: {strip: SafetyStrip;
             <span className="font-medium">{S.agentIssue(a.agentName)}</span>
             <span className="text-muted-foreground text-xs">{S.agentIssueBody(a.stacks.length)}</span>
             <ul className="flex flex-wrap gap-x-3">{a.stacks.map((s) => <li key={s.id}><Link href={stackHref(s.id)} className="underline underline-offset-4">{s.name}</Link></li>)}</ul>
-            <Link href={fixHref("agent_poll_failing", a.stacks[0]?.id ?? "")} className="text-muted-foreground w-fit text-xs font-medium underline underline-offset-4">{S.reasons.agent_poll_failing.fix}</Link>
+            <Link href={fixHref("agent_poll_failing", a.stacks[0]?.id ?? "")} className="w-fit text-xs font-medium underline underline-offset-4">{S.reasons.agent_poll_failing.fix}</Link>
         </li>
     ));
     // the per-stack "agent not answering" reason is shown once, in the agent item — not repeated as N duplicates under every stack

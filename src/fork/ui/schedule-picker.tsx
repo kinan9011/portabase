@@ -40,16 +40,16 @@ export function SchedulePicker({value, onChange, onCronValidity}: {value: Schedu
 
     return (
         <div className="flex flex-col gap-4" data-testid="schedule-picker">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                     <Label htmlFor={`${id}-preset`}>{S.preset}</Label>
-                    <select id={`${id}-preset`} className="border-input bg-background h-9 rounded-md border px-3 text-sm" value={value.preset === "cron" ? "daily" : value.preset} disabled={value.preset === "cron"} onChange={(e) => setPreset(e.target.value as SchedulePreset)}>
+                    <select id={`${id}-preset`} className="border-input bg-background h-9 w-full min-w-0 rounded-md border px-3 text-sm" value={value.preset === "cron" ? "daily" : value.preset} disabled={value.preset === "cron"} onChange={(e) => setPreset(e.target.value as SchedulePreset)}>
                         {SCHEDULE_PRESETS.filter((p) => p !== "cron").map((p) => <option key={p} value={p}>{S.presets[p]}</option>)}
                     </select>
                 </div>
                 <div className="flex flex-col gap-1.5">
                     <Label htmlFor={`${id}-tz`}>{S.timezone}</Label>
-                    <select id={`${id}-tz`} className="border-input bg-background h-9 rounded-md border px-3 text-sm" value={value.timezone} onChange={(e) => set({timezone: e.target.value})}>
+                    <select id={`${id}-tz`} className="border-input bg-background h-9 w-full min-w-0 rounded-md border px-3 text-sm" value={value.timezone} onChange={(e) => set({timezone: e.target.value})}>
                         {(zones.includes(value.timezone) ? zones : [value.timezone, ...zones]).map((z) => <option key={z} value={z}>{z}</option>)}
                     </select>
                 </div>
@@ -69,7 +69,7 @@ export function SchedulePicker({value, onChange, onCronValidity}: {value: Schedu
                         {value.preset === "weekly" && (
                             <div className="flex flex-col gap-1.5">
                                 <Label htmlFor={`${id}-weekday`}>{S.weekday}</Label>
-                                <select id={`${id}-weekday`} className="border-input bg-background h-9 rounded-md border px-3 text-sm" value={value.weekday} onChange={(e) => set({weekday: Number(e.target.value)})}>
+                                <select id={`${id}-weekday`} className="border-input bg-background h-9 w-full min-w-0 rounded-md border px-3 text-sm" value={value.weekday} onChange={(e) => set({weekday: Number(e.target.value)})}>
                                     {S.weekdays.map((d, i) => <option key={d} value={i}>{d}</option>)}
                                 </select>
                             </div>

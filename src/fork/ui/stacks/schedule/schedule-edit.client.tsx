@@ -7,6 +7,7 @@ import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {updateStackScheduleAction} from "@/fork/actions/stack-schedule.action";
 import {RetentionPolicySchema, type RetentionPolicy} from "@/fork/recovery/retention-policy";
+import {retentionFieldErrors} from "@/fork/ui/a11y/retention-errors";
 import {ScheduleSchema, type Schedule} from "@/fork/schedule/schedule";
 import type {EditScheduleResult} from "@/fork/stack-policy/update-schedule";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
@@ -14,6 +15,7 @@ import {CONFIGURE, GENERIC_FAILURE, SCHEDULE_EDIT} from "@/fork/ui/labels";
 import {SchedulePicker} from "@/fork/ui/schedule-picker";
 import {normalise} from "@/fork/ui/stacks/wizard/outcome";
 import {useAnnounce} from "@/fork/ui/status-announcer";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 const E = SCHEDULE_EDIT;
 const T = CONFIGURE.schedule;
@@ -34,6 +36,7 @@ export function ScheduleEditor({stackId, schedule, retention, reason}: {stackId:
     const [pending, setPending] = React.useState(false);
     const [msg, setMsg] = React.useState<{ok: boolean; text: string} | null>(null);
     const retOk = RetentionPolicySchema.safeParse(ret).success;
+    const retErrs = retentionFieldErrors(ret, (k) => T.retention[k]);
     const schedOk = ScheduleSchema.safeParse(sched).success && cronOk;
     const setRetention = (k: (typeof RETENTION_KEYS)[number], raw: string) => { const n = Number(raw); if (Number.isInteger(n)) setRet({...ret, [k]: n}); };
 
@@ -59,7 +62,7 @@ export function ScheduleEditor({stackId, schedule, retention, reason}: {stackId:
             {!open && (
                 <div className="flex flex-wrap items-start gap-3">
                     <ReasonButton type="button" variant="outline" reason={reason} onClick={() => { setSched(schedule); setRet(retention); setMsg(null); setOpen(true); }} data-testid="schedule-edit-open">{E.open}</ReasonButton>
-                    {msg && <span role="status" data-testid="schedule-edit-outcome" className={`max-w-prose text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</span>}
+                    {msg && <span data-testid="schedule-edit-outcome" className={`max-w-prose text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</span>}
                 </div>
             )}
             {open && (
@@ -73,8 +76,9 @@ export function ScheduleEditor({stackId, schedule, retention, reason}: {stackId:
                             {RETENTION_KEYS.map((k) => (
                                 <div key={k} className="flex flex-col gap-1.5">
                                     <Label htmlFor={`edit-ret-${k}`}>{T.retention[k]}</Label>
-                                    <Input id={`edit-ret-${k}`} type="number" min={k === "keep_last" ? 1 : 0} value={ret[k]} onChange={(e) => setRetention(k, e.target.value)} aria-describedby={`edit-ret-${k}-unit`}/>
+                                    <Input id={`edit-ret-${k}`} type="number" min={k === "keep_last" ? 1 : 0} value={ret[k]} onChange={(e) => setRetention(k, e.target.value)} aria-invalid={retErrs[k] ? true : undefined} aria-describedby={retErrs[k] ? `edit-ret-${k}-unit edit-ret-${k}-err` : `edit-ret-${k}-unit`}/>
                                     <span id={`edit-ret-${k}-unit`} className="text-muted-foreground text-xs">{T.retention.unit[k]}</span>
+                                    {retErrs[k] && <span id={`edit-ret-${k}-err`} className="text-destructive text-xs">{retErrs[k]}</span>}
                                 </div>
                             ))}
                         </div>
@@ -83,7 +87,7 @@ export function ScheduleEditor({stackId, schedule, retention, reason}: {stackId:
                     </fieldset>
                     {msg && !msg.ok && <p role="alert" data-testid="schedule-edit-error" className="text-destructive text-sm">{msg.text}</p>}
                     <div className="flex flex-wrap gap-3">
-                        <Button type="submit" aria-busy={pending || undefined} aria-disabled={!retOk || !schedOk || undefined} data-testid="schedule-edit-save">{pending ? E.saving : E.save}</Button>
+                        <Button className={PRIMARY_AA} type="submit" aria-busy={pending || undefined} aria-disabled={!retOk || !schedOk || undefined} data-testid="schedule-edit-save">{pending ? E.saving : E.save}</Button>
                         <Button type="button" variant="outline" onClick={() => setOpen(false)} data-testid="schedule-edit-cancel">{E.cancel}</Button>
                     </div>
                 </form>

@@ -12,6 +12,7 @@ import {type SecretKeyHandle, SecretKeyInput } from "@/fork/ui/integrations/secr
 import type {SaveVars} from "@/fork/ui/integrations/use-integrations-actions";
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneIcon} from "@/fork/ui/tone-badge";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 
 /** Same identity rule as the server (`endpointIdentity`): scheme + host + port, default ports filled, path ignored. */
 export function clientEndpointIdentity(raw: string): string | null {
@@ -101,7 +102,7 @@ export function ConnectionForm({connection, keyRef, pending, lockedReason, onSub
                 </div>
 
                 <div className="flex flex-wrap items-start gap-2">
-                    <ReasonButton type="submit" reason={lockedReason}>{pending ? "Verifying…" : "Verify and save"}</ReasonButton>
+                    <ReasonButton className={PRIMARY_AA} type="submit" reason={lockedReason}>{pending ? "Verifying…" : "Verify and save"}</ReasonButton>
                     {onCancel && <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>}
                 </div>
             </div>

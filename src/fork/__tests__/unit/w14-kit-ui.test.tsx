@@ -42,7 +42,7 @@ describe("kit panel (secrets never enter React state, the page, or storage)", ()
         expect(await axeViolations(container)).toEqual([]);
         for (const f of container.querySelectorAll("form")) expect(f.getAttribute("method")).toBe("post");
         const pw = container.querySelector('input[name="kit-password"]') as HTMLInputElement;
-        expect(pw.type).toBe("password"); expect(pw.value).toBe(""); expect(pw.getAttribute("autocomplete")).toBe("off");
+        expect(pw.type).toBe("password"); expect(pw.value).toBe(""); expect(pw.getAttribute("autocomplete")).toBe("current-password"); // W27b D-06 (1.3.5): the account password states its purpose
         expect(screen.getByTestId("kit-state").getAttribute("data-kit-state")).toBe("none");
     });
 

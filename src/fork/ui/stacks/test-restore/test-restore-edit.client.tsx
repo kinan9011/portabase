@@ -16,6 +16,7 @@ import {ReasonButton} from "@/fork/ui/disabled-reason";
 import {GENERIC_FAILURE} from "@/fork/ui/labels";
 import {SchedulePicker} from "@/fork/ui/schedule-picker";
 import {normalise} from "@/fork/ui/stacks/wizard/outcome";
+import {A11Y_COPY} from "@/fork/ui/a11y/labels";
 import {useAnnounce} from "@/fork/ui/status-announcer";
 import {TR, refusalText} from "./labels";
 
@@ -36,13 +37,21 @@ async function verdict(call: () => Promise<unknown>, okText: string, failText: (
 
 /** While the server says a test restore or its wipe is active, re-render every 10 s; stops by itself. */
 // ponytail: polls until the server says inactive; a stuck wipe is bounded by the 24 h wipe deadline (D-6), upgrade to backoff if it matters.
-export function TestRestorePoller({active}: {active: boolean}) {
+export function TestRestorePoller({active, headline}: {active: boolean; headline: string | null}) {
     const router = useRouter();
+    const announce = useAnnounce();
+    const prev = React.useRef<boolean | null>(null);
     React.useEffect(() => {
         if (!active) return;
         const t = setInterval(() => router.refresh(), POLL_MS);
         return () => clearInterval(t);
     }, [active, router]);
+    // 4.1.3: a result discovered by polling reaches the page's ONE status region (prev-ref: only the real active -> idle transition).
+    React.useEffect(() => {
+        const p = prev.current;
+        prev.current = active;
+        if (p === true && !active && headline) announce(headline);
+    }, [active, headline, announce]);
     return null;
 }
 
@@ -73,7 +82,7 @@ export function TestRestoreActions({view, stackId, configLocked, active}: {view:
                 {showRun && <ReasonButton type="button" className={PRIMARY_AA} reason={runReason} aria-busy={pending || undefined} data-testid="tr-run-now" onClick={() => void act(() => runTestRestoreNowAction({stackId}), TR.actions.started)}>{TR.actions.runNow}</ReasonButton>}
                 {showWipe && last && <ReasonButton type="button" variant="outline" reason={configLocked ? TR.reasons.locked : null} data-testid="tr-wipe-now" onClick={() => void act(() => wipeTestRestoreNowAction({runId: last.runId}), TR.actions.wipeArmed)}>{TR.actions.wipeNow}</ReasonButton>}
             </div>
-            {msg && <p role="status" data-testid="tr-outcome" className={`max-w-prose text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</p>}
+            {msg && <p data-testid="tr-outcome" className={`max-w-prose text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</p>}
         </div>
     );
 }
@@ -124,7 +133,7 @@ export function TestRestoreEditor({view, stackId, reason}: {view: TestRestoreVie
                         setEnabled(view.schedule.enabled); setSched(admin?.schedule ?? DEFAULT_TR_SCHEDULE); setTarget(admin?.targetAgentId ?? ""); setRoot(admin?.restoreRoot ?? "");
                         setStale(String(view.schedule.staleAfterDays)); setMsg(null); setOpen(true);
                     }}>{TR.edit.open}</ReasonButton>
-                    {msg && <span role="status" data-testid="tr-edit-outcome" className={`max-w-prose text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</span>}
+                    {msg && <span data-testid="tr-edit-outcome" className={`max-w-prose text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</span>}
                 </div>
             )}
             {open && admin && (
@@ -201,15 +210,16 @@ export function PrivacyEditor({view, stackId, reason}: {view: TestRestoreView; s
                 ))}
             </fieldset>
             <div className="flex items-center gap-2">
-                <input id={`${ids}-oi`} type="checkbox" checked={noNeed ? false : optIn} aria-disabled={blocked || noNeed || undefined} aria-describedby={noNeed ? `${ids}-nn` : undefined} data-testid="tr-optin" className="size-6 shrink-0"
+                <input id={`${ids}-oi`} type="checkbox" checked={noNeed ? false : optIn} aria-disabled={blocked || noNeed || undefined} aria-describedby={[`${ids}-oh`, noNeed ? `${ids}-nn` : null, blocked ? `${ids}-r` : null].filter(Boolean).join(" ")} data-testid="tr-optin" className="size-6 shrink-0"
                     onChange={(e) => { if (blocked || noNeed) return; if (e.target.checked) setDlg(true); else setOptIn(false); }}/>
                 <Label htmlFor={`${ids}-oi`}>{TR.privacy.optIn}</Label>
             </div>
+            <p id={`${ids}-oh`} className="text-muted-foreground text-xs">{A11Y_COPY.optInConfirmHint}</p>
             {noNeed && <p id={`${ids}-nn`} className="text-muted-foreground text-xs">{TR.privacy.optInNeedsYes}</p>}
             {blocked && <p id={`${ids}-r`} className="text-muted-foreground max-w-prose text-xs">{reason}</p>}
             <div className="flex flex-wrap items-center gap-3">
                 <Button type="submit" variant="outline" aria-disabled={blocked || undefined} aria-describedby={blocked ? `${ids}-r` : undefined} aria-busy={pending || undefined} data-testid="tr-privacy-save">{TR.privacy.save}</Button>
-                {msg && <span role="status" data-testid="tr-privacy-outcome" className={`max-w-prose text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</span>}
+                {msg && <span data-testid="tr-privacy-outcome" className={`max-w-prose text-sm ${msg.ok ? "text-muted-foreground" : "text-destructive"}`}>{msg.text}</span>}
             </div>
             <DangerousActionConfirm open={dlg} onOpenChange={setDlg} title={TR.privacy.confirmTitle} confirmLabel={TR.privacy.confirm} description={<p>{TR.privacy.d44}</p>} onConfirm={() => { setOptIn(true); setDlg(false); }}/>
         </form>
