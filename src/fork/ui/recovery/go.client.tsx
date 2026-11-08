@@ -12,6 +12,7 @@ import {listRestoreRunsAction, startRestoreRunAction} from "@/fork/actions/resto
 import type {RestoreOverridesView} from "@/fork/config/view";
 import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 import {HOST_ROLE_LABELS} from "@/fork/ui/labels";
 import {verdict} from "@/fork/ui/recovery/call";
 import {PLAN_REFUSAL_TEXT, RECOVERY, START_REFUSAL_TEXT} from "@/fork/ui/recovery/labels";
@@ -24,7 +25,7 @@ const text = (code: string, project: string, machine: string) => Object.hasOwn(S
 /** "Continue": moves focus and the viewport to the Go section of the same page (Step 5). */
 export function ContinueButton({reason}: {reason: string | null}) {
     return (
-        <ReasonButton reason={reason} className="w-full sm:w-auto" onClick={() => { const el = document.getElementById("go-h"); el?.scrollIntoView?.({block: "start"}); el?.focus(); }}>{RECOVERY.plan.continue}</ReasonButton>
+        <ReasonButton reason={reason} className={`w-full sm:w-auto ${PRIMARY_AA}`} onClick={() => { const el = document.getElementById("go-h"); el?.scrollIntoView?.({block: "start"}); el?.focus(); }}>{RECOVERY.plan.continue}</ReasonButton>
     );
 }
 
@@ -118,7 +119,7 @@ export function GoSection({plan, appName, backupLabel, missingRequired, canExecu
                 </div>
             )}
             <div>
-                <ReasonButton data-testid="go-button" className="w-full sm:w-auto" reason={g.reason} aria-busy={busy || undefined} onClick={() => setOpen(true)}>
+                <ReasonButton data-testid="go-button" className={`w-full sm:w-auto ${PRIMARY_AA}`} reason={g.reason} aria-busy={busy || undefined} onClick={() => setOpen(true)}>
                     {prod ? RECOVERY.go.prodButton(machine) : RECOVERY.go.testButton}
                 </ReasonButton>
             </div>

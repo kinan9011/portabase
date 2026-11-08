@@ -75,7 +75,7 @@ export function DangerousActionConfirm({title, description, confirmLabel, onConf
                     <AlertDialogAction
                         aria-disabled={typed ? !match : undefined}
                         onClick={(e) => { if (!match) { e.preventDefault(); return; } const t = typed ? value.trim() : undefined; setValue(""); onConfirm(t); }}
-                        className={`bg-destructive hover:bg-destructive/90 text-white${match ? "" : " cursor-not-allowed opacity-50"}`}
+                        className={`bg-[#b91c1c] hover:bg-[#991b1b] text-white${match ? "" : " cursor-not-allowed opacity-50"}`}
                     >{confirmLabel}</AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

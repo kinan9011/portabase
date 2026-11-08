@@ -4,12 +4,13 @@ import type {RestoreRunSummary} from "@/fork/restore-run/view";
 import type {RestoreChoice} from "@/fork/restore-wizard/view";
 import {FACET_COPY, RP_STATUS_LABELS, RUNTIME_LABELS, type RuntimeStateKey} from "@/fork/ui/labels";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 import {ToneBadge} from "@/fork/ui/tone-badge";
 import {fmtUtc, STACKS_HREF} from "@/fork/ui/stacks/format";
 import {RECOVERY, STATE_CHIP, R_ROLE} from "@/fork/ui/recovery/labels";
 import {elapsed, orderRuns, relative, toneOf} from "@/fork/ui/recovery/model";
 
-export const LINK_PRIMARY = "bg-primary text-primary-foreground inline-flex h-9 items-center rounded-md px-4 text-sm font-medium";
+export const LINK_PRIMARY = `${PRIMARY_AA} inline-flex h-9 items-center rounded-md px-4 text-sm font-medium`;
 export const LINK_PLAIN = "text-sm font-medium underline underline-offset-4";
 
 /** Facet text from the SHARED labels (never re-declared: "Not tested" comes from `FACET_COPY`). */
@@ -40,7 +41,7 @@ export function RecoveryHome({choices, runs, canPlan, locked, lockedText, now}: 
             <div>
                 {startReason === null
                     ? <Link href="/dashboard/recovery/new" data-testid="recovery-start" className={LINK_PRIMARY}>{RECOVERY.page.start}</Link>
-                    : <ReasonButton data-testid="recovery-start" reason={startReason}>{RECOVERY.page.start}</ReasonButton>}
+                    : <ReasonButton data-testid="recovery-start" className={PRIMARY_AA} reason={startReason}>{RECOVERY.page.start}</ReasonButton>}
             </div>
 
             {runs !== null && (

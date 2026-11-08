@@ -8,6 +8,7 @@ import {approveRestorePolicyAction, cancelRestoreRunAction, cleanupRestoreRunAct
 import type {RestoreRunView} from "@/fork/restore-run/view";
 import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 import {SERVICE_STATE_LABELS} from "@/fork/ui/labels";
 import {verdict} from "@/fork/ui/recovery/call";
 import {CANCEL_REFUSAL_TEXT, CLEANUP_REFUSAL_TEXT, POLICY_REFUSAL_TEXT, RECOVERY, RULE_TEXT, R_PROD, STATE_CHIP, STEP_TEXT, UNKNOWN_RULE} from "@/fork/ui/recovery/labels";
@@ -169,7 +170,7 @@ function AllowPanel({view, canApprove, locked, refreshNow}: {view: RestoreRunVie
             ))}
             {reason && <p id="allow-reason" className="text-muted-foreground text-sm">{reason}</p>}
             {err && <p role="alert" data-testid="allow-error" className="text-sm">{err}</p>}
-            {!hard && <ReasonButton reason={reason === null && busy ? RECOVERY.go.busy : reason} onClick={submit}>{RECOVERY.run.allowButton}</ReasonButton>}
+            {!hard && <ReasonButton className={PRIMARY_AA} reason={reason === null && busy ? RECOVERY.go.busy : reason} onClick={submit}>{RECOVERY.run.allowButton}</ReasonButton>}
         </section>
     );
 }

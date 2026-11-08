@@ -10,6 +10,7 @@ import {Label} from "@/components/ui/label";
 import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
 import {createRestorePlanAction} from "@/fork/actions/restore-plan.action";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
+import {PRIMARY_AA} from "@/fork/ui/recovery/style";
 import {AGENT_STATUS_LABELS, HOST_ROLE_LABELS, RP_STATUS_LABELS, RUNTIME_LABELS, type RuntimeStateKey} from "@/fork/ui/labels";
 import {CHOICE_GONE, PLAN_REFUSAL_TEXT, RECOVERY, R_LOCKED} from "@/fork/ui/recovery/labels";
 import {verdict} from "@/fork/ui/recovery/call";
@@ -101,7 +102,7 @@ function AppStep({data}: {data: WizardData}) {
             )}
             {ok.length > 0 && (
                 <div className="mt-6">
-                    <ReasonButton className={BTN} reason={sel ? null : RECOVERY.steps.chooseFirst} onClick={() => sel && router.push(`/dashboard/recovery/new?step=backup&stack=${sel}`)}>{RECOVERY.steps.nextBackup}</ReasonButton>
+                    <ReasonButton className={`${BTN} ${PRIMARY_AA}`} reason={sel ? null : RECOVERY.steps.chooseFirst} onClick={() => sel && router.push(`/dashboard/recovery/new?step=backup&stack=${sel}`)}>{RECOVERY.steps.nextBackup}</ReasonButton>
                 </div>
             )}
         </section>
@@ -151,7 +152,7 @@ function BackupStep({data}: {data: WizardData}) {
                 </ul>
             )}
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start">
-                {ok.length > 0 && <ReasonButton className={BTN} reason={sel ? null : RECOVERY.steps.chooseBackupFirst} onClick={() => sel && router.push(`/dashboard/recovery/new?step=machine&stack=${data.stackId}&point=${sel}`)}>{RECOVERY.steps.nextMachine}</ReasonButton>}
+                {ok.length > 0 && <ReasonButton className={`${BTN} ${PRIMARY_AA}`} reason={sel ? null : RECOVERY.steps.chooseBackupFirst} onClick={() => sel && router.push(`/dashboard/recovery/new?step=machine&stack=${data.stackId}&point=${sel}`)}>{RECOVERY.steps.nextMachine}</ReasonButton>}
                 <Link href="/dashboard/recovery/new?step=app" className="inline-flex h-9 items-center text-sm font-medium underline underline-offset-4">{RECOVERY.steps.back}</Link>
             </div>
         </section>
@@ -243,7 +244,7 @@ function MachineStep({data}: {data: WizardData}) {
             )}
             {err && <p role="alert" data-testid="plan-error" className="mt-4 max-w-2xl rounded-md border p-3 text-sm">{err}</p>}
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start">
-                {ready.length > 0 && <ReasonButton className={BTN} reason={reason} aria-busy={busy || undefined} onClick={next}>{busy ? RECOVERY.steps.preparing : RECOVERY.steps.nextPlan}</ReasonButton>}
+                {ready.length > 0 && <ReasonButton className={`${BTN} ${PRIMARY_AA}`} reason={reason} aria-busy={busy || undefined} onClick={next}>{busy ? RECOVERY.steps.preparing : RECOVERY.steps.nextPlan}</ReasonButton>}
                 <Link href={`/dashboard/recovery/new?step=backup&stack=${data.stackId}`} className="inline-flex h-9 items-center text-sm font-medium underline underline-offset-4">{RECOVERY.steps.back}</Link>
             </div>
         </section>
