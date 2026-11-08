@@ -1,5 +1,6 @@
 import {z} from "zod";
 import type {RestorePlanV1} from "@/fork/restore/schema";
+import {engineCheckCount} from "@/fork/restore-tasks/build";
 import type {RestoreStep} from "./vocab";
 
 /**
@@ -16,7 +17,7 @@ export const needsDb = (plan: RestorePlanV1): boolean => live(plan).some((a) => 
 
 /**
  * verify_manifest → probe → stage → apply → [render → (restore_db) → compose_up → check_services].
- * D29 / W17b (quiesce / guard) and W-TR (integrity container, verified wipe) add their steps HERE with their own handlers: nothing else changes.
+ * D29 / W17b (quiesce / guard) add their steps HERE with their own handlers. W-TR appends `integrity` for test restores; its verified wipe is a separate post-terminal phase.
  */
 export function deriveSteps(plan: RestorePlanV1): RestoreStep[] {
     const steps: RestoreStep[] = ["verify_manifest", "probe", "stage", "apply"];
@@ -25,7 +26,16 @@ export function deriveSteps(plan: RestorePlanV1): RestoreStep[] {
         if (needsDb(plan)) steps.push("restore_db");
         steps.push("compose_up", "check_services");
     }
+    // W-TR: a data-only test restore ends with the engine integrity check (only when at least one artifact has a checker)
+    if (plan.purpose === "test_restore" && engineCheckCount(plan).checkable > 0) steps.push("integrity");
     return steps;
+}
+
+const Verify = z.object({checks: z.array(z.object({index: z.number(), engine: z.enum(["sqlite", "postgresql"]), status: z.literal("ok")})).max(100)});
+/** W-TR: the `restore_verify` result must report exactly `expected` checks, all `ok`. Anything else is `integrity_failed`. */
+export function checkVerify(result: unknown, expected: number): Check {
+    const r = Verify.safeParse(result);
+    return r.success && r.data.checks.length === expected ? OK : bad("integrity_failed");
 }
 
 /** Σ distinct-artifact `expect.plaintext_size` (nulls ignored). */

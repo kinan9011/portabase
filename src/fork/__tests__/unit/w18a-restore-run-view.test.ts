@@ -11,6 +11,7 @@ const run = (over: Partial<RunRow> = {}): RunRow => ({
     confirmation: "typed", acceptMissingInputs: false,
     policyApproval: {v: 1, canary: CANARY}, policyApprovalSha256: "b".repeat(64), policyApprovedBy: `user-${CANARY}`, policyApprovedAt: T,
     services: [{service: "web", state: "running"}, {service: "db", state: "exited"}],
+    trigger: "manual", scheduledFor: null, integrity: null, wipeState: null, wipeReason: null, wipeStartedAt: null, wipeFinishedAt: null, wipeBy: null,
     cancelRequestedAt: null, cancelRequestedBy: `user-${CANARY}`, startedBy: `user-${CANARY}`, createdAt: T, deadlineAt: T, finishedAt: T, updatedAt: T, ...over,
 });
 const J = (step: string, status: string | null, reason: string | null = null, attempt = 1): JournalView => ({step, attempt, status, reason, attempts: 1});

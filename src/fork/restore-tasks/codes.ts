@@ -14,5 +14,7 @@ export const RESTORE_REASONS = [
     "container_conflict", "protected_container", "network_exists", "volume_not_in_compose", "db_restore_failed", "compose_failed",
     // W17b (ADR-007 A15): quiesce refusal / failure codes, appended in the agent's `Code` order (`QUIESCE_AGENT_CODES`)
     ...QUIESCE_AGENT_CODES,
+    // W-TR (ADR-007 A16): data-only test-restore integrity check — appended at the END, same order as the agent's `Code` enum
+    "integrity_failed", "engine_unavailable",
 ] as const;
 export type RestoreReason = (typeof RESTORE_REASONS)[number];

@@ -1,7 +1,7 @@
 import type {Action, RestorePlanV1} from "@/fork/restore/schema";
 import type {ApprovalKind} from "@/fork/restore/vocab";
 import type {z} from "zod";
-import type {ApplyPayload, CleanupPayload, ComposeRef, DbPayload, ProbePayload, RenderPayload, RestoreHeader, StagePayload, UpPayload} from "./payload-schema";
+import type {ApplyPayload, CleanupPayload, ComposeRef, DbPayload, ProbePayload, RenderPayload, RestoreHeader, StagePayload, UpPayload, VerifyPayload} from "./payload-schema";
 
 /**
  * Pure payload builders of the W17-i restore tasks (plan-W17 §4.0, §4.1 i-2): a verified plan in, a strict payload out. NO I/O, no clock, no env, no DB
@@ -91,6 +91,43 @@ export function buildApplyPayload(i: BuildInput, manifestSha256: string): z.infe
     // sqlite files may only land in a volume this same restore created (the agent re-checks ownership)
     for (const s of sqlite) if (!volumes.some((v) => v.name === s.volume)) throw new BuildError("mode_unsupported");
     return {...header, manifest_sha256: manifestSha256, volumes, sqlite, networks, unpack};
+}
+
+/** W-TR (ADR-007 A16, plan D-4): one engine integrity check of a TEST plan's artifact. */
+export type EngineCheck = {index: number; engine: "sqlite" | "postgresql"};
+const engineOf = (a: Action): EngineCheck["engine"] | null =>
+    a.kind === "restore_sqlite_file" ? "sqlite" : a.kind === "restore_db_dump" && a.source.dbms === "postgresql" ? "postgresql" : null;
+
+/** Engine-checkable artifacts of a TEST plan (+ how many DB dumps have no checker). Throws BuildError("manifest_mismatch") on an unmapped artifact. Deduped by index, ordered by index. */
+export function engineChecks(i: BuildInput): {checks: EngineCheck[]; notSupported: number} {
+    const byIndex = new Map<number, EngineCheck>();
+    const unsupported = new Set<string>();
+    for (const a of live(i.plan)) {
+        const engine = engineOf(a);
+        if (engine) byIndex.set(indexFor(i, a), {index: indexFor(i, a), engine});
+        else if (a.kind === "restore_db_dump") unsupported.add(a.artifact_ids[0] ?? `none:${unsupported.size}`);
+    }
+    return {checks: [...byIndex.values()].sort((x, y) => x.index - y.index), notSupported: unsupported.size};
+}
+
+/** Same counts without an index map (used by the pure step derivation): DISTINCT `artifact_ids[0]`, so it equals `engineChecks(i).checks.length`. */
+export function engineCheckCount(plan: RestorePlanV1): {checkable: number; notSupported: number} {
+    const ok = new Set<string>();
+    const no = new Set<string>();
+    for (const a of live(plan)) {
+        const key = a.artifact_ids[0] ?? `none:${ok.size + no.size}`;
+        if (engineOf(a)) ok.add(key);
+        else if (a.kind === "restore_db_dump") no.add(key);
+    }
+    return {checkable: ok.size, notSupported: no.size};
+}
+
+export function buildVerifyPayload(i: BuildInput, manifestSha256: string): z.infer<typeof VerifyPayload> {
+    if (i.plan.purpose !== "test_restore") throw new BuildError("mode_unsupported");
+    const header = buildHeader(i);
+    const {checks} = engineChecks(i);
+    if (checks.length === 0) throw new BuildError("mode_unsupported");
+    return {...header, manifest_sha256: manifestSha256, checks};
 }
 
 export function buildCleanupPayload(i: BuildInput, c: {workspace: boolean; volumes: boolean; networks: boolean; containers: boolean}): z.infer<typeof CleanupPayload> {

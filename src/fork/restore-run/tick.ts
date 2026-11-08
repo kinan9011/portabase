@@ -89,7 +89,7 @@ async function tickLocked(d: RestoreRunDeps, runId: string, now: Date): Promise<
     });
     if (r.state === "running") return "advanced";
     if (r.state === "done") {
-        await finalize(d, ctx.run, "succeeded", {verification: needsCompose(loaded.plan) ? "started" : "data_only", steps: r.steps});
+        await finalize(d, ctx.run, "succeeded", {verification: needsCompose(loaded.plan) ? "started" : ctx.run.purpose === "test_restore" ? "data_verified" : "data_only", steps: r.steps});
         return "done";
     }
     const code = safeReason(r.code ?? "internal_error");
@@ -115,7 +115,8 @@ export async function finalize(d: RestoreRunDeps, run: RunRow, state: Terminal, 
             details: {runId: run.id, planHash: run.planHash, state, reason: o.reason ?? null, failedStep: o.failedStep ?? null, verification: o.verification ?? null,
                 durationSeconds: Math.max(0, Math.round((now.getTime() - run.createdAt.getTime()) / 1000))},
         });
-        if (state !== "cancelled") {
+        // W-TR notifies test-restore outcomes itself (fixed sentences, plan D-13): the generic restore messages are for restores a person asked for
+        if (state !== "cancelled" && run.purpose !== "test_restore") {
             await enqueueForkNotification(tx, {kind: state === "succeeded" ? "restore.finished" : "restore.failed", dedupeKey: `restore:${run.id}:${state}`, payload: {stackId: run.stackId, state}});
         }
     });

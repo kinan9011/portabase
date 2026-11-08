@@ -70,7 +70,8 @@ function uniqueViolation(e: unknown): string | null {
 
 // ---- start ----------------------------------------------------------------------------------------------------------------------------
 
-export async function startRestoreRun(d: RestoreRunDeps, raw: unknown): Promise<{ok: true; runId: string} | ServiceRefusal<StartRefusal>> {
+/** `o` is INTERNAL (never parsed from `raw`): the W-TR scheduler / run-now service say who triggered the run and for which slot. */
+export async function startRestoreRun(d: RestoreRunDeps, raw: unknown, o: {trigger?: "manual" | "schedule"; scheduledFor?: Date} = {}): Promise<{ok: true; runId: string} | ServiceRefusal<StartRefusal>> {
     const p = d.principal;
     if (!p) return {ok: false, code: "forbidden"};
     const parsed = StartRestoreRunRequest.safeParse(raw);
@@ -126,10 +127,11 @@ export async function startRestoreRun(d: RestoreRunDeps, raw: unknown): Promise<
                 id: runId, organizationId: g.organizationId, stackId: row.stackId, planId: row.id, planHash: row.planHash, rpId: row.rpId, rpSequence: row.rpSequence,
                 targetAgentId: row.targetAgentId, targetAgentName: row.targetAgentName, purpose: row.purpose, mode: row.mode, state: "running", steps: initialSteps(steps),
                 confirmation, acceptMissingInputs: acceptMissingInputs === true, startedBy: p.userId, createdAt: now, deadlineAt, updatedAt: now,
+                trigger: o.trigger ?? "manual", scheduledFor: o.scheduledFor ?? null,
             });
             await recordAudit(tx, {
                 organizationId: g.organizationId, actorUserId: p.userId, action: "fork.restore_run.start", resourceType: "restore_run", resourceId: runId, result: "success", now,
-                details: {runId, planId: row.id, planHash: row.planHash, purpose: row.purpose, mode: row.mode, targetAgentId: plan.target.agent_id, steps, confirmation, acceptMissingInputs: acceptMissingInputs === true},
+                details: {runId, planId: row.id, planHash: row.planHash, purpose: row.purpose, mode: row.mode, targetAgentId: plan.target.agent_id, steps, confirmation, acceptMissingInputs: acceptMissingInputs === true, trigger: o.trigger ?? "manual"},
             });
             return "ok";
         });

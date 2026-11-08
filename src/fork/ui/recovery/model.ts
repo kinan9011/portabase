@@ -99,7 +99,7 @@ export function runHeadline(v: RunUi): {text: string; tone: Tone} {
     switch (v.state as RestoreRunState) {
         case "running": return HEADLINE.running;
         case "awaiting_approval": return HEADLINE.awaiting_approval;
-        case "succeeded": return v.verification === "started" ? HEADLINE.started : v.verification === "data_only" ? HEADLINE.data_only : HEADLINE.succeeded;
+        case "succeeded": return v.verification === "started" ? HEADLINE.started : v.verification === "data_only" ? HEADLINE.data_only : v.verification === "data_verified" ? HEADLINE.data_verified : HEADLINE.succeeded;
         case "incomplete": return HEADLINE.incomplete(v.services.filter((s) => s.state !== "running").map((s) => s.service));
         case "failed": {
             const f = failureSentence(v.reason, machine);

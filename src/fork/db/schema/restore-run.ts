@@ -42,6 +42,17 @@ export const forkRestoreRun = pgTable("fork_restore_run", {
     policyApprovedBy: text("policy_approved_by"),
     policyApprovedAt: ts("policy_approved_at"),
     services: jsonb("services").notNull().default(sql`'[]'::jsonb`),
+    /** W-TR: who started the run (`manual` = a person, `schedule` = the test-restore scheduler) and which slot it was for. */
+    trigger: text("trigger").notNull().default("manual"),
+    scheduledFor: ts("scheduled_for"),
+    /** W-TR: `{checked, failed, not_supported}` of the engine integrity check (counts only). */
+    integrity: jsonb("integrity"),
+    /** W-TR verified wipe of the scratch copy (test restores only): NULL = not yet handled (or not a test restore). */
+    wipeState: text("wipe_state"),
+    wipeReason: text("wipe_reason"),
+    wipeStartedAt: ts("wipe_started_at"),
+    wipeFinishedAt: ts("wipe_finished_at"),
+    wipeBy: text("wipe_by"),
     cancelRequestedAt: ts("cancel_requested_at"),
     cancelRequestedBy: text("cancel_requested_by"),
     startedBy: text("started_by").notNull(),
@@ -56,6 +67,10 @@ export const forkRestoreRun = pgTable("fork_restore_run", {
     check("fork_restore_run_purpose_ck", inList("purpose", RESTORE_PURPOSES)),
     check("fork_restore_run_mode_ck", sql`${t.mode} IN ('new_stack','selective')`),
     check("fork_restore_run_verification_ck", nullOrInList("verification", VERIFICATIONS)),
+    check("fork_restore_run_trigger_ck", sql`${t.trigger} IN ('manual','schedule')`),
+    check("fork_restore_run_wipe_ck", sql`(${t.wipeState} IS NULL OR ${t.wipeState} IN ('running','verified','not_needed','failed')) AND (${t.wipeReason} IS NULL OR ${t.wipeReason} ~ '^[a-z_]{1,64}$')`),
+    check("fork_restore_run_integrity_ck", sql`${t.integrity} IS NULL OR octet_length(${t.integrity}::text) <= 1024`),
+    index("fork_restore_run_test_facet_idx").on(t.stackId, t.finishedAt).where(sql`purpose = 'test_restore' AND state = 'succeeded' AND verification = 'data_verified' AND wipe_state = 'verified'`),
     check("fork_restore_run_confirmation_ck", sql`${t.confirmation} IN ('typed','not_required')`),
     check("fork_restore_run_reason_ck", sql`${t.reason} IS NULL OR ${t.reason} ~ '^[a-z_]{1,64}$'`),
     check("fork_restore_run_hash_ck", sql`${t.planHash} ~ '^[0-9a-f]{64}$' AND (${t.policyApprovalSha256} IS NULL OR ${t.policyApprovalSha256} ~ '^[0-9a-f]{64}$')`),
