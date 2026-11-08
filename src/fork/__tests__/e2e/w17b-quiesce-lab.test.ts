@@ -292,7 +292,7 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
         const t0 = Date.now();
         await waitFor("containers back after agent restart", async () => allUp(`${P}-db-1`, `${P}-app-1`), 120_000, 500);
         note(`Q2 containers healthy ${Date.now() - t0} ms after the agent was started`);
-        expect(logs(AGENT_C)).toMatch(/quiesce replay/);
+        await waitFor("agent logged the replay", async () => /quiesce replay — task .* 2\/2 verified/.test(logs(AGENT_C)), 60_000); // logged after the settle check, a few seconds after the containers are up
         await waitFor("journal removed", async () => !/\.json/.test(dockerTry(["run", "--rm", "-v", `${VOL}:/c:ro`, "busybox", "ls", "/c/fork-quiesce"])), 60_000);
         await finished(id);
         await reconcileQuiesce(db, id, new Date());
