@@ -15,9 +15,8 @@ import {SIGN_DOMAIN} from "@/fork/agent-channel/vocab";
 import {canonicalJson} from "@/fork/canonical";
 import type {ForkDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
-import {kidOfPublicKey, signManifest} from "@/fork/manifest/sign";
+import {kidOfPublicKey} from "@/fork/manifest/sign";
 import {createRestorePlan, loadPlanRow} from "@/fork/restore/service";
-import {buildStagePayload, type BuildInput} from "@/fork/restore-tasks/build";
 import {enqueueRestoreTask, type RestoreTaskDeps} from "@/fork/restore-tasks/enqueue";
 import {freshForkDb, seedAgent, type W04Db} from "@/fork/__tests__/w04-helpers";
 import {decryptAgentArchive, encryptAgentArchive, sha256} from "@/fork/__tests__/agent-archive";
@@ -208,7 +207,7 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
     });
 
     // ---- helpers of the W17-ii cases -----------------------------------------------------------------------------------------------------------
-    const WS = () => `${ROOT}/restore/app`;
+    const wsDir = () => `${ROOT}/restore/app`;
     const DEMO = path.join(process.cwd(), "dev/fork-lab/demo-stack");
     const STACK_ENV = Object.fromEntries(readFileSync(path.join(DEMO, "stack.env"), "utf8").split("\n").filter((l) => /^[A-Z_]+=/.test(l)).map((l) => [l.split("=")[0], l.slice(l.indexOf("=") + 1)]));
     const enq = async (type: string, extra: Record<string, unknown> = {}) => {
@@ -244,7 +243,7 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
         expect(s).toMatchObject({status: "succeeded"});
         const a = await run("restore_apply");
         expect(a).toMatchObject({status: "succeeded"});
-        expect(rexists(`${WS()}/compose/compose.yml`)).toBe(true);
+        expect(rexists(`${wsDir()}/compose/compose.yml`)).toBe(true);
         RUN.push(`N2 stage=${(s as {status: string}).status} apply=${(a as {status: string}).status} volume=${volName}`);
     });
 
@@ -257,7 +256,7 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
         expect(isPolicyView(JSON.parse(row.policy_view))).toBe(true);
         expect(row.rendered_sha256).toBe((r as {result: Record<string, any>}).result.rendered_sha256);
         const [full] = await q("select * from fork_compose_render where task_id=$1", [row.task_id]);
-        const verdict = renderVerdict({taskId: full.task_id, agentId: full.agent_id, restoreId: full.restore_id, policyView: full.policy_view, renderedSha256: full.rendered_sha256, raw: full.raw, roots: full.roots, files: full.files, composeVersion: full.compose_version, agentRulesSha256: full.agent_rules_sha256, createdAt: full.created_at}, WS());
+        const verdict = renderVerdict({taskId: full.task_id, agentId: full.agent_id, restoreId: full.restore_id, policyView: full.policy_view, renderedSha256: full.rendered_sha256, raw: full.raw, roots: full.roots, files: full.files, composeVersion: full.compose_version, agentRulesSha256: full.agent_rules_sha256, createdAt: full.created_at}, wsDir());
         expect([verdict.verdict, verdict.hard.length]).toEqual(["allow", 0]);
         expect((r as {result: Record<string, any>}).result.verdict).toBe("allow");
         const canary = STACK_ENV.POSTGRES_PASSWORD;
@@ -269,7 +268,7 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
 
     it("N4 raw poison: a restored override file with env_file outside the root ⇒ agent failed:raw_refused (kind env_file), no new render row, no helper container", async () => {
         const before = (await rows()).length;
-        rootSh(`printf 'services:\\n  web:\\n    env_file: /etc/hostname\\n' > '${WS()}/compose/compose.override.yml'`);
+        rootSh(`printf 'services:\\n  web:\\n    env_file: /etc/hostname\\n' > '${wsDir()}/compose/compose.override.yml'`);
         const r = await run("compose_render");
         expect(r).toMatchObject({status: "failed"});
         const x = r as {result: Record<string, any>};
@@ -277,12 +276,12 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
         expect(x.result.raw.violations[0].kind).toBe("env_file");
         expect((await rows()).length).toBe(before);
         expect(docker(["ps", "-aq", "--filter", "label=com.portabase.fork.helper=true"]).trim()).toBe("");
-        rootSh(`rm -f '${WS()}/compose/compose.override.yml'`);
+        rootSh(`rm -f '${wsDir()}/compose/compose.override.yml'`);
         RUN.push(`N4 raw_refused kind=${x.result.raw.violations[0].kind} rows_before=${before} rows_after=${(await rows()).length}`);
     });
 
     it("N5 rendered poison: privileged service ⇒ needs-explicit-override; compose_up without a token is refused by the dashboard AND by a planted task on the agent; nothing is started", async () => {
-        rootSh(`printf 'services:\\n  web:\\n    privileged: true\\n' > '${WS()}/compose/compose.override.yml'`);
+        rootSh(`printf 'services:\\n  web:\\n    privileged: true\\n' > '${wsDir()}/compose/compose.override.yml'`);
         const r = await run("compose_render");
         expect(r).toMatchObject({status: "succeeded"});
         const res = (r as {result: Record<string, any>}).result;
@@ -290,13 +289,13 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
         expect(res.findings).toEqual(expect.arrayContaining([{service: "web", rule: "privileged"}]));
         expect(await enq("compose_up", {approval: null})).toMatchObject({ok: false, code: "approval_invalid"});
         const plan = await loadPlanRow({db}, planId, planHash); if (!plan.ok) throw new Error(plan.code);
-        const header = {v: 1, restore_id: restoreId, plan_id: planId, plan_hash: planHash, stack_id: world.stack, rp_id: world.rp, purpose: plan.plan.purpose, mode: plan.plan.mode, host_role: "test", approvals: [], workspace: WS(), project: "app"};
-        const planted = await plant(world.agent, cleanBundle, "compose_up", {...header, manifest_sha256: world.manifestSha, compose: {dir: `${WS()}/compose`, override_yml: null, env: {}, path_map: []}, compose_sha256: res.rendered_sha256, approval: null, volumes: []}, {target: world.agent});
+        const header = {v: 1, restore_id: restoreId, plan_id: planId, plan_hash: planHash, stack_id: world.stack, rp_id: world.rp, purpose: plan.plan.purpose, mode: plan.plan.mode, host_role: "test", approvals: [], workspace: wsDir(), project: "app"};
+        const planted = await plant(world.agent, cleanBundle, "compose_up", {...header, manifest_sha256: world.manifestSha, compose: {dir: `${wsDir()}/compose`, override_yml: null, env: {}, path_map: []}, compose_sha256: res.rendered_sha256, approval: null, volumes: []}, {target: world.agent});
         const x = await finished(planted);
         expect(x.status).toBe("failed");
         expect(x.result).toMatchObject({reason: "approval_invalid", detail: "none"});
         expect(docker(["ps", "-aq", "--filter", "label=com.docker.compose.project=app"]).trim()).toBe("");
-        rootSh(`rm -f '${WS()}/compose/compose.override.yml'`);
+        rootSh(`rm -f '${wsDir()}/compose/compose.override.yml'`);
         RUN.push(`N5 verdict=${res.verdict} findings=${JSON.stringify(res.findings)} dashboard=approval_invalid agent=approval_invalid:none project_containers=0`);
     });
 
@@ -339,23 +338,23 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
 
     it("N8 guard: a foreign container with the same container_name ⇒ container_conflict; the foreign container and the agent keep running", async () => {
         docker(["run", "-d", "--name", "w17ii-foreign", "busybox", "sleep", "3600"]);
-        rootSh(`printf 'services:\\n  web:\\n    container_name: w17ii-foreign\\n' > '${WS()}/compose/compose.override.yml'`);
+        rootSh(`printf 'services:\\n  web:\\n    container_name: w17ii-foreign\\n' > '${wsDir()}/compose/compose.override.yml'`);
         expect(await run("compose_render")).toMatchObject({status: "succeeded"});
         const r = await run("compose_up", {approval: null});
         expect(r).toMatchObject({status: "failed", result: {reason: "container_conflict"}});
         expect(docker(["inspect", "-f", "{{.State.Running}}", "w17ii-foreign"]).trim()).toBe("true");
         expect(docker(["inspect", "-f", "{{.State.Running}}", CLEAN]).trim()).toBe("true");
-        rootSh(`printf 'services:\\n  web:\\n    container_name: ${CLEAN}\\n' > '${WS()}/compose/compose.override.yml'`);
+        rootSh(`printf 'services:\\n  web:\\n    container_name: ${CLEAN}\\n' > '${wsDir()}/compose/compose.override.yml'`);
         expect(await run("compose_render")).toMatchObject({status: "succeeded"});
         expect(await run("compose_up", {approval: null})).toMatchObject({status: "failed", result: {reason: "protected_container"}});
         expect(docker(["inspect", "-f", "{{.State.Running}}", CLEAN]).trim()).toBe("true");
-        rootSh(`rm -f '${WS()}/compose/compose.override.yml'`);
+        rootSh(`rm -f '${wsDir()}/compose/compose.override.yml'`);
         RUN.push("N8 container_conflict + protected_container; foreign and agent still running");
     });
 
     it("N9 isolation: a compose_up signed for the vps agent but targeted at the clean one, and one without a target, are rejected target_mismatch", async () => {
-        const header = {v: 1, restore_id: restoreId, plan_id: planId, plan_hash: planHash, stack_id: world.stack, rp_id: world.rp, purpose: "restore", mode: "new_stack", host_role: "test", approvals: [], workspace: WS(), project: "app"};
-        const body = {...header, manifest_sha256: world.manifestSha, compose: {dir: `${WS()}/compose`, override_yml: null, env: {}, path_map: []}, compose_sha256: "0".repeat(64), approval: null, volumes: []};
+        const header = {v: 1, restore_id: restoreId, plan_id: planId, plan_hash: planHash, stack_id: world.stack, rp_id: world.rp, purpose: "restore", mode: "new_stack", host_role: "test", approvals: [], workspace: wsDir(), project: "app"};
+        const body = {...header, manifest_sha256: world.manifestSha, compose: {dir: `${wsDir()}/compose`, override_yml: null, env: {}, path_map: []}, compose_sha256: "0".repeat(64), approval: null, volumes: []};
         const a = await plant(vpsAgent, vpsBundle, "compose_up", body, {target: world.agent});
         const b = await plant(world.agent, cleanBundle, "compose_up", body);
         const [ra, rb] = [await finished(a), await finished(b)];
@@ -370,7 +369,7 @@ describe.skipIf(!LAB)("W17-ii live: compose render, policy re-check, restore_db,
         expect(r).toMatchObject({status: "succeeded"});
         expect(docker(["ps", "-aq", "--filter", "label=com.docker.compose.project=app"]).trim()).toBe("");
         expect(docker(["volume", "ls", "-q", "--filter", "label=com.portabase.fork.agent_id"]).trim()).toBe("");
-        expect(rexists(WS())).toBe(false);
+        expect(rexists(wsDir())).toBe(false);
         expect(docker(["inspect", "-f", "{{.State.Running}}", "w17ii-foreign"]).trim()).toBe("true");
         expect(docker(["inspect", "-f", "{{.State.Running}}", CLEAN]).trim()).toBe("true");
         docker(["rm", "-f", "w17ii-foreign"]);
