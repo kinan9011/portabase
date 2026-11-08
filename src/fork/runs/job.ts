@@ -4,7 +4,6 @@ import {currentForkMode} from "@/fork/mode";
 import {retentionTick, type RetentionResult} from "@/fork/recovery-point/prune";
 import {registerForkRuntimeTask} from "@/fork/runtime";
 import {logger} from "@/lib/logger";
-import {getServerUrl} from "@/utils/get-server-url";
 import {cfgOf, type RunDeps} from "./deps";
 import {schedulerTick, type SchedulerResult} from "./scheduler";
 import {tickAllRuns} from "./service";
@@ -52,6 +51,7 @@ export function registerStackRunsJob(): void {
                     running = true;
                     try {
                         if ((await currentForkMode()).mode === "off") return;
+                        const {getServerUrl} = await import("@/utils/get-server-url"); // lazy: the env-validating module must not load when tests import `runsTick`
                         const d: RunDeps = {db: await appDb(), channel: {keys: fileKeyProvider, serverUrl: getServerUrl}}; // W17b: quiesce signs + enqueues its task
                         const retention = Date.now() - lastRetention >= RETENTION_EVERY_MS;
                         if (retention) lastRetention = Date.now();
