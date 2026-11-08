@@ -211,6 +211,9 @@ describe("W-TR scheduled data-only test restore", () => {
         const av = await getTestRestoreView(h.deps(w, op), {stackId: w.stack});
         expect(av.ok && av.view.admin?.restoreRoot).toBe("/srv/restore");
         expect(JSON.stringify(mv)).not.toContain("/srv/restore");
+        expect(JSON.stringify(mv)).not.toContain(w.agent);
+        expect(av.ok && av.view.admin?.schedule?.preset).toBe("hourly");
+        expect(av.ok && av.view.admin?.targetAgentId).toBe(w.agent);
     });
 
     it("a selective restore run (data_only) never feeds the facet (purpose filter)", async () => {

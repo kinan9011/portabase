@@ -29,7 +29,10 @@ export const TestRestoreView = z.strictObject({
         integrity: z.strictObject({checked: z.number(), failed: z.number(), notSupported: z.number()}).nullable(),
         wipe: z.strictObject({state: z.string().nullable(), reason: z.string().nullable(), finishedAt: iso.nullable()}),
     }).nullable(),
-    admin: z.strictObject({restoreRoot: z.string().nullable(), candidates: z.array(z.strictObject({id: z.string(), name: z.string()})).max(200)}).nullable(),
+    admin: z.strictObject({
+        restoreRoot: z.string().nullable(), candidates: z.array(z.strictObject({id: z.string(), name: z.string()})).max(200),
+        schedule: ScheduleSchema.nullable(), targetAgentId: z.string().nullable(),
+    }).nullable(),
     can: z.strictObject({configure: z.boolean(), runNow: z.boolean(), wipeNow: z.boolean()}),
 });
 export type TestRestoreView = z.infer<typeof TestRestoreView>;
@@ -73,7 +76,7 @@ export async function getTestRestoreView(d: TestRestoreDeps, raw: unknown): Prom
             durationSeconds: run.finishedAt ? Math.max(0, Math.round((run.finishedAt.getTime() - run.createdAt.getTime()) / 1000)) : null, integrity: countsOf(run.integrity),
             wipe: {state: run.wipeState, reason: safe(run.wipeReason), finishedAt: run.wipeFinishedAt ? run.wipeFinishedAt.toISOString() : null},
         } : null,
-        admin: can.configure ? {restoreRoot: row?.restoreRoot ?? null, candidates: await testHostCandidates(d.db, g.organizationId)} : null,
+        admin: can.configure ? {restoreRoot: row?.restoreRoot ?? null, candidates: await testHostCandidates(d.db, g.organizationId), schedule: sched, targetAgentId: row?.targetAgentId ?? null} : null,
         can,
     };
     return {ok: true, view: TestRestoreView.parse(view)};
