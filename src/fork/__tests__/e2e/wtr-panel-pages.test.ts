@@ -76,7 +76,7 @@ describe("W-TR-f test-restore panel (real build)", () => {
         await first.stop(); // keepDb
 
         // ---- boot 2: flags on, same database
-        second = await boot(flags, [], first.db);
+        second = await boot(flags, [], first.db, true);
         const base = second.base;
         const admin = await signIn(base);
         const memberCk = await login(base, MEMBER);
