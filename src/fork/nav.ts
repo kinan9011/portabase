@@ -16,8 +16,8 @@ export const FORK_NAV_DEFS: readonly Def[] = [
     {title: "Integrations", url: "/integrations", iconKey: "plug", capability: "arcane.manage", wave: "W01", shipped: true},
     {title: "Agent channel", url: "/integrations/agent-channel", iconKey: "radio", capability: "agents.channel.manage", wave: "W15b", shipped: true},
     {title: "Docker Stacks", url: "/stacks", iconKey: "layers", capability: "stacks.view", wave: "W08", shipped: true},
-    // Recovery stays hidden until the restore UI exists (W18b, R2, D13).
-    {title: "Recovery", url: "/recovery", iconKey: "life-buoy", capability: "recovery.view", wave: "W18b", shipped: false},
+    // Recovery shipped in W18b (R2, D13): shown for `recovery.view` holders in mode `on` only (flags off / locked ⇒ no fork nav at all).
+    {title: "Recovery", url: "/recovery", iconKey: "life-buoy", capability: "recovery.view", wave: "W18b", shipped: true},
 ];
 
 export const FORK_NAV_LABEL = "Stack Recovery";

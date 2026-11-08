@@ -14,7 +14,7 @@ const run = (over: Partial<RunRow> = {}): RunRow => ({
     cancelRequestedAt: null, cancelRequestedBy: `user-${CANARY}`, startedBy: `user-${CANARY}`, createdAt: T, deadlineAt: T, finishedAt: T, updatedAt: T, ...over,
 });
 const J = (step: string, status: string | null, reason: string | null = null, attempt = 1): JournalView => ({step, attempt, status, reason, attempts: 1});
-const EXTRA = {awaiting: null, overrides: {applicable: true, missingRequired: 0, frozen: false}};
+const EXTRA = {awaiting: null, overrides: {applicable: true, missingRequired: 0, frozen: false}, targetProject: "notes" as string | null};
 
 describe("W18a RestoreRunView (the allow-list the wizard reads)", () => {
     it("is strict: an extra key anywhere is rejected", () => {
@@ -37,6 +37,11 @@ describe("W18a RestoreRunView (the allow-list the wizard reads)", () => {
         const v = toRestoreRunView(bad, [J("probe", "failed", "Not A Code"), J("probe", "expired", null, 0)], EXTRA);
         expect(v.services).toEqual([]);
         expect(v.steps.find((s) => s.name === "probe")?.task).toEqual({status: "failed", reason: "Not A Code"}); // reasons are filtered when the journal is READ (journalOfRun); the view never invents one
+    });
+    it("W18b B4: planId is echoed, targetProject is passed through and is null when the plan failed its check", () => {
+        const r = run();
+        expect(toRestoreRunView(r, [], EXTRA)).toMatchObject({planId: r.planId, targetProject: "notes"});
+        expect(toRestoreRunView(r, [], {...EXTRA, targetProject: null}).targetProject).toBeNull();
     });
     it("what the operator still has to do: only a succeeded restore points at re-attaching backups (Adopt is deferred)", () => {
         expect(toRestoreRunView(run(), [], EXTRA).nextSteps).toEqual(["reattach_backups"]);

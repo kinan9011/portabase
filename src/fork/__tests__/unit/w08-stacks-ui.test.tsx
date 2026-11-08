@@ -6,6 +6,7 @@ import {CANARY, richInventory} from "@/fork/__tests__/w08-fixtures";
 import {okState} from "@/fork/__tests__/w09-fixtures";
 import {DEFAULT_PARAMS, parseStackListParams} from "@/fork/stacks/params";
 import {StackDetailSchema, StackListSchema, type StackDetail, type StackList} from "@/fork/stacks/dto";
+import {R_ROLE} from "@/fork/ui/recovery/labels";
 import {PRIMARY_STATE_LABELS, PROTECTION_LABELS, RUNS, RUNTIME_LABELS, STACK_DETAILS, STACKS_EMPTY, STACKS_PAGE, STALE_BANNER} from "@/fork/ui/labels";
 
 const refresh = vi.fn();
@@ -34,8 +35,8 @@ const detail = (o: Partial<StackDetail> & {inv?: Parameters<typeof richInventory
     const {inv: _i, ...rest} = o;
     return StackDetailSchema.parse({id: ID, name: "forklab-demo", composeProject: "forklab-demo", environmentName: "local", runtime: "running", protection: "unprotected", staleSince: null, lastSyncAt: "2026-11-07T01:05:00.000Z", syncing: false, inventory: okState(richInventory(o.inv), {version: 2}), ...rest});
 };
-const mountDetail = (d: StackDetail, o: {tab?: "overview" | "resources"; canConfigure?: boolean} = {}) =>
-    render(<StatusAnnouncer><StackDetailsClient detail={d} initialTab={o.tab ?? "overview"} canConfigure={o.canConfigure ?? true}/></StatusAnnouncer>);
+const mountDetail = (d: StackDetail, o: {tab?: "overview" | "resources"; canConfigure?: boolean; canRestore?: boolean; configLocked?: boolean} = {}) =>
+    render(<StatusAnnouncer><StackDetailsClient detail={d} initialTab={o.tab ?? "overview"} canConfigure={o.canConfigure ?? true} canRestore={o.canRestore} configLocked={o.configLocked}/></StatusAnnouncer>);
 
 beforeEach(() => refresh.mockReset());
 afterEach(() => vi.useRealTimers());
@@ -187,12 +188,20 @@ describe("W08 details: header, actions with visible reasons, tabs", () => {
         expect(screen.getByTestId("primary-state-badge").textContent).toContain(PRIMARY_STATE_LABELS.unprotected.description); // W09: derived §4.6 state
         expect(await axeViolations(container)).toEqual([]);
     });
+    it("W18b: Restore is a link into the wizard for a restore.plan holder (and a disabled button with the locked reason when configuration is locked)", () => {
+        const {unmount} = mountDetail(detail(), {canConfigure: true, canRestore: true});
+        expect(screen.getByTestId("restore-link").getAttribute("href")).toBe(`/dashboard/recovery/new?stack=${ID}`);
+        unmount();
+        mountDetail(detail(), {canConfigure: true, canRestore: true, configLocked: true});
+        expect(screen.queryByTestId("restore-link")).toBeNull();
+        expect(screen.getByRole("button", {name: STACK_DETAILS.actions.restore.label}).getAttribute("aria-disabled")).toBe("true");
+    });
     it("the not-yet-possible actions are aria-disabled, focusable, do nothing, and show a visible reason linked by aria-describedby", () => {
         mountDetail(detail(), {canConfigure: true});
         const a = STACK_DETAILS.actions;
         // W11: Configure is a real link for an administrator while configuration is open; the other three stay disabled with a visible reason
         expect(screen.getByRole("link", {name: a.configure.label}).getAttribute("href")).toBe(`/dashboard/stacks/${ID}/configure`);
-        const expected: [string, string][] = [[a.backupNow.label, RUNS.action.reasons.member], [a.restore.label, a.restore.reason], [a.mirror.label, a.mirror.reason]];
+        const expected: [string, string][] = [[a.backupNow.label, RUNS.action.reasons.member], [a.restore.label, R_ROLE], [a.mirror.label, a.mirror.reason]]; // W18b: Restore for a holder without `restore.plan` says why (R-role); holders get a link (next test)
         for (const [label, reason] of expected) {
             const b = screen.getByRole("button", {name: label});
             expect(b.getAttribute("aria-disabled")).toBe("true");

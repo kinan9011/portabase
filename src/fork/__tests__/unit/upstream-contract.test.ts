@@ -65,6 +65,12 @@ describe("upstream contract — symbols the fork imports", () => {
         ["src/components/ui/checkbox.tsx", "Checkbox"], // W11 (controlled copies of the storage selector / forms)
         ["src/components/ui/radio-group.tsx", "RadioGroup"],
         ["src/components/ui/radio-group.tsx", "RadioGroupItem"],
+        ["src/components/ui/collapsible.tsx", "Collapsible"], // W18b: "More options" + "Values for this restore"
+        ["src/components/ui/collapsible.tsx", "CollapsibleTrigger"],
+        ["src/components/ui/collapsible.tsx", "CollapsibleContent"],
+        ["src/features/layout/components/page.tsx", "PageHeader"], // W18b: Recovery page + plan header (the app pages import Page/PageContent as the other fork pages do)
+        ["src/features/layout/components/page.tsx", "PageTitle"],
+        ["src/features/layout/components/page.tsx", "PageDescription"],
         ["src/lib/utils.ts", "cn"],
         ["src/features/agents/utils/status/agent-status.ts", "getAgentStatus"],
         ["src/features/agents/utils/status/agent-status.ts", "DASHBOARD_THRESHOLDS"],
@@ -87,6 +93,7 @@ describe("upstream contract — symbols the fork imports", () => {
             "@/components/ui/alert-dialog", "@/components/ui/alert", "@/components/ui/button", "@/components/ui/dialog", "@/components/ui/input", "@/components/ui/label",
             "@/components/ui/select", "@/components/ui/switch", "@/components/ui/table", "@/components/ui/tabs", "@/lib/utils", "@/components/ui/checkbox", "@/components/ui/radio-group", "@/features/agents/utils/status/agent-status",
             "@/components/ui/textarea", // W15b
+            "@/components/ui/collapsible", "@/features/layout/components/page", // W18b
         ]);
         const walk = (dir: string): string[] =>
             readdirSync(dir, {withFileTypes: true}).flatMap((e) =>

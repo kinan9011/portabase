@@ -76,12 +76,18 @@ function Detail({stackId, row, artifacts, tz}: {stackId: string; row: BackupRow;
  * Backups tab (W13): the recovery points with their honest status ("Backed up · verifying" until the W14 verify job passes), the selected point's artifacts
  * and integrity facts, and the actions: Back up now (real, `backup.run`), Verify / Restore / Mirror visibly disabled with the reason as text.
  */
-export function BackupsTab({stackId, view, runReason}: {stackId: string; view: BackupsView | null; runReason: string | null}) {
+export function BackupsTab({stackId, view, runReason, canRestore = false, restoreReason = null}: {stackId: string; view: BackupsView | null; runReason: string | null; canRestore?: boolean; restoreReason?: string | null}) {
+    // W18b: Restore is a LINK into the wizard for `restore.plan` holders; a verified selected point starts at the machine step, otherwise at the backup step. Never a fake action.
+    const sel = view?.detail?.row;
+    const restoreHref = `/dashboard/recovery/new?stack=${stackId}${sel && sel.status === "verified" ? `&point=${sel.sequence}&step=machine` : ""}`;
+    const restoreWhy = !canRestore ? restoreReason : null;
     const actions = (
         <div className="flex flex-wrap items-start gap-3" data-testid="backups-actions">
             <RunNowButton stackId={stackId} label={B.runNow} reason={runReason} testId="backups-run-now"/>
             <ReasonButton type="button" variant="outline" reason={B.verify.reason} data-testid="backups-verify">{B.verify.label}</ReasonButton>
-            <ReasonButton type="button" variant="outline" reason={B.restore.reason} data-testid="backups-restore">{B.restore.label}</ReasonButton>
+            {canRestore
+                ? <Link href={restoreHref} data-testid="backups-restore" className="border-input bg-background hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium">{B.restore.label}</Link>
+                : <ReasonButton type="button" variant="outline" reason={restoreWhy ?? B.restore.reason} data-testid="backups-restore">{B.restore.label}</ReasonButton>}
             <ReasonButton type="button" variant="outline" reason={B.mirror.reason} data-testid="backups-mirror">{B.mirror.label}</ReasonButton>
         </div>
     );

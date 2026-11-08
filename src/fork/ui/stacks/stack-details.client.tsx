@@ -11,6 +11,7 @@ import {BlockersPanel} from "@/fork/ui/stacks/config-tab/blockers-panel";
 import {ConfigTab} from "@/fork/ui/stacks/config-tab/config-tab";
 import {FacetsPanel, LastGoodBackupLine} from "@/fork/ui/stacks/config-tab/facets-panel";
 import {ReasonButton} from "@/fork/ui/disabled-reason";
+import {R_LOCKED, R_ROLE} from "@/fork/ui/recovery/labels";
 import {fmtPort, fmtUtc, STACKS_HREF} from "@/fork/ui/stacks/format";
 import {ResourcesTabs} from "@/fork/ui/stacks/resources-tabs";
 import {ScheduleTab} from "@/fork/ui/stacks/schedule/schedule-tab";
@@ -25,7 +26,7 @@ import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge} from "@/fork/ui/tone-badge";
 
 const D = STACK_DETAILS;
-function Actions({canConfigure, configLocked, stackId, runReason}: {canConfigure: boolean; configLocked: boolean; stackId: string; runReason: string | null}) {
+function Actions({canConfigure, configLocked, stackId, runReason, canRestore}: {canConfigure: boolean; configLocked: boolean; stackId: string; runReason: string | null; canRestore: boolean}) {
     // Configure is a real link for an administrator while configuration is open (W11); every other action is visibly disabled with its reason (§8.2 rule 10).
     return (
         <div className="flex flex-wrap items-start gap-3" data-testid="actions">
@@ -33,7 +34,9 @@ function Actions({canConfigure, configLocked, stackId, runReason}: {canConfigure
                 ? <Link href={`${STACKS_HREF}/${stackId}/configure`} data-testid="configure-link" className="border-input bg-background hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium">{D.actions.configure.label}</Link>
                 : <ReasonButton type="button" variant="outline" reason={canConfigure ? D.actions.configure.admin : D.actions.configure.member}>{D.actions.configure.label}</ReasonButton>}
             <RunNowButton stackId={stackId} label={D.actions.backupNow.label} reason={runReason}/>
-            <ReasonButton type="button" variant="outline" reason={D.actions.restore.reason}>{D.actions.restore.label}</ReasonButton>
+            {canRestore && !configLocked
+                ? <Link href={`/dashboard/recovery/new?stack=${stackId}`} data-testid="restore-link" className="border-input bg-background hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium">{D.actions.restore.label}</Link> /* W18b: the wizard (DD-1) */
+                : <ReasonButton type="button" variant="outline" reason={canRestore ? R_LOCKED : R_ROLE}>{D.actions.restore.label}</ReasonButton>}
             <ReasonButton type="button" variant="outline" reason={D.actions.mirror.reason}>{D.actions.mirror.label}</ReasonButton>
         </div>
     );
@@ -122,7 +125,7 @@ function Overview({v, p, c, onOpenConfiguration}: {v: InventoryView; p: Protecti
     );
 }
 
-export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false, quiesce = null}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean; quiesce?: QuiesceViewDto | null}) {
+export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false, canRestore = false, quiesce = null}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean; canRestore?: boolean; quiesce?: QuiesceViewDto | null}) {
     const [tab, setTab] = React.useState<StackTab>(initialTab);
     // a real navigation (e.g. "Open in Backups" from Activity) changes the server-parsed tab: follow it; polling refreshes keep the same value and change nothing
     React.useEffect(() => { setTab(initialTab); }, [initialTab]);
@@ -155,7 +158,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                             <div className="flex gap-1.5"><dt>{D.lastSync}:</dt><dd className="text-foreground">{fmtUtc(detail.lastSyncAt, ENVIRONMENT_COPY.notSynced)}</dd></div>
                         </dl>
                     </div>
-                    <Actions canConfigure={canConfigure} configLocked={configLocked} stackId={detail.id} runReason={runReason}/>
+                    <Actions canConfigure={canConfigure} configLocked={configLocked} stackId={detail.id} runReason={runReason} canRestore={canRestore}/>
                 </div>
                 {protection && <LastGoodBackupLine p={protection}/>}
                 <div className="flex flex-wrap items-start gap-4"><RuntimeBadge state={detail.runtime} describe/>{protection ? <PrimaryStateBadge state={protection.primary} describe/> : <ProtectionBadge state={detail.protection} describe/>}{stale && <StaleBadge/>}</div>
@@ -184,7 +187,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                     <TabsContent value="overview">{protection && configuration && <Overview v={view} p={protection} c={configuration} onOpenConfiguration={() => onTab("configuration")}/>}</TabsContent>
                     <TabsContent value="resources"><ResourcesTabs view={view}/></TabsContent>
                     <TabsContent value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
-                    <TabsContent value="backups"><BackupsTab stackId={detail.id} view={detail.backups} runReason={runReason}/></TabsContent>
+                    <TabsContent value="backups"><BackupsTab stackId={detail.id} view={detail.backups} runReason={runReason} canRestore={canRestore && !configLocked} restoreReason={canRestore ? R_LOCKED : R_ROLE}/></TabsContent>
                     <TabsContent value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} isAdmin={canConfigure} configLocked={configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`} runs={detail.runs} canRun={canRun} quiesce={quiesce}/></TabsContent>
                     <TabsContent value="activity"><ActivityTab stackId={detail.id} view={detail.activity} limits={detail.runs?.limits ?? {waitMinutes: 10, stallMinutes: 30}}/></TabsContent>
                 </Tabs>
