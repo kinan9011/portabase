@@ -320,6 +320,7 @@ describe.skipIf(!LAB)("W18b live: Flow C through the real server job, MinIO mani
     }, 900_000);
 
     afterAll(async () => {
+        try { for (const r of await q("select id from fork_restore_run")) if (!runIds.includes(r.id)) runIds.push(r.id); } catch { /* db gone */ } // browser-started runs too (this lab's throw-away DB only)
         const evidence = process.env.W18B_EVIDENCE_DIR;
         const all = stripAnsi(logs(CLEAN)) + out;
         const bundle = (() => { try { return decodeBundle(cleanBundle); } catch { return {task_key_b64: "~~", credential: "~~"}; } })();
@@ -333,13 +334,14 @@ describe.skipIf(!LAB)("W18b live: Flow C through the real server job, MinIO mani
         } else if (evidence) writeFileSync(path.join(tmp, "NOT-WRITTEN"), "canary found a secret in a log: evidence withheld");
         // SCOPED cleanup (DD-F1-7): this lab's names, the `notes` compose project, this lab's run ids. Never a global label sweep.
         for (const n of [CLEAN, MINIO, REFPG]) { try { docker(["rm", "-f", n]); } catch { /* gone */ } }
-        for (const id of docker(["ps", "-aq", "--filter", `label=com.docker.compose.project=${PROJECT}`]).split("\n").filter(Boolean)) { try { docker(["rm", "-f", id]); } catch { /* gone */ } }
+        const PROJECTS = [PROJECT, `${PROJECT}-restored`]; // kit T7 -> T8 restores under the suggested name
+        for (const proj of PROJECTS) for (const id of docker(["ps", "-aq", "--filter", `label=com.docker.compose.project=${proj}`]).split("\n").filter(Boolean)) { try { docker(["rm", "-f", id]); } catch { /* gone */ } }
         for (const id of runIds) {
             for (const c of docker(["ps", "-aq", "--filter", `label=com.portabase.fork.restore_id=${id}`]).split("\n").filter(Boolean)) { try { docker(["rm", "-f", c]); } catch { /* gone */ } }
             for (const v of docker(["volume", "ls", "-q", "--filter", `label=com.portabase.fork.restore_id=${id}`]).split("\n").filter(Boolean)) { try { docker(["volume", "rm", "-f", v]); } catch { /* gone */ } }
         }
-        for (const v of docker(["volume", "ls", "-q", "--filter", `label=com.docker.compose.project=${PROJECT}`]).split("\n").filter(Boolean)) { try { docker(["volume", "rm", "-f", v]); } catch { /* gone */ } }
-        for (const id of [...runIds.map((r) => `com.portabase.fork.restore_id=${r}`), `com.docker.compose.project=${PROJECT}`]) for (const n of docker(["network", "ls", "-q", "--filter", `label=${id}`]).split("\n").filter(Boolean)) { try { docker(["network", "rm", n]); } catch { /* gone */ } }
+        for (const proj of PROJECTS) for (const v of docker(["volume", "ls", "-q", "--filter", `label=com.docker.compose.project=${proj}`]).split("\n").filter(Boolean)) { try { docker(["volume", "rm", "-f", v]); } catch { /* gone */ } }
+        for (const id of [...runIds.map((r) => `com.portabase.fork.restore_id=${r}`), ...PROJECTS.map((p) => `com.docker.compose.project=${p}`)]) for (const n of docker(["network", "ls", "-q", "--filter", `label=${id}`]).split("\n").filter(Boolean)) { try { docker(["network", "rm", n]); } catch { /* gone */ } }
         for (const v of [ST_CLEAN, REF_VOL, "notes_data"]) { try { docker(["volume", "rm", "-f", v]); } catch { /* gone */ } }
         try { docker(["network", "rm", NET]); } catch { /* gone */ }
         forwarder?.close();
@@ -473,10 +475,12 @@ describe.skipIf(!LAB)("W18b live: Flow C through the real server job, MinIO mani
         writeFileSync(path.join(SCRATCH, "w18b-lab.json"), JSON.stringify({base: PROJECT_URL(), admin: ADMIN.email, adminPassword: ADMIN.password, member: MEMBER, orgAdmin: ORGADMIN, root: ROOT, cmd: cmdF, stop: stopF, notesStack: w.stack, n1, n2}, null, 1), {mode: 0o600});
         const say = (cmd: string, ok: boolean, d = "") => writeFileSync(logF, `${new Date().toISOString()} ${cmd} ${ok ? "ok" : "error"} ${d}\n`, {flag: "a"});
         const find = async (seq: string, name: string) => { const rp = seq === "1" ? n2 : seq === "2" ? n1 : null; if (!rp || !name) throw new Error("usage: <rpSeq 1|2> <source_name>"); return {key: objKey(rp, name), orig: saved.get(`${seq}/${name}`)!}; };
+        const cleaned = new Set<string>(); // hygiene never re-cleans an already cleaned run
         const exec = async (line: string) => {
             const [cmd, a, b] = line.trim().split(/\s+/);
             if (cmd === "env-on") {
-                const envId = (await q(`insert into fork_arcane_environment (connection_id, external_id, name, agent_id, agent_name, host_role, allowed_path_roots, last_sync_status, last_sync_at) values ($1,'clean-env','clean-env',$2,'clean-host','production',$3,'ok',now()) returning id`, [w.conn, w.agent, [ROOT]]))[0].id;
+                // planner needs restore_root strictly under a known root (restore/plan.ts:179); ROOT itself stays the prefilled folder
+                const envId = (await q(`insert into fork_arcane_environment (connection_id, external_id, name, agent_id, agent_name, host_role, allowed_path_roots, last_sync_status, last_sync_at) values ($1,'clean-env','clean-env',$2,'clean-host','production',$3,'ok',now()) returning id`, [w.conn, w.agent, [path.dirname(ROOT)]]))[0].id;
                 await q("insert into fork_stack (organization_id, environment_id, environment_name, compose_project, display_name) values ($1,$2,'clean-env','notes','notes (on clean-host)')", [org, envId]);
             } else if (cmd === "env-off") {
                 await q("delete from fork_stack where environment_id in (select id from fork_arcane_environment where external_id='clean-env')"); await q("delete from fork_arcane_environment where external_id='clean-env'");
@@ -487,7 +491,7 @@ describe.skipIf(!LAB)("W18b live: Flow C through the real server job, MinIO mani
             else if (cmd === "resume-agent") docker(["unpause", CLEAN]);
             else if (cmd === "expire-plans") await q("update fork_restore_plan set expires_at = now() - interval '1 minute' where id not in (select plan_id from fork_restore_run)");
             else if (cmd === "hygiene") {
-                for (const r of await q("select r.id, p.id plan_id, p.plan_hash from fork_restore_run r join fork_restore_plan p on p.id=r.plan_id where r.state in ('succeeded','incomplete')")) { await hygiene({planId: r.plan_id, planHash: r.plan_hash}, r.id); runIds.push(r.id); }
+                for (const r of await q("select r.id, p.id plan_id, p.plan_hash from fork_restore_run r join fork_restore_plan p on p.id=r.plan_id where r.state in ('succeeded','incomplete')")) { if (cleaned.has(r.id)) continue; await hygiene({planId: r.plan_id, planHash: r.plan_hash}, r.id); cleaned.add(r.id); runIds.push(r.id); }
             } else throw new Error("unknown");
         };
         let lastSpare = 0;
