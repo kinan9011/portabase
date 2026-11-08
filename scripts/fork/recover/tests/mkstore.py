@@ -158,6 +158,13 @@ def main():
         if case in ("extends-outside", "env-file-outside", "env-file-var"):
             compose = compose.replace("    env_file: stack.env\n", "")
     extra_files = []
+    # W27a / F-01: symlinks inside the RESTIC bind artifact (restic copies skip the tar audit): the compose folder's `data` tree is restored from restic
+    if case == "symlink-escape-bind":  # `./data/link` is in the root by string and a link to /etc on disk: the daemon would bind /etc from the host, as root
+        compose = COMPOSE_OK.replace("      - ./data:/data\n", "      - ./data/link:/data\n")
+    if case == "symlink-escape-envfile":  # env_file read by `docker compose` on the host BEFORE the rendered check
+        compose = COMPOSE_OK.replace("    env_file: stack.env\n", "    env_file: ./data/app.env\n")
+    if case == "symlink-inside-ok":  # positive control: a relative link that stays inside the root is fine
+        compose = COMPOSE_OK.replace("      - ./data:/data\n", "      - ./data/link:/data\n")
     if case == "vol-driver-bind":  # a NAMED volume that is really a bind of /etc (the bind-mount rule alone does not see it)
         compose = COMPOSE_OK.replace("volumes:\n  appdata:\n", "volumes:\n  appdata:\n    driver: local\n    driver_opts: {type: none, o: bind, device: /etc}\n")
     if case == "net-host-external":  # an external network literally named `host` = host networking
@@ -228,6 +235,9 @@ def main():
     pwf = os.path.join(out, "pw.restic"); open(pwf, "w").write(hkdf(master, f"portabase/restic/v1/{gid}").hex())
     src = os.path.join(out, "bindsrc"); os.makedirs(os.path.join(src, "dir"))
     for n, d in data_files: open(os.path.join(src, n), "wb").write(d)
+    if case == "symlink-escape-bind": os.symlink("/etc", os.path.join(src, "link"))
+    if case == "symlink-escape-envfile": os.symlink("/etc/hostname", os.path.join(src, "app.env"))
+    if case == "symlink-inside-ok": os.symlink("dir", os.path.join(src, "link"))
     env = {**os.environ, "RESTIC_PASSWORD_FILE": pwf, "RESTIC_REPOSITORY": rdir, "RESTIC_CACHE_DIR": os.path.join(out, "cache")}
     sh(["restic", "init"], env=env); sh(["restic", "backup", "--host", "agent", "."], env=env, cwd=src)
     snap = json.loads(sh(["restic", "snapshots", "--json"], env=env))[0]["id"]

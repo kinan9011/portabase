@@ -335,6 +335,15 @@ def _outside(root, base_dir, target):
     return not (full == root or full.startswith(root + os.sep))
 
 
+def _escapes(root, base_dir, target):
+    """W27a / F-01 (#142 CLI half): a target that is inside the root BY STRING can still resolve outside it through a symlink inside the restored tree (`data -> /etc`,
+    `app.env -> /etc/shadow`); `docker compose` (host side, as root) and the daemon follow it. True when the real path leaves the real root. Missing targets resolve
+    through their existing parents (a not-yet-existing file under a symlinked dir is judged by where that dir really points)."""
+    full = os.path.realpath(os.path.join(base_dir, target))
+    real_root = os.path.realpath(root)
+    return not (full == real_root or full.startswith(real_root + os.sep))
+
+
 def _targets(node, key):
     """String targets of `key` (string | list of strings/{path}); non-string values are returned as-is so _outside() can refuse them."""
     v = node.get(key)
@@ -409,10 +418,19 @@ def compose_scan(root, files):
     def add(kind, service, target):
         violations.add((kind, service or "", target if isinstance(target, str) else repr(target)))
 
-    def follow(base, depth, target, kind, service):
-        """target of an include / extends.file: refused when outside, queued when inside (missing files are a violation)."""
+    def bad(kind, service, base, target):
+        """string check first (existing kinds), then the realpath check (kind symlink_escape, W27a); True = violation recorded"""
         if _outside(root_n, base, target):
             add(kind, service, target)
+            return True
+        if _escapes(root_n, base, target):
+            add("symlink_escape", service, target)
+            return True
+        return False
+
+    def follow(base, depth, target, kind, service):
+        """target of an include / extends.file: refused when outside, queued when inside (missing files are a violation)."""
+        if bad(kind, service, base, target):
             return
         full = os.path.normpath(os.path.join(base, target))
         if depth + 1 > MAX_DEPTH:
@@ -426,6 +444,9 @@ def compose_scan(root, files):
         if len(visited) >= MAX_FILES:
             raise Fail("compose file set is too large")
         visited.add(path)
+        if _escapes(root_n, os.path.dirname(path), os.path.basename(path)) and os.path.lexists(path):  # the compose / included file itself is a link out of the root
+            add("symlink_escape", None, path)
+            continue
         if not os.path.isfile(path):
             add("missing", None, path)
             continue
@@ -438,26 +459,23 @@ def compose_scan(root, files):
                     follow(base, depth, t, "include", None)
                 ef = it.get("env_file")
                 for t in (ef if isinstance(ef, list) else [ef] if ef is not None else []):
-                    if _outside(root_n, base, t):
-                        add("include_env_file", None, t)
+                    bad("include_env_file", None, base, t)
                 if it.get("project_directory") is not None:  # the base-directory change is not modelled: fail closed
                     add("include_project_directory", None, it["project_directory"])
             else:
                 follow(base, depth, it, "include", None)
         for sec in ("secrets", "configs"):
             for name, spec in (doc.get(sec) or {}).items() if isinstance(doc.get(sec), dict) else []:
-                if isinstance(spec, dict) and "file" in spec and _outside(root_n, base, spec["file"]):
-                    add(f"{sec[:-1]}_file", str(name), spec["file"])
+                if isinstance(spec, dict) and "file" in spec:
+                    bad(f"{sec[:-1]}_file", str(name), base, spec["file"])
         for svc, spec in (doc.get("services") or {}).items() if isinstance(doc.get("services"), dict) else []:
             if not isinstance(spec, dict):
                 continue
             for t in _targets(spec, "env_file"):
-                if _outside(root_n, base, t):
-                    add("env_file", str(svc), t)
+                bad("env_file", str(svc), base, t)
             lf = spec.get("label_file")
             for t in (lf if isinstance(lf, list) else [lf] if lf is not None else []):
-                if _outside(root_n, base, t):
-                    add("label_file", str(svc), t)
+                bad("label_file", str(svc), base, t)
             ext = spec.get("extends")
             if isinstance(ext, dict) and ext.get("file") is not None:
                 follow(base, depth, ext["file"], "extends", str(svc))

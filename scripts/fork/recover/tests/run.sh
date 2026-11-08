@@ -120,6 +120,18 @@ if t compose; then
     new_case "c-$n" "$n" || continue
     run restore --yes --root "$D/restore" "${C[@]}"; expect "read-scope: $n refused on the RAW yaml before rendering (exit 4)" 4 'before it is rendered'
   done
+  # W27a / F-01 (#142 CLI half): links INSIDE the restic-restored tree that leave the restore folder (restic copies skip the tar audit)
+  new_case c-symlink-escape-envfile symlink-escape-envfile && { run restore --yes --root "$D/restore" "${C[@]}"; expect "symlink: env_file link to /etc refused on the raw scan, before rendering (exit 4)" 4 'before it is rendered'
+    grep -q 'symlink_escape' <<<"$ALL" && ok "symlink: env_file violation is named symlink_escape" || bad "symlink: env_file kind not named"; no_secrets "symlink-envfile"; }
+  new_case c-symlink-escape-bind symlink-escape-bind && { run restore --yes --root "$D/restore" "${C[@]}"; expect "symlink: bind source that resolves to /etc is a HARD stop (exit 3), not overridable" 3 'points outside the restore folder'
+    [ -z "$(find "$D/restore" -name '*.yml' -newer "$D/info.json" -path '*override*' -print -quit 2>/dev/null)" ] || true
+    if [ "$docker_ok" = 1 ]; then docker ps -q --filter label=com.docker.compose.project=pbrtest | grep -q . && bad "symlink-bind: a container was started" || ok "symlink-bind: nothing was started"; fi
+    run restore --yes --root "$D/restore2" --allow-privileged=app "${C[@]}"; expect "symlink: --allow-privileged cannot override the link check (exit 3)" 3 'points outside the restore folder'; clean_tmp "symlink-bind"; no_secrets "symlink-bind"; }
+  if [ "$docker_ok" = 1 ]; then
+    new_case c-symlink-inside-ok symlink-inside-ok && { run restore --yes --root "$D/restore" "${C[@]}"; grep -q 'policy check passed' <<<"$ALL" && ok "symlink: a link that stays inside the restore folder passes the policy check (positive control)" || bad "symlink: in-root link refused" "$(head -c 300 <<<"$ALL" | tr '\n' ' ')"; purge_docker; }
+  else skipt "symlink: in-root link positive control" "no reachable docker daemon"; fi
+  # the realpath gate must stay wired in between the rebinding and the deny-list evaluation (M5: removing the call must fail this test)
+  [ "$(awk '/^restore_compose_policy\(\)/,/^}/' "$CLI" | grep -oE '^  (remap_binds|check_bind_realpaths)$|evaluate_deny <' | tr -d ' ' | tr '\n' ',')" = "remap_binds,check_bind_realpaths,evaluate_deny<," ] && ok "static: check_bind_realpaths runs after remap_binds and before the deny-list evaluation" || bad "static: check_bind_realpaths not wired between remap_binds and evaluate_deny"
 fi
 
 # ------------------------------------------------------------------ full restore (needs a docker daemon)
