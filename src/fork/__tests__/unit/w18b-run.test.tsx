@@ -4,7 +4,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {axeViolations} from "@/fork/__tests__/axe";
 import type {ForkPrincipal} from "@/fork/acl";
 import type {RestoreRunView} from "@/fork/restore-run/view";
-import {CANCEL_REFUSAL_TEXT, POLICY_REFUSAL_TEXT, R_PROD, RECOVERY, RULE_TEXT} from "@/fork/ui/recovery/labels";
+import {CANCEL_REFUSAL_TEXT, HEADLINE, POLICY_REFUSAL_TEXT, R_PROD, RECOVERY, RULE_TEXT} from "@/fork/ui/recovery/labels";
 import {TONE_MAP} from "@/fork/ui/tone";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
@@ -156,6 +156,23 @@ describe("W18b run page: polling", () => {
 
 describe("W18b run page: awaiting approval (ALLOW)", () => {
     const aw = (o: Partial<RestoreRunView> = {}) => view({state: "awaiting_approval", awaiting, steps: [step("verify_manifest", "done"), step("probe", "done"), step("stage", "done"), step("apply", "done"), step("render", "done")], ...o});
+    it("m11 the alert region never outlives its state: awaiting -> succeeded and awaiting -> running clear it, the status region still announces", async () => {
+        const done = [step("verify_manifest", "done"), step("probe", "done"), step("stage", "done"), step("apply", "done"), step("render", "done")];
+        h.get.mockResolvedValueOnce(ok(aw())).mockResolvedValueOnce(ok(view({state: "succeeded", verification: "started", finishedAt: now.toISOString(), steps: done})));
+        ui(view());
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(screen.getByTestId("run-alert").textContent).toContain(HEADLINE.awaiting_approval.text);
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(screen.queryByTestId("run-alert")).toBeNull();
+        expect(screen.getByTestId("job-status").textContent).toContain(HEADLINE.started.text);
+        cleanup();
+        h.get.mockReset(); h.get.mockResolvedValueOnce(ok(aw())).mockResolvedValue(ok(view({state: "running"})));
+        ui(view());
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(screen.getByTestId("run-alert")).toBeTruthy();
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(screen.queryByTestId("run-alert")).toBeNull();
+    });
     it("lists the rules in words per service with a labelled input; sends exactly what was typed; clears the input after submit; ok ⇒ refreshes the view", async () => {
         h.allow.mockResolvedValue({data: {ok: true}});
         h.get.mockResolvedValue(ok(view({state: "running"})));

@@ -60,7 +60,7 @@ export function RunView({initial, appName, canExecute, canApproveProduction, loc
         if (first.current) { first.current = false; return; }
         const h = runHeadline(view);
         announce(h.text);
-        if (prevState.current !== view.state && ALERT_STATES.has(view.state)) setAlertText(h.text);
+        if (prevState.current !== view.state) setAlertText(ALERT_STATES.has(view.state) ? h.text : null); // the alert never outlives its state (W18b-f2 D1)
         prevState.current = view.state;
     }, [sig]);
 
