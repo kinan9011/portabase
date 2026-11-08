@@ -1,5 +1,5 @@
 import {randomBytes, randomUUID} from "node:crypto";
-import {mkdtempSync, rmSync} from "node:fs";
+import {rmSync} from "node:fs";
 import {eq} from "drizzle-orm";
 import {afterAll, beforeAll, describe, expect, it} from "vitest";
 import type {Pool} from "pg";

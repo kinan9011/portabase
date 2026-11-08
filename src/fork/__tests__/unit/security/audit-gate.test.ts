@@ -1,5 +1,4 @@
 import {describe, expect, it} from "vitest";
-// @ts-expect-error plain ESM script (no types)
 import {ACCEPTED, evaluate, FORK_DIRECT} from "../../../../../scripts/fork/audit-gate.mjs";
 
 const adv = (over: Record<string, unknown>) => ({github_advisory_id: "GHSA-test", module_name: "x", severity: "moderate", vulnerable_versions: "<1", patched_versions: ">=1", findings: [{paths: [".>x"]}], ...over});
