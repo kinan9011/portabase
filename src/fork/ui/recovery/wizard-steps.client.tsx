@@ -28,14 +28,14 @@ const STEPS = ["app", "backup", "machine", "plan", "go"] as const;
 const CARD = "flex items-start gap-3 rounded-lg border p-3 has-[:focus-visible]:ring-2 has-[[data-state=checked]]:border-primary";
 const BTN = "w-full sm:w-auto";
 
-function StepIndicator({current, data}: {current: 1 | 2 | 3; data: WizardData}) {
-    const href = (s: (typeof STEPS)[number]) => s === "app" ? "/dashboard/recovery/new?step=app" : s === "backup" ? `/dashboard/recovery/new?step=backup&stack=${data.stackId}` : null;
+/** Back-only links: earlier steps are links (when the page knows where to send you), later steps are plain text. */
+export function StepIndicator({current, links}: {current: 1 | 2 | 3 | 4 | 5; links: Partial<Record<(typeof STEPS)[number], string>>}) {
     return (
         <nav aria-label={RECOVERY.steps.indicator} className="mb-4">
             <p className="text-muted-foreground text-sm sm:hidden" data-testid="step-short">{RECOVERY.steps.of(current, RECOVERY.steps.short[STEPS[current - 1]!])}</p>
-            <ol className="hidden items-center gap-3 text-sm sm:flex max-sm:sr-only">
+            <ol className="hidden items-center gap-3 text-sm sm:flex">
                 {STEPS.map((s, i) => {
-                    const n = i + 1; const isCur = n === current; const link = n < current ? href(s) : null;
+                    const n = i + 1; const isCur = n === current; const link = n < current ? links[s] : undefined;
                     return (
                         <li key={s} aria-current={isCur ? "step" : undefined} className={isCur ? "font-semibold" : "text-muted-foreground"}>
                             {link ? <Link href={link} className="underline underline-offset-4">{n}. {RECOVERY.steps.short[s]}</Link> : <span>{n}. {RECOVERY.steps.short[s]}</span>}
@@ -47,6 +47,7 @@ function StepIndicator({current, data}: {current: 1 | 2 | 3; data: WizardData}) 
         </nav>
     );
 }
+const wizardLinks = (d: WizardData) => ({app: "/dashboard/recovery/new?step=app", backup: d.stackId ? `/dashboard/recovery/new?step=backup&stack=${d.stackId}` : undefined});
 
 function useHeadingFocus() {
     const ref = React.useRef<HTMLHeadingElement>(null);
@@ -64,7 +65,7 @@ function AppStep({data}: {data: WizardData}) {
     const rest = (data.choices ?? []).filter((c) => c.verifiedCount === 0);
     return (
         <section aria-labelledby="wiz-h">
-            <StepIndicator current={1} data={data}/>
+            <StepIndicator current={1} links={wizardLinks(data)}/>
             <h1 id="wiz-h" ref={h1} tabIndex={-1} className="mb-4 text-2xl font-bold outline-none">{RECOVERY.steps.app}</h1>
             {data.dropped && <Dropped/>}
             {ok.length === 0 ? (
@@ -116,7 +117,7 @@ function BackupStep({data}: {data: WizardData}) {
     const [sel, setSel] = React.useState<string | null>(ok[0] ? String(ok[0].sequence) : null);
     return (
         <section aria-labelledby="wiz-h">
-            <StepIndicator current={2} data={data}/>
+            <StepIndicator current={2} links={wizardLinks(data)}/>
             <h1 id="wiz-h" ref={h1} tabIndex={-1} className="mb-1 text-2xl font-bold outline-none">{RECOVERY.steps.backup}</h1>
             <p className="text-muted-foreground mb-4 font-medium break-words">{data.stackName}</p>
             {data.dropped && <Dropped/>}
@@ -186,7 +187,7 @@ function MachineStep({data}: {data: WizardData}) {
     };
     return (
         <section aria-labelledby="wiz-h">
-            <StepIndicator current={3} data={data}/>
+            <StepIndicator current={3} links={wizardLinks(data)}/>
             <h1 id="wiz-h" ref={h1} tabIndex={-1} className="mb-1 text-2xl font-bold outline-none">{RECOVERY.steps.machine}</h1>
             <p className="text-muted-foreground mb-4 font-medium break-words">{data.stackName}</p>
             {data.dropped && <Dropped/>}
