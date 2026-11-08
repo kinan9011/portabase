@@ -173,8 +173,8 @@ const EXTRA: ExtraSource[] = [
 ];
 const KUMA_SCRIPT = String.raw`set -eu
 mkdir -p /w/live /w/out/vol /w/neg && cd /w/live
-sqlite3 kuma.db "PRAGMA journal_mode=WAL; CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT NOT NULL); WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<42) INSERT INTO t SELECT x,'row'||x FROM c; PRAGMA wal_checkpoint(TRUNCATE);"
-sqlite3 kuma.db <<'SQL'
+sqlite3 kuma.db "PRAGMA journal_mode=WAL; CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT NOT NULL); WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<42) INSERT INTO t SELECT x,'row'||x FROM c; PRAGMA wal_checkpoint(TRUNCATE);" >&2
+sqlite3 kuma.db >&2 <<'SQL'
 PRAGMA wal_autocheckpoint=0;
 DELETE FROM t WHERE id<=10;
 INSERT INTO t VALUES(999,'wal-t1');
@@ -299,7 +299,8 @@ describe.skipIf(!LAB)("W17-live: live restore proof (-Fc + -Fd, sqlite in WAL vo
     }, 900_000);
 
     const allLogs = () => SNAPS.join("\n") + stripAnsi(logsAll(CLEAN)) + stripAnsi(logsAll(VPS)) + out;
-    const secrets = () => ({CANARY_DB, CANARY3, presigned: SIG, master_b64: MASTER.toString("base64"), task_key: decodeBundle(cleanBundle || "e30").task_key_b64 ?? "~~", credential: decodeBundle(cleanBundle || "e30").credential ?? "~~"});
+    const bundleOf = () => { try { return decodeBundle(cleanBundle); } catch { return null; } };
+    const secrets = () => ({CANARY_DB, CANARY3, presigned: SIG, master_b64: MASTER.toString("base64"), task_key: bundleOf()?.task_key_b64 ?? "~~", credential: bundleOf()?.credential ?? "~~"});
 
     afterAll(async () => {
         sampler?.stop();
