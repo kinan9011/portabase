@@ -236,7 +236,7 @@ def main():
                  "plaintext_sha256": None, "plaintext_size": None, "plaintext_hash_source": "not_applicable_restic", "required": True})
     manifest = {"manifest_version": 1, "kid": mkid, "signed_at": "2026-11-07T10:00:00Z",
                 "rp": {"id": rp, "stack_id": str(uuid.uuid4()) if case == "stack-mismatch" else stack, "stack_name": "pbrtest", "sequence": 1, "created_at": "2026-11-07T09:00:00Z",
-                       "finalized_at": "2026-11-07T09:05:00Z", "verified_at": "2026-11-07T10:00:00Z", "consistency_level": "mixed", "inventory_version": 1,
+                       "finalized_at": "2026-11-07T09:05:00Z", "verified_at": "2026-11-07T10:00:00Z", "consistency_level": {"consistency-stopped": "stopped", "consistency-future": "frozen"}.get(case, "mixed"), "inventory_version": 1,
                        "inventory_hash": "h", "required_artifact_count": len(arts)},
                 "artifacts": arts, "inventory": {"schema_version": 1, "stack": {"compose_project": "pbrtest", "display_name": "pbrtest", "compose_read": "none", "config_files_hint": [f"{label}/compose.yml"]}, "services": [], "mounts": [], "volumes": [], "networks": [], "env_files": [], "external_dependencies": [], "provenance": {}, "warnings": []}}
     if case == "bad-schema": manifest["unexpected_extra_field"] = 1

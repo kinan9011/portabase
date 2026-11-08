@@ -72,9 +72,18 @@ if t happy; then
   sed -i '0,/MASTER 2: *./s//MASTER 2:  Q/' "$D/paper.txt"; run plan --paper-file "$D/paper.txt" --rclone-config "$D/rclone.conf" --storage-root "local:$S"; expect "paper typo caught by the line check" 1 'MASTER line 2'
 fi
 
+# ------------------------------------------------------------------ W17b: a recovery point taken with the app paused (consistency_level "stopped")
+if t consistency; then
+  new_case consistency-stopped consistency-stopped
+  run plan --deep "${C[@]}"; expect "stopped-consistency recovery point: plan --deep verifies it and prints the level as-is" 0 'consistency: stopped'
+  new_case consistency-stopped-2 consistency-stopped
+  run plan --deep "${C[@]}"; expect "stopped-consistency recovery point: never shown as another kind" 0 'all archives verified'
+  ! grep -q 'consistency: mixed' "$D/out" && ok "stopped-consistency: not relabelled as mixed/crash" || bad "stopped-consistency: relabelled"
+fi
+
 # ------------------------------------------------------------------ mutation fixtures: hard stops (exit 3)
 if t mutation; then
-  for c in forged-sig:'NOT valid' flipped-manifest:'NOT valid' unknown-kid:'unknown signer' stack-mismatch:'different stack' bad-schema:'expected shape' \
+  for c in forged-sig:'NOT valid' flipped-manifest:'NOT valid' unknown-kid:'unknown signer' stack-mismatch:'different stack' bad-schema:'expected shape' consistency-future:'expected shape' \
            tampered-archive:'checksum mismatch' tampered-consistent:'failed verification' truncated-consistent:'failed verification' bad-plaintext-hash:'failed verification' dump-format-mismatch:'differs from the signed manifest' fd-poison:'inner -Fd archive failed verification'; do
     n="${c%%:*}"; re="${c#*:}"; new_case "m-$n" "$n" || continue
     run plan --deep "${C[@]}"; expect "hard stop: $n (exit 3, never overridable)" 3 "$re"

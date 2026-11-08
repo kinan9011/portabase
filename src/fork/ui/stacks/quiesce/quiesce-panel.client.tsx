@@ -103,9 +103,11 @@ export function QuiescePanel({dto, isAdmin}: {dto: QuiesceViewDto; isAdmin: bool
                             {plan.notRunning.length > 0 && <li>{Q.preview.notRunning}: {plan.notRunning.join(", ")}</li>}
                         </ul>
                     ) : (
-                        <ul className="text-destructive list-disc pl-5" role="alert">
-                            {plan.blockers.map((b, i) => <li key={`${b.code}-${i}`}>{Q.blockers[b.code]}{b.service ? ` (${b.service})` : ""}</li>)}
-                        </ul>
+                        <div role="alert" className="text-destructive">
+                            <ul className="list-disc pl-5">
+                                {plan.blockers.map((b, i) => <li key={`${b.code}-${i}`}>{Q.blockers[b.code]}{b.service ? ` (${b.service})` : ""}</li>)}
+                            </ul>
+                        </div>
                     )}
                 </div>
             )}

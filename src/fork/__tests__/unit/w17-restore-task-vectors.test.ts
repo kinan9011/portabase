@@ -137,8 +137,12 @@ function buildVectors() {
     const otherRp = signManifest({...base, rp: {...base.rp, id: OTHER_RP}}, k.privateKey);
     const tampered = good.json.replace('"stack_name":"app"', '"stack_name":"apq"');
     const extraField = canonicalJson({...base, surprise: 1});
+    // W17b: a recovery point taken with the app paused carries consistency_level "stopped" (manifest_version stays 1): the agent's verifier must accept it as the same kind of document
+    const stopped = signManifest(buildManifest({id: RP, stackId: STACK, stackName: "app", sequence: 7, createdAt: new Date("2026-11-07T10:00:00Z"), finalizedAt: new Date("2026-11-07T10:05:00Z"), consistencyLevel: "stopped", inventoryVersion: 1, inventoryHash: HEX("f"), requiredArtifactCount: 2},
+        [art, db], null, {kid: k.kid, signedAt: new Date("2026-11-07T10:10:00Z"), verifiedAt: new Date("2026-11-07T10:09:00Z")}), k.privateKey);
     const manifests = [
         mcase("valid", good.json, gsig, "ok"),
+        mcase("valid_consistency_stopped", stopped.json, stopped.sig.toString("base64"), "ok"),
         mcase("wrong_kid_not_pinned", foreign.json, foreign.sig.toString("base64"), "manifest_unknown_kid"),
         mcase("tampered_byte", tampered, gsig, "manifest_signature"),
         mcase("signature_of_other_bytes", good.json, sig(foreign.json), "manifest_signature"),

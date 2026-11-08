@@ -284,7 +284,8 @@ validate_manifest() {
     def uuid: type=="string" and test("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
     def src: type=="string" and test("^(bind|manual|compose|volume|db): [A-Za-z0-9._@+=,:/ -]{1,1000}$") and (test("\\.\\.") | not);
     (keys - ["manifest_version","kid","signed_at","rp","artifacts","inventory"] | length==0) and .manifest_version==1
-    and (.rp | (.id|uuid) and (.stack_id|uuid) and (.sequence|type=="number" and .>=1 and .==floor) and (.stack_name|type=="string"))
+    and (.rp | (.id|uuid) and (.stack_id|uuid) and (.sequence|type=="number" and .>=1 and .==floor) and (.stack_name|type=="string")
+        and (.consistency_level|IN("crash_consistent_files","engine_dump","mixed","unknown","stopped")))
     and (.artifacts|type=="array" and length<=2000)
     and all(.artifacts[]; (.source_name|src) and (.engine|type=="string" and test("^[a-z0-9-]{1,64}$"))
         and (.archive_kind|IN("restic_snapshot","archive_enc","archive_plain"))
