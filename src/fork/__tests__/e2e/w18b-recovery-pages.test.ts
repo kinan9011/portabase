@@ -118,9 +118,10 @@ describe("W18b recovery pages (real build)", () => {
             expect(visible(body), p).toContain(title);
         }
         expect(await (await get(base, "/dashboard/home", admin)).text()).toContain('href="/dashboard/recovery"');
-        for (const p of ["/dashboard/recovery/plans", "/dashboard/recovery/runs"]) { // W27a P0: breadcrumb index routes redirect to the home, never 404 for a signed-in admin
+        for (const p of ["/dashboard/recovery/plans", "/dashboard/recovery/runs"]) { // W27a P0: breadcrumb index routes lead to the home for a signed-in admin, never to a 404 (HTTP 307, or the streamed meta refresh)
             const r = await get(base, p, admin);
-            expect([r.status, new URL(r.headers.get("location") ?? "", base).pathname], p).toEqual([307, "/dashboard/recovery"]);
+            const html = await r.text();
+            expect(r.status === 307 ? new URL(r.headers.get("location") ?? "", base).pathname : /http-equiv="refresh"[^>]*url=\/dashboard\/recovery"/.test(html) ? "/dashboard/recovery" : `${r.status}:${html.slice(0, 80)}`, p).toBe("/dashboard/recovery");
         }
 
         // E2 canary: HTML and RSC payload of every page (admin session), plus the plan's override view
