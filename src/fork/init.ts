@@ -3,6 +3,7 @@ import {runForkMigrations} from "@/fork/db/migrate";
 import {currentForkMode, invalidateForkModeCache, registerActivePolicyProbe, registerSelfCheck, setLaneStatus, type ForkModeResult} from "@/fork/mode";
 import {registerRealChecks} from "@/fork/self-check";
 import {registerAuditRetentionTask} from "@/fork/audit-task";
+import {registerOverridePurgeTask} from "@/fork/config/purge-task";
 import {registerDiscoveryCron} from "@/fork/cron";
 import {registerMaterializeDriftJob} from "@/fork/materialize/job";
 import {registerNotificationsJob} from "@/fork/notifications/job";
@@ -26,6 +27,7 @@ export async function initFork(): Promise<ForkModeResult> {
         // W04: the real activation probe + D21 self-check replace the W01 seams (before the first mode read).
         await registerRealChecks({registerActivePolicyProbe, registerSelfCheck}, {log});
         registerAuditRetentionTask();
+        registerOverridePurgeTask();
         registerDiscoveryCron();
         registerMaterializeDriftJob();
         registerStackRunsJob();
