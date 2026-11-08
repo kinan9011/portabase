@@ -60,7 +60,7 @@ async function enqueue(deps: QuiesceTaskDeps, type: "quiesce" | "quiesce_start",
 }
 
 export async function enqueueQuiesceTask(d: QuiesceTaskDeps, i: Common & {project: string; plan: OkPlan; maxStopSeconds: number; dryRun?: boolean}): Promise<QuiesceEnqueueResult> {
-    let payload;
+    let payload: ReturnType<typeof buildQuiescePayload>;
     try {
         payload = buildQuiescePayload({runId: i.runId ?? "00000000-0000-4000-8000-000000000000", stackId: i.stackId, project: i.project, targets: i.plan.stopOrder, maxStopSeconds: i.maxStopSeconds,
             stopTimeoutCapSeconds: STOP_TIMEOUT_CAP_S, startTimeoutSeconds: START_TIMEOUT_S, dryRun: i.dryRun === true});
@@ -69,7 +69,7 @@ export async function enqueueQuiesceTask(d: QuiesceTaskDeps, i: Common & {projec
 }
 
 export async function enqueueQuiesceStart(d: QuiesceTaskDeps, i: Common & {quiesceTaskId: string; project: string}): Promise<QuiesceEnqueueResult> {
-    let payload;
+    let payload: ReturnType<typeof buildQuiesceStartPayload>;
     try { payload = buildQuiesceStartPayload({quiesceTaskId: i.quiesceTaskId, project: i.project}); } catch { return {ok: false, code: "invalid_input"}; }
     return enqueue(d, "quiesce_start", Buffer.from(JSON.stringify(payload), "utf8"), i, {quiesceTaskId: i.quiesceTaskId});
 }

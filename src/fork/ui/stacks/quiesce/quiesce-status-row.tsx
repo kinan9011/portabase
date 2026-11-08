@@ -1,4 +1,3 @@
-import * as React from "react";
 import {QUIESCE as Q} from "@/fork/ui/labels";
 
 /**

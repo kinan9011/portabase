@@ -1,0 +1,9 @@
+# W17b lab: a project that contains a Portabase manager image (Q5: the agent must refuse it, by id, and stop nothing).
+name: forklab-quiesce-mgr
+services:
+  mgr:
+    image: ghcr.io/portabase/portabase:1.35.2
+    entrypoint: ["sleep", "1000000"]
+  app2:
+    image: busybox
+    command: ["sleep", "1000000"]

@@ -307,7 +307,7 @@ describe("W17b admin service", () => {
         expect(await enableQuiesce(admin(w, {}, {systemRole: "user", memberships: [{organizationId: w.org, role: "member"}]}), input)).toMatchObject({ok: false, code: "forbidden"}); // (m6)
         const other = await mkQ({enable: false});
         expect(await enableQuiesce(admin(w, {}, {memberships: [{organizationId: other.org, role: "owner"}], systemRole: "user"}), input)).toMatchObject({ok: false, code: "not_found"});
-        expect(await enableQuiesce(admin(w, {assertConfigAllowed: async () => { throw new ForkLockedError("locked", "x"); }}), input)).toMatchObject({ok: false, code: "locked"});
+        expect(await enableQuiesce(admin(w, {assertConfigAllowed: async () => { throw new ForkLockedError("locked", "self-check-failed"); }}), input)).toMatchObject({ok: false, code: "locked"});
         expect(await enableQuiesce(admin(w, {rate: () => ({ok: false, retryAfterSeconds: 7})}), input)).toMatchObject({ok: false, code: "rate_limited", retryAfterSeconds: 7});
         expect(await enableQuiesce(admin(w, {flag: () => false}), input)).toMatchObject({ok: false, code: "flag_off"});
         expect(await enableQuiesce(admin(w), {...input, maxStopSeconds: 123})).toMatchObject({ok: false, code: "invalid_input"});

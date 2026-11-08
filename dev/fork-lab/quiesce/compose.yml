@@ -1,0 +1,24 @@
+# W17b live lab (fork-only, synthetic data, docker bridge only). Project `forklab-quiesce`:
+#   db    postgres + healthcheck (engine dump runs BEFORE the stop)
+#   app   WAL-mode sqlite writer on volume `appdata`, depends_on db healthy (the volume tar of a live WAL db is exactly what quiesce fixes)
+#   flaky (profile `flaky`) starts once, then exits 1 on every later start (Q4: a container that does not come back)
+# The writer image is a RE-TAG of the stock agent image (`docker tag ghcr.io/portabase/agent:1.25.2 forklab/sqlite-writer:w17b`): the original ref is a manager
+# image for the agent's guard and would be refused (by design). Credentials below are synthetic lab values.
+name: forklab-quiesce
+services:
+  db:
+    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    environment: {POSTGRES_DB: demo, POSTGRES_USER: demo, POSTGRES_PASSWORD: lab-synthetic-not-a-secret}
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U demo -d demo"], interval: 1s, timeout: 3s, retries: 60}
+    volumes: [pgdata:/var/lib/postgresql/data]
+  app:
+    image: forklab/sqlite-writer:w17b
+    entrypoint: ["sh", "/w/sqlite-writer.sh"]
+    volumes: [appdata:/data, "../demo-stack/web/sqlite-writer.sh:/w/sqlite-writer.sh:ro"]
+    depends_on: {db: {condition: service_healthy}}
+  flaky:
+    profiles: [flaky]
+    image: busybox
+    command: ["sh", "-c", "if [ -f /s/started ]; then exit 1; fi; touch /s/started; exec sleep 1000000"]
+    volumes: [flakystate:/s]
+volumes: {pgdata: {}, appdata: {}, flakystate: {}}
