@@ -141,7 +141,7 @@ export function GoSection({plan, appName, backupLabel, missingRequired, canExecu
             {prod ? (
                 <DangerousActionConfirm
                     open={open} onOpenChange={setOpen} title={RECOVERY.go.prodTitle} confirmLabel={RECOVERY.go.prodConfirm(machine)}
-                    description={<><p>{RECOVERY.go.prodBody(machine, byDefault)}</p><p>{RECOVERY.go.typePhrase} <code className="bg-muted rounded px-1 py-0.5 font-mono">{g.typed}</code></p></>}
+                    description={<><p>{RECOVERY.go.prodBody(machine, byDefault)}</p><p>{RECOVERY.go.typePhrase} <code className="bg-muted text-foreground rounded px-1 py-0.5 font-mono">{g.typed}</code></p></>}
                     typedPhrase={g.typed ?? undefined} inputLabel={RECOVERY.go.typedLabel} typedReason={RECOVERY.go.typedReason} onConfirm={(t) => { void start(t); }}
                 />
             ) : (

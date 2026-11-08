@@ -74,6 +74,39 @@ describe("W27b static guards", () => {
         expect(AGENT_CHANNEL.page.title).toBe("Agent channel");
     });
 
+    it("FD-1: the typed phrase in the restore confirm sets its own text colour (4.34:1 inherited on bg-muted)", () => {
+        expect(read(path.join(ROOT, "src/fork/ui/recovery/go.client.tsx"))).toMatch(/<code className="bg-muted text-foreground [^"]*">\{g\.typed\}<\/code>/);
+    });
+
+    it("FD-2: the safety-strip fix link inherits the tone panel colour instead of muted-foreground on a muted panel", () => {
+        const s = read(path.join(ROOT, "src/fork/ui/stacks/safety-strip/safety-strip.tsx"));
+        expect(s).toContain("fixHref(r, item.stackId)");
+        expect(/<Link href=\{fixHref[^>]*text-muted-foreground/.test(s)).toBe(false);
+    });
+
+    it("FD-3: every fork TabsContent carries the visible focus ring (the primitive is outline-none)", () => {
+        for (const f of ["stack-details.client.tsx", "resources-tabs.tsx"]) {
+            const lines = read(path.join(ROOT, "src/fork/ui/stacks", f)).split("\n").filter((l) => /<TabsContent\b/.test(l) && !l.includes("import"));
+            expect(lines.length, f).toBeGreaterThan(0);
+            for (const l of lines) expect(l, f).toContain("FOCUS_RING_AA");
+        }
+        expect(read(path.join(ROOT, "src/fork/ui/a11y/focus.ts"))).toContain("focus-visible:outline-foreground");
+    });
+
+    it("FD-4/FD-5: ScrollRegion neither widens its flex ancestors nor relies on outline-ring/50", () => {
+        const s = read(path.join(ROOT, "src/fork/ui/stacks/scroll-region.tsx"));
+        expect(s).toContain("w-0 min-w-full overflow-x-auto");
+        expect(s).toContain("FOCUS_RING_AA");
+    });
+
+    it("FD-6: the schedule picker stays inside 320 px (single grid track, selects never wider than it)", () => {
+        const s = read(path.join(ROOT, "src/fork/ui/schedule-picker.tsx"));
+        expect(s).toContain('"grid grid-cols-1 gap-4 sm:grid-cols-2"');
+        const selects = s.split("\n").filter((l) => l.includes("<select"));
+        expect(selects.length).toBe(3);
+        for (const l of selects) expect(l).toContain("w-full min-w-0");
+    });
+
     it("the W27b copy file is separate from the shared labels file", () => {
         expect(existsSync(path.join(ROOT, "src/fork/ui/a11y/labels.ts"))).toBe(true);
     });

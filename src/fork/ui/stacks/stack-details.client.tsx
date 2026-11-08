@@ -25,6 +25,7 @@ import {PrimaryStateBadge, ProtectionBadge, RpStatusBadge, RuntimeBadge, StaleBa
 import {SyncPoller} from "@/fork/ui/stacks/sync-poller";
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge} from "@/fork/ui/tone-badge";
+import {FOCUS_RING_AA} from "@/fork/ui/a11y/focus";
 
 const D = STACK_DETAILS;
 function Actions({canConfigure, configLocked, stackId, runReason, canRestore}: {canConfigure: boolean; configLocked: boolean; stackId: string; runReason: string | null; canRestore: boolean}) {
@@ -185,12 +186,12 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                         <TabsTrigger value="activity">{ACTIVITY.tab}</TabsTrigger>
                     </TabsList>
                     </div>
-                    <TabsContent value="overview">{protection && configuration && <Overview v={view} p={protection} c={configuration} onOpenConfiguration={() => onTab("configuration")}/>}</TabsContent>
-                    <TabsContent value="resources"><ResourcesTabs view={view}/></TabsContent>
-                    <TabsContent value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
-                    <TabsContent value="backups"><BackupsTab stackId={detail.id} view={detail.backups} runReason={runReason} canRestore={canRestore && !configLocked} restoreReason={canRestore ? R_LOCKED : R_ROLE}/></TabsContent>
-                    <TabsContent value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} isAdmin={canConfigure} configLocked={configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`} runs={detail.runs} canRun={canRun} quiesce={quiesce} testRestore={testRestore}/></TabsContent>
-                    <TabsContent value="activity"><ActivityTab stackId={detail.id} view={detail.activity} limits={detail.runs?.limits ?? {waitMinutes: 10, stallMinutes: 30}}/></TabsContent>
+                    <TabsContent className={FOCUS_RING_AA} value="overview">{protection && configuration && <Overview v={view} p={protection} c={configuration} onOpenConfiguration={() => onTab("configuration")}/>}</TabsContent>
+                    <TabsContent className={FOCUS_RING_AA} value="resources"><ResourcesTabs view={view}/></TabsContent>
+                    <TabsContent className={FOCUS_RING_AA} value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
+                    <TabsContent className={FOCUS_RING_AA} value="backups"><BackupsTab stackId={detail.id} view={detail.backups} runReason={runReason} canRestore={canRestore && !configLocked} restoreReason={canRestore ? R_LOCKED : R_ROLE}/></TabsContent>
+                    <TabsContent className={FOCUS_RING_AA} value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} isAdmin={canConfigure} configLocked={configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`} runs={detail.runs} canRun={canRun} quiesce={quiesce} testRestore={testRestore}/></TabsContent>
+                    <TabsContent className={FOCUS_RING_AA} value="activity"><ActivityTab stackId={detail.id} view={detail.activity} limits={detail.runs?.limits ?? {waitMinutes: 10, stallMinutes: 30}}/></TabsContent>
                 </Tabs>
             )}
         </div>
