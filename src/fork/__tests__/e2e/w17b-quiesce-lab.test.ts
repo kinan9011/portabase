@@ -32,7 +32,7 @@ import {ADMIN} from "@/fork/__tests__/e2e/helpers";
  * + a project that contains a Portabase image (`forklab-quiesce-mgr`) + MinIO, all on a dedicated bridge.
  *   Q1 quiesced backup   Q2 agent killed mid-quiesce (boot replay)   Q3 dashboard unreachable (agent-local deadline)
  *   Q4 container fails to restart (honest failure, Start now)   Q5 refusals by id (manager project, foreign id, own id)   Q6 canary: no secret in any log / row.
- * The test process drives the run engine (injected hash seam over the host-published MinIO port); the dashboard process serves the agent routes only (its own run tick is slow).
+ * The test process drives the run engine (injected hash seam over the host-published MinIO port); the dashboard process serves the agent routes; its own run job still ticks every 300 s (benign), its drift job ticks once at boot (+20 s, before Q1) and is then parked (3600 s).
  */
 const LAB = process.env.FORK_LAB === "1";
 const IMAGE = process.env.W17B_AGENT_IMAGE ?? "portabase-agent-fork:w17b-lab";
@@ -62,7 +62,7 @@ const chDeps = (): ChannelDeps => ({db, principal: {userId: adminId, systemRole:
 const runDeps = (): RunDeps => ({db, mode: async () => "on", flag: () => true, owner: "w17b-lab-test", refresh: async () => "ok", channel: {keys: fileKeyProvider, serverUrl: URL_FOR_AGENTS, env: ENVC},
     cfg: {tickMs: 2000, waitTimeoutMs: 120_000, stallTimeoutMs: 300_000, maxRunMs: 1_800_000, captureWindowMs: 3_600_000, maxPerAgent: 1, maxPerOrg: 3, hashMaxBytes: 1 << 30, hashTimeoutMs: 120_000},
     hash: async (r) => { const [s] = await q("select path from backup_storage where id=$1", [r.backupStorageId]); return hashUrl(await minio.presignedGetObject(BUCKET, s.path as string, 600), r); }});
-const adminDeps = (): QuiesceAdminDeps => ({db, principal: {userId: adminId, systemRole: "superadmin", memberships: []}, channel: {keys: fileKeyProvider, serverUrl: URL_FOR_AGENTS, env: ENVC}, mode: async () => "on", flag: () => true, assertConfigAllowed: async () => undefined, rate: () => ({ok: true}), leaseSeconds: 30});
+const adminDeps = (): QuiesceAdminDeps => ({db, principal: {userId: adminId, systemRole: "superadmin", memberships: []}, channel: {keys: fileKeyProvider, serverUrl: URL_FOR_AGENTS, env: ENVC}, mode: async () => "on", flag: () => true, assertConfigAllowed: async () => undefined, rate: () => ({ok: true}), leaseSeconds: 45});
 
 async function waitFor<T>(what: string, fn: () => Promise<T | null | undefined | false>, ms = 120_000, every = 1000): Promise<T> {
     const end = Date.now() + ms;
@@ -143,12 +143,22 @@ async function startAgent() {
         "-e", "FORK_QUIESCE_ENABLED=true", "-e", "FORK_QUIESCE_MAX_STOP_SECONDS=300", "-v", "/var/run/docker.sock:/var/run/docker.sock", "-v", `${f}:/run/fork/bundle:ro`, "-v", `${VOL}:/config`, IMAGE], {...process.env, EDGE_KEY: edge});
 }
 const cleanup = () => {
-    for (const [p, f, extra] of [[P, COMPOSE, ["--profile", "flaky"]], [PM, COMPOSE_MGR, []]] as const) dockerTry(["compose", "-p", p, "-f", f, ...extra, "down", "-v", "--remove-orphans"]);
+    // the agent is attached to `${P}_default` (network connect in beforeAll): remove it BEFORE `compose down`, or compose cannot remove its own network
     for (const n of [AGENT_C, MINIO_C]) dockerTry(["rm", "-f", n]);
-    dockerTry(["volume", "rm", "-f", VOL]);
     try { for (const i of docker(["ps", "-aq", "--filter", "label=com.portabase.fork.helper=true"]).split("\n").filter(Boolean)) dockerTry(["rm", "-f", i]); } catch { /* none */ }
-    dockerTry(["network", "rm", NET]);
+    for (const [p, f, extra] of [[P, COMPOSE, ["--profile", "flaky"]], [PM, COMPOSE_MGR, []]] as const) dockerTry(["compose", "-p", p, "-f", f, ...extra, "down", "-v", "--remove-orphans"]);
+    dockerTry(["volume", "rm", "-f", VOL]);
+    for (const n of [NET, `${P}_default`, `${PM}_default`]) dockerTry(["network", "rm", n]);
 };
+/** `child` + every descendant. pnpm 12 runs `next start` in its OWN process group, so neither `child.kill` nor a group signal reaches next-server. */
+const dashboardPids = (): number[] => {
+    if (!child?.pid) return [];
+    const rows = execFileSync("ps", ["-eo", "pid=,ppid="], {encoding: "utf8"}).trim().split("\n").map((l) => l.trim().split(/\s+/).map(Number));
+    const out = [child.pid];
+    for (let i = 0; i < out.length; i++) for (const [pid, ppid] of rows) if (ppid === out[i]) out.push(pid);
+    return out;
+};
+const signalDashboard = (sig: NodeJS.Signals, pids = dashboardPids()) => { for (const p of pids) { try { process.kill(p, sig); } catch { /* gone */ } } };
 
 describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent image and a real compose project", () => {
     beforeAll(async () => {
@@ -174,9 +184,10 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
         child = spawn("pnpm", ["exec", "next", "start", "-p", String(port), "-H", GW], {cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"], env: {...process.env, NODE_ENV: "production", DATABASE_URL: t.url,
             PROJECT_URL: URL_FOR_AGENTS(), PROJECT_SECRET: `w17b-lab-${rnd(24)}`, PRIVATE_PATH: priv, AUTH_DEFAULT_USER: ADMIN.email, AUTH_DEFAULT_PASSWORD: ADMIN.password,
             AUTH_DEFAULT_USER_NAME: "W17b Lab", SKIP_ONBOARDING: "true", AUTH_SIGNUP_ENABLED: "false", FORK_STACKS_ENABLED: "true", FORK_ARCANE_ENABLED: "true", FORK_ALLOW_INSECURE_LOOPBACK: "true", FORK_MIGRATE_DUMP: "off",
-            FORK_QUIESCE_ENABLED: "true", FORK_AGENT_LEASE_SECONDS: "45", FORK_VERIFY_TICK_SECONDS: "3600", FORK_KIT_WATCH_MINUTES: "1440", FORK_RUN_TICK_SECONDS: "300"}});
+            FORK_QUIESCE_ENABLED: "true", FORK_AGENT_LEASE_SECONDS: "45", FORK_VERIFY_TICK_SECONDS: "3600", FORK_KIT_WATCH_MINUTES: "1440", FORK_RUN_TICK_SECONDS: "300", FORK_MATERIALIZE_TICK_SECONDS: "3600"}});
         child.stdout!.on("data", (d) => { out += d; }); child.stderr!.on("data", (d) => { out += d; });
         await waitFor("dashboard ready", async () => out.includes("Fork initialised") && (await fetch(`${base}/api/health`).then((r) => r.ok).catch(() => false)), 180_000);
+        const initAt = Date.now();
         process.env.PRIVATE_PATH = priv;
         adminId = (await q(`select id from "user" where email=$1`, [ADMIN.email]))[0].id;
 
@@ -217,6 +228,8 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
         // enable through the REAL admin service (planner + audit), not a raw update
         const en = await enableQuiesce(adminDeps(), {stackId, services: ["app", "db"], maxStopSeconds: 600});
         if (!en.ok) throw new Error(`enable: ${JSON.stringify(en)}`);
+        // the dashboard's own boot ticks (runs job +15 s, drift job +20 s after init) must be over before Q1: the drift tick flips the hand-seeded sources mid-run
+        await sleep(Math.max(0, initAt + 25_000 - Date.now()));
         note(`setup done: dashboard ${base}, agent ${IMAGE}, project ${P}`);
     }, 600_000);
 
@@ -228,7 +241,8 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
             writeFileSync(path.join(evidence, "agent.log"), logs(AGENT_C));
             writeFileSync(path.join(evidence, "dashboard.log"), out.split("\n").filter((l) => /[Ff]ork|rror|quiesce/.test(l)).slice(-400).join("\n"));
         }
-        try { child?.kill("SIGTERM"); } catch { /* gone */ }
+        const pids = dashboardPids(); // snapshot first: orphans re-parent to init once pnpm exits
+        signalDashboard("SIGCONT", pids); signalDashboard("SIGTERM", pids); await sleep(1500); signalDashboard("SIGKILL", pids);
         cleanup();
         try { await t?.drop(); } catch { /* ignore */ }
         dockerTry(["run", "--rm", "-v", `${tmp}:/x`, "busybox", "sh", "-c", "rm -rf /x/oracle"]); // the oracle files were extracted by a root-owned container
@@ -277,8 +291,12 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
 
     it("Q2 agent killed mid-quiesce: containers stay stopped, alert raised, on restart the journal is replayed and the honest outcome reported", async () => {
         const id = await startRunNow();
-        await drive("quiesce stopped", async () => (await notSkipped(id)) && (await run(id)).quiesce_state === "stopped", 240_000);
+        // drive only until the quiesce task is enqueued, then stop ticking: a tick after `stopped` would queue the window volume copy, and a kill racing the
+        // stock agent's copy leaves its upstream row `ongoing` (stall, later runs skip the member as `busy`)
+        await drive("quiesce requested", async () => (await notSkipped(id)) && ["requested", "stopped"].includes((await run(id)).quiesce_state), 240_000);
+        await waitFor("quiesce stopped (no engine tick)", async () => (await run(id)).quiesce_state === "stopped", 240_000, 500);
         await sleep(1500);
+        expect((await q("select count(*)::int c from fork_stack_run_item where run_id=$1 and dbms='docker-volume'", [id]))[0].c).toBe(0); // no window copy in flight at the kill
         docker(["kill", AGENT_C]);
         note("Q2 agent killed");
         await sleep(6000);
@@ -312,22 +330,27 @@ describe.skipIf(!LAB)("W17b live: composite quiesce task against a real agent im
         const id = await startRunNow();
         await drive("quiesce stopped", async () => (await notSkipped(id)) && (await run(id)).quiesce_state === "stopped", 240_000);
         const stoppedAt = Date.now();
-        // the dashboard process is FROZEN (SIGSTOP): it accepts connections and answers nothing — the agent cannot reach a working dashboard. (A docker network disconnect
-        // is not enough: the host-side address stays reachable through the other bridge; in an earlier run the lapsed lease made the route answer 409 ⇒ `lost_dashboard`, the other fail-safe.)
-        child.kill("SIGSTOP");
-        note("Q3 dashboard process frozen (SIGSTOP)");
-        await waitFor("containers restarted by the agent-local deadline", async () => allUp(`${P}-db-1`, `${P}-app-1`), 150_000, 1000);
-        const took = Date.now() - stoppedAt;
-        note(`Q3 containers back ${took} ms after the stop report (limit 60 s + start time)`);
-        expect(took).toBeLessThan(60_000 + 60_000);
-        expect(took).toBeGreaterThanOrEqual(35_000); // window = 60 s from the FIRST stop; the stops themselves take ~10 s each
-        child.kill("SIGCONT");
-        note("Q3 dashboard process resumed");
-        await finished(id);
+        // the dashboard process TREE is FROZEN: SIGSTOP on every descendant, because pnpm runs next-server in its own process group. It accepts connections and answers nothing —
+        // the agent cannot reach a working dashboard. (A docker network disconnect is not enough: the host-side address stays reachable through the other bridge; in an earlier
+        // run the lapsed lease made the route answer 409 ⇒ `lost_dashboard`, the other fail-safe.)
+        signalDashboard("SIGSTOP");
+        note("Q3 dashboard process tree frozen (SIGSTOP)");
+        let took = -1;
+        try {
+            await waitFor("containers restarted by the agent-local deadline", async () => allUp(`${P}-db-1`, `${P}-app-1`), 150_000, 1000);
+            took = Date.now() - stoppedAt;
+            note(`Q3 containers back ${took} ms after the stop report (limit 60 s + start time)`);
+        } finally {
+            signalDashboard("SIGCONT"); // never leave the dashboard frozen: a failed Q3 must not cascade into Q4
+            note("Q3 dashboard process tree resumed");
+            await finished(id).catch(() => undefined);
+        }
         await reconcileQuiesce(db, id, new Date());
         const r = await run(id);
         note(`Q3 final: ${JSON.stringify({state: r.state, q: r.quiesce_state, result: r.quiesce_result})}`);
-        expect((r.quiesce_result as {released_by: string; window_intact: boolean})).toMatchObject({released_by: "deadline", window_intact: false});
+        expect((r.quiesce_result as {released_by: string; window_intact: boolean})).toMatchObject({released_by: "deadline", window_intact: false}); // names WHO ended the window before any timing check
+        expect(took).toBeLessThan(60_000 + 60_000);
+        expect(took).toBeGreaterThanOrEqual(35_000); // window = 60 s from the FIRST stop; stop phase + observation lag ≈ 10–15 s
         expect((await rpOf()).at(-1)?.consistency_level).not.toBe("stopped");
         expect((await q("select count(*)::int c from fork_notification_outbox where dedupe_key=$1", [`quiesce.failed:${id}:deadline`]))[0].c).toBe(1);
         await q("update fork_stack_policy set quiesce_max_stop_seconds=600 where stack_id=$1", [stackId]);
