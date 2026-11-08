@@ -22,7 +22,7 @@ import {approveRestorePlan, createRestorePlan, deps as chDeps, type W17} from "@
  * W18a test harness: a fake agent made of the REAL channel functions (`leaseTask`, `submitRender`, `submitResult`), a controllable clock that starts at the REAL
  * clock (never a fixed past date mixed with DB `now()`), and the services' deps with seams for the manifest and the artifact URLs.
  */
-export const CAPS = ["channel.v1", "noop.v1", "restore.target.v1", "compose.render.v1"];
+export const CAPS = ["channel.v1", "noop.v1", "restore.target.v1", "compose.render.v1", "test-restore.v1"];
 export const DOC = {name: "app", services: {web: {image: "nginx:1", environment: {A: "x"}, networks: {default: null}}, db: {image: "postgres:17", networks: {default: null}}}, networks: {default: {name: "app_default"}}};
 export type Reply = {status?: "succeeded" | "failed" | "rejected"; reason?: string; result?: Record<string, unknown>; doc?: unknown};
 export type Key = ReturnType<typeof testKeypair>;
@@ -71,6 +71,7 @@ export function harness(t: W04Db, kek: string, key: Key, org: string) {
             case "restore_db": return {result: {dbs: [{service: "db", format: "pg_custom", status: "restored"}]}};
             case "compose_up": return {result: {project: "app", services: [{service: "web", state: "running"}, {service: "db", state: "running"}]}};
             case "restore_cleanup": return {result: {removed: 1, kept_foreign: 0}};
+            case "restore_verify": return {result: {checks: [{index: 0, engine: "postgresql", status: "ok"}], seconds: 1}}; // W-TR
             default: return {};
         }
     };
