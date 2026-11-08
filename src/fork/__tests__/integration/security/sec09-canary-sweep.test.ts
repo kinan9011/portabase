@@ -6,6 +6,7 @@ import type {Pool} from "pg";
 import {enrolAgent} from "@/fork/agent-channel/admin";
 import {decodeBundle} from "@/fork/agent-channel/bundle";
 import {enqueueTask, leaseTask, submitResult} from "@/fork/agent-channel/tasks";
+import {enqueueRestoreTask, type RestoreTaskDeps} from "@/fork/restore-tasks/enqueue";
 import {forkAgentEnrollment} from "@/fork/db/schema/agent-channel";
 import {getRestoreOverridesView, setRestoreOverrides, type OverrideDeps} from "@/fork/config/service";
 import {insertConnectionWithSecret} from "@/fork/db/dto";
@@ -63,6 +64,12 @@ describe("SEC-09 canary sweep", () => {
             expect(setR, "overrides were really planted").toMatchObject({ok: true});
             payloads.push(JSON.stringify(setR), JSON.stringify(await getRestoreOverridesView(od, id)));
 
+            // 3b. enqueue the compose_render task: the overrides are DECRYPTED here into the encrypted task payload (the only other decryptor)
+            const rt: RestoreTaskDeps = {...chDeps(t, kek, key, admin, {role: "user", memberships: [[org, "admin"]], now: () => t0}), artifactUrl: async (aid) => `https://minio.example.test/${aid}?X-Amz-Signature=S`};
+            const rr = await enqueueRestoreTask(rt, {type: "compose_render", planId: plan.planId, planHash: plan.planHash, restoreId: randomUUID(), manifest: {json: w.manifestJson, sigB64: w.manifestSig}});
+            expect(rr, "the render task was really enqueued (overrides decrypted)").toMatchObject({ok: true});
+            payloads.push(JSON.stringify(rr));
+
             // 4. agent channel: enrol (bundle returned ONCE), enqueue, lease, a failed result carrying the secret in every shape the redactor knows
             const sysDeps = chDeps(t, kek, key, admin, {role: "admin", now: () => t0});
             const agentId = w.agent;
@@ -114,6 +121,5 @@ describe("SEC-09 canary sweep", () => {
         assertNoCanary(enrolBundle, {envValue: c.envValue, overrideValue: c.overrideValue, storageSecret: c.storageSecret, arcaneKey: c.arcaneKey}, "enrol bundle");
         // sanity: the scanner finds what it should (a canary pasted into a sink is detected in every encoding)
         for (const form of [c.envValue, Buffer.from(c.envValue).toString("base64"), Buffer.from(c.envValue).toString("hex"), encodeURIComponent(c.envValue)]) expect(findCanary(`x ${form} y`, {envValue: c.envValue}).length, form).toBeGreaterThan(0);
-        void randomUUID;
     }, 120_000);
 });
