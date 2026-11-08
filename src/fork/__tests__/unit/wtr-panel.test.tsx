@@ -59,7 +59,7 @@ describe("W-TR-f panel", () => {
         const id = sel.getAttribute("aria-describedby")!;
         expect(document.getElementById(id)!.textContent).toBe(TR.edit.noCandidates);
         expect(await axeViolations(container)).toEqual([]);
-    });
+    }, 30_000); // axe over the form with the full time-zone <select> takes ~3.5 s locally, more on CI runners
     it("3 admin save: needs target + folder; exact request body; a refusal is shown and nothing refreshes", async () => {
         ui(view({admin: {restoreRoot: null, candidates: [{id: AGENT, name: "lab-test"}], schedule: null, targetAgentId: null}, schedule: {...view().schedule, enabled: false, configured: false}}));
         fireEvent.click(screen.getByTestId("tr-edit-open"));
