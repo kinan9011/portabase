@@ -51,7 +51,8 @@ describe("W11 Configure Backup (real build)", () => {
         const html = await page.text();
         for (const s of ["Configure backup", "w11-app", "Resources", "Consistency", "Schedule", "Storage", "Review &amp; activate", "Nothing is saved until you press Activate", "offsite-e2e", "Deletable from source host", "not checked", "Select at least one storage channel.", "Activate backup", "Run first backup", "Advanced: custom cron expression"]) expect(html, s).toContain(s);
         expect(html).toContain('aria-disabled="true"');
-        expect(html).not.toMatch(/stop \+ copy|quiesce/i);
+        // W17b: flag off ⇒ nothing is RENDERED (no text, no row). The status-row module may still appear as a client chunk reference in the payload, so the check is on rendered output, not on the word.
+        expect(html).not.toMatch(/stop \+ copy|data-testid="quiesce|quiesce-status-row"/i);
         expect(html).not.toContain(CANARY); // channel config never reaches the browser (HTML + RSC payload)
         expect(html).not.toContain("secretAccessKey");
         expect(html).not.toMatch(/type="password"/); // no database in this stack: no password field at all
