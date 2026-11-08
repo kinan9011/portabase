@@ -157,7 +157,7 @@ export function relative(at: Date, now: Date): string {
     if (s < 0) return "in the future";
     if (s < 60) return "just now";
     const m = Math.floor(s / 60); if (m < 60) return `${m} minute${m === 1 ? "" : "s"} ago`;
-    const h = Math.floor(m / 60); if (h < 48) return `${h} hour${h === 1 ? "" : "s"} ago`;
+    const h = Math.floor(m / 60); if (h < 24) return `${h} hour${h === 1 ? "" : "s"} ago`;
     const d = Math.floor(h / 24); return `${d} day${d === 1 ? "" : "s"} ago`;
 }
 export function elapsed(from: Date, to: Date): string {
