@@ -26,6 +26,7 @@ export const RP_DOWNGRADE_REASONS = [
     "run_cancelled",
     "run_not_started", // nothing could be queued
     "run_error", // the run engine itself failed repeatedly (internal_error); partial artifacts are still listed
+    "quiesce_unconfirmed", // W17b (migration 0015): the stop window was never confirmed closed — never `verified` without the un-quiesce confirmation
 ] as const;
 export type RpDowngradeReason = (typeof RP_DOWNGRADE_REASONS)[number];
 

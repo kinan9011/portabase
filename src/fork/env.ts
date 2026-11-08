@@ -113,6 +113,8 @@ const schema = z.object({
      * There is deliberately NO per-agent / LAN override (ADR-007 §http). Operator-only.
      */
     FORK_ALLOW_INSECURE_LOOPBACK: flag,
+    /** W17b (D9a): dashboard-side switch of the opt-in quiesce. Config-plane: NOT part of `anyForkFlagOn` (parity). Default off. */
+    FORK_QUIESCE_ENABLED: flag,
     /** W15: how long a task may wait to be started (minutes, 1–60, default 10, ADR-007 D3) and how long one lease lasts without a heartbeat (seconds, 15–600, default 60). */
     FORK_AGENT_TASK_TTL_MINUTES: intRange(1, 60, 10),
     FORK_AGENT_LEASE_SECONDS: intRange(15, 600, 60),
@@ -156,6 +158,7 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_KIT_UNVERIFIED_HOURS: source.FORK_KIT_UNVERIFIED_HOURS,
         FORK_KIT_WATCH_MINUTES: source.FORK_KIT_WATCH_MINUTES,
         FORK_ALLOW_INSECURE_LOOPBACK: source.FORK_ALLOW_INSECURE_LOOPBACK,
+        FORK_QUIESCE_ENABLED: source.FORK_QUIESCE_ENABLED,
         FORK_AGENT_TASK_TTL_MINUTES: source.FORK_AGENT_TASK_TTL_MINUTES,
         FORK_AGENT_LEASE_SECONDS: source.FORK_AGENT_LEASE_SECONDS,
         FORK_RESTORE_PLAN_TTL_HOURS: source.FORK_RESTORE_PLAN_TTL_HOURS,

@@ -8,7 +8,7 @@ import {nowOf, ownerOf, type RunDeps} from "./deps";
 import {advanceSteps, done, type StepRecord} from "./engine";
 import {loadStackFacts} from "./reauth";
 import {runHandlers, type StepCtx} from "./steps";
-import {ACTIVE_RUN_STATES, TERMINAL_ITEM_STATES, type ItemState, type RunStep} from "./vocab";
+import {ACTIVE_RUN_STATES, TERMINAL_ITEM_STATES, type AnyRunStep, type ItemState} from "./vocab";
 
 /**
  * Drives runs. One tick advances every ACTIVE run by as many steps as can complete; state is persisted after every step
@@ -34,7 +34,7 @@ export async function tickRun(d: RunDeps, runId: string): Promise<TickOutcome> {
             await finalizeRun(c.d, runId);
             return done();
         };
-        const r = await advanceSteps<RunStep, StepCtx>(run.steps as StepRecord<RunStep>[], runHandlers(finalize), ctx, {
+        const r = await advanceSteps<AnyRunStep, StepCtx>(run.steps as StepRecord<AnyRunStep>[], runHandlers(finalize), ctx, {
             now: () => nowOf(d),
             persist: async (steps) => { await d.db.update(forkStackRun).set({steps, updatedAt: nowOf(d)}).where(eq(forkStackRun.id, runId)); },
         });
@@ -84,6 +84,8 @@ export async function cancelRun(d: RunDeps, runId: string, actor: {userId: strin
         const open = (await d.db.select().from(forkStackRunItem).where(eq(forkStackRunItem.runId, runId))).filter((i) => !TERMINAL_ITEM_STATES.includes(i.state as ItemState));
         const cancelled = await cancelWaitingBackups(d.db, open.flatMap((i) => (i.backupId ? [i.backupId] : [])), now);
         if (open.length > 0) await d.db.update(forkStackRunItem).set({state: "failed", reason: "cancelled", finishedAt: now}).where(inArray(forkStackRunItem.id, open.map((i) => i.id)));
+        // W17b: a cancelled run must never keep the app stopped — signal the agent to start now (it restarts on its next poll; the result is reconciled later)
+        if (run.quiesceTaskId && !run.quiesceReleaseAt) await d.db.update(forkStackRun).set({quiesceReleaseAt: now, quiesceReleaseReason: "cancelled"}).where(eq(forkStackRun.id, runId));
         await recordAudit(d.db, {organizationId: actor.organizationId, actorUserId: actor.userId, action: "fork.stack_run.cancel", resourceType: "stack_run", resourceId: runId, result: "success", details: {stackId: run.stackId, cancelledWaiting: cancelled.length, open: open.length}, now});
         await finalizeRun(d, runId, "cancelled" satisfies FinalizeForced);
         return {ok: true, cancelledWaiting: cancelled.length};

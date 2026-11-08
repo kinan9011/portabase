@@ -4,6 +4,7 @@
  */
 
 /** starting → running → finalizing → succeeded | incomplete | failed | cancelled; `skipped` is terminal at birth (ARCH-17: overlap / missed slot). */
+import {QUIESCE_RUN_STEPS} from "@/fork/quiesce/vocab";
 export const RUN_STATES = ["starting", "running", "finalizing", "succeeded", "incomplete", "failed", "cancelled", "skipped"] as const;
 export type RunState = (typeof RUN_STATES)[number];
 export const ACTIVE_RUN_STATES = ["starting", "running", "finalizing"] as const;
@@ -51,6 +52,9 @@ export type RefreshOutcome = (typeof REFRESH_OUTCOMES)[number];
  */
 export const RUN_STEPS = ["refresh_inventory", "validate", "trigger", "track", "hash", "finalize"] as const;
 export type RunStep = (typeof RUN_STEPS)[number];
+/** W17b: a run that uses the composite quiesce task carries this longer list (defined in `quiesce/vocab`, pure). Plain runs keep `RUN_STEPS` unchanged. */
+export {QUIESCE_RUN_STEPS};
+export type AnyRunStep = RunStep | (typeof QUIESCE_RUN_STEPS)[number];
 export const STEP_STATES = ["pending", "running", "done", "failed"] as const;
 export type StepState = (typeof STEP_STATES)[number];
 

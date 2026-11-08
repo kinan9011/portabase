@@ -3,6 +3,8 @@
  * cross-language vectors carry it, and the agent's `restore::Code` enum is asserted equal to it. A code the dashboard does not know makes the result
  * POST fail with 400, so a new agent code always starts here. W17-ii appends its own block (compose / policy / db codes).
  */
+import {QUIESCE_AGENT_CODES} from "@/fork/quiesce/vocab";
+
 export const RESTORE_REASONS = [
     "path_not_allowed", "symlink_escape", "root_not_shared", "workspace_not_owned", "mode_unsupported", "host_role_mismatch", "approval_missing",
     "manifest_invalid", "manifest_unknown_kid", "manifest_signature", "manifest_mismatch", "artifact_unavailable", "checksum_mismatch", "archive_invalid",
@@ -10,5 +12,7 @@ export const RESTORE_REASONS = [
     // W17-ii (ADR-007 A14) — order is part of the contract (the agent's `Code::RESTORE` is compared index by index)
     "compose_unavailable", "override_invalid", "raw_refused", "render_failed", "render_too_large", "policy_refused", "approval_invalid",
     "container_conflict", "protected_container", "network_exists", "volume_not_in_compose", "db_restore_failed", "compose_failed",
+    // W17b (ADR-007 A15): quiesce refusal / failure codes, appended in the agent's `Code` order (`QUIESCE_AGENT_CODES`)
+    ...QUIESCE_AGENT_CODES,
 ] as const;
 export type RestoreReason = (typeof RESTORE_REASONS)[number];

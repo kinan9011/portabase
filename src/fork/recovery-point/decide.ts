@@ -35,6 +35,11 @@ export type RunFacts = {
     validatorComplete: boolean;
     encryptionOn: boolean;
     artifacts: readonly ArtifactInput[];
+    /**
+     * W17b (D12): `unconfirmed` = the composite quiesce task never reported a terminal result before the run gave up waiting — the stop window is not known to be
+     * closed, so the RP is `incomplete/quiesce_unconfirmed` and (D43) can never be promoted by anything but the verify job after a human re-take. Default `none`.
+     */
+    quiesce?: "none" | "confirmed" | "unconfirmed";
 };
 
 export type RpDecision =
@@ -60,14 +65,16 @@ export function decideRecoveryPoint(f: RunFacts): RpDecision {
     if (present < f.artifacts.length) return {status: "incomplete", reason: "member_failed", runState: "incomplete", runReason: "member_failed"};
     if (f.artifacts.some((a) => !artifactEncrypted(a, f.encryptionOn))) return {status: "incomplete", reason: "unencrypted", runState: "incomplete", runReason: null};
     if (f.artifacts.some((a) => !artifactHasChecksum(a))) return {status: "incomplete", reason: "checksum_unavailable", runState: "incomplete", runReason: null};
+    if (f.quiesce === "unconfirmed") return {status: "incomplete", reason: "quiesce_unconfirmed", runState: "incomplete", runReason: null};
     if (!f.validatorComplete) return {status: "incomplete", reason: "validator_blocked", runState: "incomplete", runReason: null};
     return {status: "pending_verification", reason: null, runState: "succeeded", runReason: null};
 }
 
 /** crash_consistent_files | engine_dump | mixed | unknown from the dbms of the captured members (sqlite/DB engines are dumps). */
-export function consistencyOf(dbms: readonly string[]): "crash_consistent_files" | "engine_dump" | "mixed" | "unknown" {
+export function consistencyOf(dbms: readonly string[], o?: {stoppedWindow?: boolean}): "crash_consistent_files" | "engine_dump" | "mixed" | "unknown" | "stopped" {
     if (dbms.length === 0) return "unknown";
     const files = dbms.filter((d) => d === "files" || d === "docker-volume").length;
     if (files === 0) return "engine_dump";
+    if (o?.stoppedWindow) return "stopped"; // W17b: the agent confirmed an intact stop window around the file / volume copies
     return files === dbms.length ? "crash_consistent_files" : "mixed";
 }

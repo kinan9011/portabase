@@ -3,6 +3,8 @@ import {sql} from "drizzle-orm";
 import {backup} from "@/db/schema/07_database";
 import {forkStack, forkStackSource} from "@/fork/db/schema/stack";
 import {inList, nullOrInList} from "@/fork/db/enums";
+import {forkAgentTask} from "@/fork/db/schema/agent-channel";
+import {QUIESCE_REASONS, QUIESCE_STATES, RELEASE_REASONS} from "@/fork/quiesce/vocab";
 import {ITEM_STATES, REFRESH_OUTCOMES, RUN_REASONS, RUN_STATES, RUN_TRIGGERS, SKIP_REASONS} from "@/fork/runs/vocab";
 
 const ts = (name: string) => timestamp(name, {withTimezone: true});
@@ -34,7 +36,21 @@ export const forkStackRun = pgTable("fork_stack_run", {
     deadlineAt: ts("deadline_at"),
     finishedAt: ts("finished_at"),
     updatedAt: ts("updated_at").notNull().defaultNow(),
+    /** W17b: composite quiesce. NULL state = the policy has quiesce off (no notice). `quiesce_result` is the agent's redacted result (≤ 16 KiB). */
+    quiesceState: text("quiesce_state"),
+    quiesceReason: text("quiesce_reason"),
+    quiesceTaskId: uuid("quiesce_task_id").references(() => forkAgentTask.id, {onDelete: "set null"}),
+    quiesceStartTaskId: uuid("quiesce_start_task_id").references(() => forkAgentTask.id, {onDelete: "set null"}),
+    quiesceStoppedAt: ts("quiesce_stopped_at"),
+    quiesceReleaseAt: ts("quiesce_release_at"),
+    quiesceReleaseReason: text("quiesce_release_reason"),
+    quiesceResult: jsonb("quiesce_result"),
 }, (t) => [
+    index("fork_stack_run_quiesce_idx").on(t.stackId, t.startedAt).where(sql`quiesce_task_id IS NOT NULL`),
+    check("fork_stack_run_quiesce_state_ck", nullOrInList("quiesce_state", QUIESCE_STATES)),
+    check("fork_stack_run_quiesce_reason_ck", nullOrInList("quiesce_reason", QUIESCE_REASONS)),
+    check("fork_stack_run_quiesce_release_ck", nullOrInList("quiesce_release_reason", RELEASE_REASONS)),
+    check("fork_stack_run_quiesce_result_ck", sql`${t.quiesceResult} IS NULL OR octet_length(${t.quiesceResult}::text) <= 16384`),
     uniqueIndex("fork_stack_run_one_active_uq").on(t.stackId).where(sql`state IN ('starting','running','finalizing')`),
     unique("fork_stack_run_slot_uq").on(t.stackId, t.scheduledFor),
     index("fork_stack_run_stack_started_idx").on(t.stackId, t.startedAt),
