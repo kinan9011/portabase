@@ -96,3 +96,18 @@ describe("W18b Screen R (Stack Recovery page)", () => {
         expect(h.choices).not.toHaveBeenCalled();
     });
 });
+
+import {BackupsTab} from "@/fork/ui/stacks/backups/backups-tab";
+describe("W18b entry points", () => {
+    const row = (status: string) => ({sequence: 8, createdAt: now.toISOString(), status, reason: null, consistency: "mixed", destinations: [], sizeBytes: null, durationSeconds: null, required: 1, present: 1, inventoryVersion: 1, trigger: null, verifiedAt: null});
+    it("Backups tab Restore: a link into the wizard (machine step for a verified selected point, backup step otherwise); a disabled button with the R-role reason for members", () => {
+        const view = (st: string) => ({total: 1, shown: 1, timezone: "UTC", rows: [row(st)], detail: {row: row(st), artifacts: []}}) as never;
+        const a = render(<BackupsTab stackId={S1} view={view("verified")} runReason={null} canRestore restoreReason={null}/>);
+        expect(screen.getByTestId("backups-restore").getAttribute("href")).toBe(`/dashboard/recovery/new?stack=${S1}&point=8&step=machine`); a.unmount();
+        const b = render(<BackupsTab stackId={S1} view={view("pending_verification")} runReason={null} canRestore restoreReason={null}/>);
+        expect(screen.getByTestId("backups-restore").getAttribute("href")).toBe(`/dashboard/recovery/new?stack=${S1}`); b.unmount();
+        const c = render(<BackupsTab stackId={S1} view={view("verified")} runReason={null} canRestore={false} restoreReason={R_ROLE}/>);
+        const btn = screen.getByTestId("backups-restore");
+        expect(btn.getAttribute("aria-disabled")).toBe("true"); expect(c.container.textContent).toContain(R_ROLE);
+    });
+});

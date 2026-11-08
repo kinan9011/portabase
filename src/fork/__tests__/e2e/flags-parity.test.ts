@@ -77,7 +77,7 @@ describe("flag ON: Integrations wiring (nav + route + ACL)", () => {
         expect(html).toContain("Stack Recovery");
         expect(html).toContain('href="/dashboard/integrations"');
         expect(html).toContain('href="/dashboard/stacks"'); // W08: Docker Stacks shipped (the default admin is an org member)
-        expect(html).not.toMatch(/\/dashboard\/recovery/); // Recovery stays hidden until W18b
+        expect(html).toContain('href="/dashboard/recovery"'); // W18b (D13): Recovery shipped; the flags-OFF assertion above (no /dashboard/recovery) is unchanged
 
         const page = await get(base, "/dashboard/integrations", cookie);
         expect(page.status).toBe(200);
