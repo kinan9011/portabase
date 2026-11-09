@@ -76,7 +76,8 @@ describe("W14 kit content (D25 contents, §4.2)", () => {
         expect(kit.storage[0].credentials_wrapped).toMatchObject({alg: "AES-256-GCM"});
         expect(kit.storage[1].credentials_wrapped).toBeNull();
         expect(kit.recover.image_digest).toMatch(/not published/);
-        expect(kit.recover.cli_version).toContain("fork/w14b-done");
+        expect(kit.recover.cli_version).toContain("fork/w27a-done"); // W28 re-pin (rule file v2 + F-01 realpath gate)
+        expect(kit.recover.cli_version).not.toContain("fork/w14b-done");
         expect(kit.recover.guide).toContain("my-server-died.md");
     });
     it("wrapped storage credentials open with the master key (HKDF-derived) and only with it", () => {
