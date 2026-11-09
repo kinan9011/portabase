@@ -1,5 +1,5 @@
 # Disposable Portabase dashboard + Postgres + MinIO for the fork lab (W02). Lab only: all ports 127.0.0.1.
-# The dashboard image is the upstream release the fork is based on (fork-base/v1.35.2): W02 writes no dashboard code.
+# The dashboard image is the upstream release the fork is based on (fork base 1.36.0): W02 writes no dashboard code.
 name: forklab-portabase
 services:
   db:
@@ -41,7 +41,7 @@ services:
         aliases: [forklab-minio]
 
   dashboard:
-    image: ghcr.io/portabase/portabase:1.35.2@sha256:9de7caa26c23e1d4e8915aa42d79b62d786c4539d8f96370ca600de8d47a72e6
+    image: ghcr.io/portabase/portabase:1.36.0@sha256:85a4d8f5bbd2ad5744bda55ea4227743da77e91cca0e9ef8d157fd8b34cca810
     depends_on:
       db: {condition: service_healthy}
     environment:

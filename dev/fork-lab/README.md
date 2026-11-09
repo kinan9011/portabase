@@ -1,6 +1,6 @@
 # Fork lab (W02)
 
-Disposable lab for the Stack Recovery fork: **Arcane** manager, the **Portabase dashboard + agent** (upstream 1.35.2 / 1.25.2 images, pinned by digest), **MinIO** as the storage channel, a synthetic **demo Compose stack**, and the **F4** compromise-resilient copy reference.
+Disposable lab for the Stack Recovery fork: **Arcane** manager, the **Portabase dashboard + agent** (upstream 1.36.0 / 1.25.2 images, pinned by digest), **MinIO** as the storage channel, a synthetic **demo Compose stack**, and the **F4** compromise-resilient copy reference.
 
 > **Lab only.** Localhost only (every published port is `127.0.0.1`), synthetic data only, no production credentials, ever. The agent and Arcane mount the Docker socket on purpose (Docker-admin equivalent — see `05-Security-Model` / ADR-001).
 

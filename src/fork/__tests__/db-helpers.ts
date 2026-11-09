@@ -30,6 +30,6 @@ export async function createTestDb(): Promise<TestDb> {
 }
 
 /** Applies the REAL upstream migrations (src/db/migrations), like upstream's makeMigration()/drizzle-kit do. */
-export async function applyUpstreamMigrations(pool: Pool) {
-    await migrate(drizzle({client: pool}), {migrationsFolder: path.join(process.cwd(), "src/db/migrations")});
+export async function applyUpstreamMigrations(pool: Pool, folder = path.join(process.cwd(), "src/db/migrations")) {
+    await migrate(drizzle({client: pool}), {migrationsFolder: folder});
 }

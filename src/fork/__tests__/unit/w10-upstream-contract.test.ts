@@ -36,7 +36,7 @@ describe("pinned upstream sources we copied (re-review on change)", () => {
         ["src/features/database/services/database-delete.service.ts", "d370f829e69881454cb3db2655d2e5f4c086d4e0dac5030187c4c241c69d8065", "upstream/sources.ts removeMemberSource"],
         ["src/features/database/utils/database-acl.ts", "4d34bd7768770654cb57900b1b8fa89bd0834553b7a6735f4cdea95aa697ad4d", "upstream/agents.ts agentAclAllows"],
         ["src/features/projects/actions/projects.action.ts", "d01b38adc3c0d327d438a67a32246f293c9f66e7f5eb1f7a789da36f15a219f6", "upstream/projects.ts createStackProject"],
-        ["src/features/database/schemas/database-config.schema.ts", "7b423cd360d6388c35ae734981527217563d5cbf62ba313e8935c16c232c0523", "materialize/types.ts DUMP_REQUIRED + config shapes"],
+        ["src/features/database/schemas/database-config.schema.ts", "360f05335149852c7effb2168a8d4dd5c10794b36bf79b75e56f00c3743d8517", "materialize/types.ts DUMP_REQUIRED + config shapes"],
     ];
     it.each(PINS)("%s unchanged since the copy was made (%s)", (file, hash, copy) => {
         expect(sha(file), `upstream ${file} changed: re-diff ${copy}, adapt it, then update this pin`).toBe(hash);
