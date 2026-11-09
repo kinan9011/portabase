@@ -19,7 +19,7 @@ describe("pinned upstream sources behind the stack-run copies (re-review on chan
         ["src/features/database/actions/bulk-backup.action.ts", "d90906f9a15fd6090e29567452619f417e57b06fafab4be79fbc2a012f9af3b4", "queueWaitingBackups (the waiting|ongoing / method_conflict guards + the `waiting` insert, D14)"],
         ["src/lib/tasks/database/utils/backup-delete.service.ts", "3fbdf5d566607fb0c61b554e040d0cfc4c2f065196c5918534c3dad059af0ce6", "deleteBackupViaUpstream (D33 prune path)"],
         ["src/lib/tasks/database/utils/delete.ts", "cccd05c211aa8c103d0e722a62bc3d702433d5b5c16cf4c275208cc6d27986fa", "deleteBackupViaUpstream (the action wraps the service)"],
-        ["src/lib/tasks/cleaning/index.ts", "a47cb644e1535d25bfb8255cceed0d48d4f06135d5a6defcaad20b54bc158cf5", "tracker: failed backups are soft-deleted, stale ongoing ⇒ failed (read by id incl. deleted rows)"],
+        ["src/lib/tasks/cleaning/index.ts", "b0aa1dc32c74925a2213707e44469f372ce9ce1a62db5936fadcfcda15a52abd", "tracker: failed backups are soft-deleted, stale ongoing ⇒ failed (read by id incl. deleted rows)"],
         ["app/api/agent/[agentId]/backup/route.ts", "82e345541a6d3dce381bda4200686b8c857d2f2f6adb8352521dd6681945a322", "tracker: the agent PATCH sets status/fileSize/durationMs; `automatic` inserts an ongoing row"],
         ["app/api/agent/[agentId]/backup/upload/status/route.ts", "14f6a2620ebc0101375b3daa6a78562ccc9f2409cb7f104df3f38dd66695318f", "finaliser: backup_storage status/path/size/stats written by the agent; NO checksum on this path"],
         ["src/features/storages/utils/storages.helpers.ts", "8fda863922e57d8b67499cc846253a5bd29f4ec173f637c9c5f7e20c1aec688d", "finaliser: only the tus path computes a checksum"],

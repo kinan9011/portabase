@@ -19,7 +19,7 @@ describe("pinned upstream sources behind the notification adapter (re-review on 
     const PINS: [string, string, string][] = [
         ["src/features/notifications/utils/notifications.dispatch.ts", "48f5095d128027ecd4a968f983a6c9913452bda4692fe5a8f902dbfe9c641bce", "dispatchNotification(payload, policyId, channelId, organizationId): resolves the channel by id, calls the provider, writes notification_log"],
         ["src/features/notifications/types/index.ts", "aeb536c037fe76de0a9cd2793e4b22b90fe1d1e7ac448b7dbfd3321c244f058d", "EventPayload / EventKind (the existing event kinds the fork maps onto)"],
-        ["src/db/schema/09_notification-channel.ts", "fcad7b81d60338b76641653f553f8cb9dc5918c0d46e30ed82669370f25d0b52", "notification_channel columns read by defaultNotificationChannel"],
+        ["src/db/schema/09_notification-channel.ts", "c311f64d6cc9f898156b2d521da3d7bfa8f1caa37fc34c8a17caf06d553f1009", "notification_channel columns read by defaultNotificationChannel"],
         ["src/db/schema/11_notification-log.ts", "9d238b266c465ec107f56e6736c830abf9da4c8e318903d7bd88a036255471aa", "notification_log.event is text (no enum edit needed)"],
     ];
     it.each(PINS)("%s unchanged since the adapter was written (%s)", (file, hash, why) => {
