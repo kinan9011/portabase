@@ -61,10 +61,10 @@ docker compose version               # must say 2.24 or newer
 
 ## Part 3 — Get the recovery tool
 
-The tool is a folder of three small scripts. Fetch exactly the version your kit names (the *Recovery tool* line on the paper kit, or `recover.cli_version` in the digital kit; if it says only `pending`, use the tag below):
+The tool is a folder of three small scripts. Fetch exactly the version your kit names (the *Recovery tool* line on the paper kit, or `recover.cli_version` in the digital kit; if it says only `pending`, use the tag below; a kit issued before W28 names `fork/w14b-done`, which still works but applies the weaker v1 compose rules, so ask for a re-issued kit when you can):
 
 ```bash
-git clone --depth 1 --filter=blob:none --sparse --branch fork/w14b-done https://github.com/kinan9011/portabase.git ~/portabase-recover-src
+git clone --depth 1 --filter=blob:none --sparse --branch fork/w27a-done https://github.com/kinan9011/portabase.git ~/portabase-recover-src
 cd ~/portabase-recover-src
 git sparse-checkout set scripts/fork/recover src/fork/policy
 scripts/fork/recover/portabase-recover help

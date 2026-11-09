@@ -9,8 +9,9 @@ export const KIT_VERSION = 1 as const;
 /**
  * W14b: the recovery tool is a tagged part of this fork (sparse checkout, see the guide). The recover image is a convenience, published by digest only
  * when the owner releases one: until then the kit says so instead of naming a tag (the plan forbids tags, §4.3).
+ * W28: fork/w27a-done is the tag that carries rule file v2 + the F-01 realpath gate; kits issued earlier name fork/w14b-done until re-issued.
  */
-export const RECOVER_CLI_VERSION = "1.0.0 (git tag fork/w14b-done)";
+export const RECOVER_CLI_VERSION = "1.0.0 (git tag fork/w27a-done)";
 export const RECOVER_GUIDE = "scripts/fork/recover/my-server-died.md in https://github.com/kinan9011/portabase";
 export const RECOVER_IMAGE_UNPUBLISHED = "not published (use the script from the guide)";
 
