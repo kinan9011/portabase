@@ -26,7 +26,7 @@ const pctDecode = (s: string): string => {
 
 /** procedural URL split (for Rust parity): scheme `://`, authority up to the first `/ ? #`, userinfo up to the LAST `@`, password after the FIRST `:`. */
 function splitUrl(v: string): {scheme: string; authority: string; rest: string} | null {
-    const m = URL_RE.exec(v);
+    const m = v.match(URL_RE);
     if (m === null) return null;
     const afterScheme = v.slice(m[0].length);
     const end = afterScheme.search(/[/?#]/);
