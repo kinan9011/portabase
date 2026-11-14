@@ -20,7 +20,7 @@ import {ApplyPayload, CleanupPayload, DbPayload, ProbePayload, RenderPayload, St
 import {CAPABILITY_RE, KID_RE, MAX_CAPABILITIES, MAX_PAYLOAD_BYTES, MAX_PINS, MAX_RESULT_BYTES, NOOP_ECHO_RE, PIN_PEM_MAX, PUBLIC_TASK_TYPES, TARGETED_TASK_TYPES, TASK_REQUIRES, type TaskType} from "./vocab";
 import {redactDetails} from "@/fork/audit";
 import {RunnerProbePayload} from "@/fork/runner/payload-schema";
-import {MirrorApplyPayload, MirrorCheckPayload, MirrorDbPayload, MirrorFinalizePayload, MirrorProbePayload, MirrorRenderPayload, MirrorStagePayload, MirrorUpPayload, MirrorWipePayload} from "@/fork/mirror/payload-schema";
+import {MirrorApplyPayload, MirrorCheckPayload, MirrorDbPayload, MirrorFinalizePayload, MirrorProbePayload, MirrorRenderPayload, MirrorStagePayload, MirrorStopPayload, MirrorUpPayload, MirrorWipePayload} from "@/fork/mirror/payload-schema";
 import {QuiescePayloadSchema, QuiesceStartPayloadSchema} from "@/fork/quiesce/payload";
 
 /**
@@ -52,7 +52,7 @@ const PAYLOAD_SCHEMAS: Record<TaskType, z.ZodType> = {
     restore_verify: VerifyPayload,
     runner_probe: RunnerProbePayload,
     mirror_probe: MirrorProbePayload, mirror_stage: MirrorStagePayload, mirror_apply: MirrorApplyPayload, mirror_render: MirrorRenderPayload, mirror_finalize: MirrorFinalizePayload,
-    mirror_db: MirrorDbPayload, mirror_up: MirrorUpPayload, mirror_check: MirrorCheckPayload, mirror_wipe: MirrorWipePayload,
+    mirror_db: MirrorDbPayload, mirror_up: MirrorUpPayload, mirror_check: MirrorCheckPayload, mirror_wipe: MirrorWipePayload, mirror_stop: MirrorStopPayload,
 };
 
 /** Test seam (W22a contract test): the closed schema table. */

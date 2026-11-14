@@ -6,7 +6,7 @@ import type {z} from "zod";
 import type {MirrorSpecV1} from "@/fork/compose-compiler/compile";
 import type {RestorePlanV1} from "@/fork/restore/schema";
 import {applyBody, BuildError, buildComposeRef, stageBody, workspaceOf, type BuildInput} from "@/fork/restore-tasks/build";
-import type {MirrorApplyPayload, MirrorCheckPayload, MirrorDbPayload, MirrorFinalizePayload, MirrorHeader, MirrorLimits, MirrorProbePayload, MirrorRenderPayload, MirrorStagePayload, MirrorUpPayload, MirrorWipePayload} from "./payload-schema";
+import type {MirrorApplyPayload, MirrorCheckPayload, MirrorDbPayload, MirrorFinalizePayload, MirrorHeader, MirrorLimits, MirrorProbePayload, MirrorRenderPayload, MirrorStagePayload, MirrorStopPayload, MirrorUpPayload, MirrorWipePayload} from "./payload-schema";
 import type {MirrorPolicyV1} from "./policy";
 
 export type MirrorBuildInput = {revisionId: string; planId: string; planHash: string; plan: RestorePlanV1; indexOf: ReadonlyMap<string, number>};
@@ -79,3 +79,4 @@ export function buildMirrorCheck(i: MirrorBuildInput, finalSha256: string, polic
 }
 
 export const buildMirrorWipe = (i: MirrorBuildInput): z.infer<typeof MirrorWipePayload> => mirrorHeader(i);
+export const buildMirrorStop = (i: MirrorBuildInput): z.infer<typeof MirrorStopPayload> => mirrorHeader(i);

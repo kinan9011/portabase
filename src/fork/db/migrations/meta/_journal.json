@@ -134,6 +134,13 @@
       "when": 1794631224616,
       "tag": "0018_mirror",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794653263745,
+      "tag": "0019_mirror_lifecycle",
+      "breakpoints": true
     }
   ]
 }
