@@ -138,7 +138,7 @@ describe("startMirror", () => {
     it("stopped → starting: OWN isolation probe first, then up, then check ⇒ ready; the creation's probe, gates and readied_at are never rewritten; the start-tested fact is unchanged", async () => {
         const c = await stopped();
         const before = await w.rev(c.revisionId);
-        const fact = await startTestedFact(w.t.db, c.stack.stackId ?? (await w.mirrorRow(c.mirrorId)).stack_id);
+        const fact = await startTestedFact(w.t.db, (await w.mirrorRow(c.mirrorId)).stack_id);
         expect(await startMirror(c.d, {mirrorId: c.mirrorId})).toEqual({ok: true});
         expect(await status(c)).toBe("starting");
         const seen = await driveOp(c, ["ready"]);

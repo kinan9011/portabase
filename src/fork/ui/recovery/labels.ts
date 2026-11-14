@@ -348,7 +348,7 @@ export const FAILURE_GROUPS = [
         {tone: "danger", text: (m) => `${m} refused the instruction for a security reason. A system administrator should check the Agent channel page.`}),
     // fallback group: the step failed on the machine for a reason that is not worth its own sentence; the code is shown as a reference
     g(["execution_error", "restore_failed", "internal_error", "probe_invalid", "not_in_project", "protected_in_project", "container_changed", "replica_not_listed", "container_unstable", "restore_owned",
-        "quiesce_pending", "journal_unavailable", "stop_failed", "restart_unverified", "quiesce_interrupted", "helper_failed", "wipe_incomplete",
+        "quiesce_pending", "journal_unavailable", "stop_failed", "restart_unverified", "quiesce_interrupted", "helper_failed", "wipe_incomplete", "stop_incomplete",
         // W22a mirror-engine codes (a restore run never gets them; the mirror UI (W22b/W23) words them itself)
         "seed_invalid", "source_changed", "apply_failed", "limits_invalid", "final_view_mismatch", "credential_reset_failed", "credential_reset_unsupported", "smoke_failed_internal", "mirror_disabled"], {tone: "danger", reference: true, text: (m) => `The step failed on ${m}. Check the Portabase agent log there.`}),
 ] as const;
