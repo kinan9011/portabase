@@ -8,14 +8,16 @@ const ts = (name: string) => timestamp(name, {withTimezone: true});
 /**
  * W21 (ADR-008, D48): the mirror RUNNER designation, an AGENT-level fact (not a third `host_role` value: `fork_arcane_environment.host_role` stays production|test).
  * One row per designated agent. An agent is an eligible runner only with this row AND an active enrolment reporting `runner.v1` AND no Arcane environment AND no upstream
- * databases (see `runner/service.ts`). Cascade is deliberate: a designation means nothing without its agent, and the audit log keeps the history.
+ * databases (see `runner/service.ts`).
  * `last_probe_*` binds the most recent isolation probe (task id, the RESOLVED target list with ids/classes/labels, and the sha of the pre-resolution config) so the
  * verdict can detect `targets_changed`. No hosts-as-secrets: these are operator-chosen network targets (database/SMTP/webhook IPs), never credentials.
  */
 export const forkRunner = pgTable(
     "fork_runner",
     {
-        agentId: uuid("agent_id").primaryKey().references(() => agent.id, {onDelete: "cascade"}),
+        id: uuid("id").primaryKey().defaultRandom(),
+        /** FK `agents` SET NULL like every fork→upstream FK (D32): an agent deleted upstream leaves an orphan row that matches no agent id, i.e. it can never be an eligible runner. */
+        agentId: uuid("agent_id").references(() => agent.id, {onDelete: "set null"}).unique(),
         designatedBy: text("designated_by").notNull(),
         designatedAt: ts("designated_at").notNull(),
         probeTargets: jsonb("probe_targets").notNull().default(sql`'[]'::jsonb`),

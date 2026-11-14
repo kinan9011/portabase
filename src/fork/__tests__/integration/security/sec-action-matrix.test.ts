@@ -38,6 +38,7 @@ const LOAD: Record<string, () => Promise<unknown>> = {
     "materialize.action.ts": () => import("@/fork/actions/materialize.action"),
     "restore-plan.action.ts": () => import("@/fork/actions/restore-plan.action"),
     "restore-run.action.ts": () => import("@/fork/actions/restore-run.action"),
+    "runner.action.ts": () => import("@/fork/actions/runner.action"),
     "stack-config.action.ts": () => import("@/fork/actions/stack-config.action"),
     "stack-policy.action.ts": () => import("@/fork/actions/stack-policy.action"),
     "stack-quiesce.action.ts": () => import("@/fork/actions/stack-quiesce.action"),

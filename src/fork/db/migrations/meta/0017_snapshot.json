@@ -1,5 +1,5 @@
 {
-  "id": "75b073b1-94b3-4a15-8cf8-59005677634a",
+  "id": "42d3e24e-c6ac-40c2-bb47-b6c311e16a79",
   "prevId": "4457bd5f-9c70-48c3-8678-ca84aba98272",
   "version": "7",
   "dialect": "postgresql",
@@ -4688,11 +4688,18 @@
       "name": "fork_runner",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "agent_id": {
           "name": "agent_id",
           "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
+          "primaryKey": false,
+          "notNull": false
         },
         "designated_by": {
           "name": "designated_by",
@@ -4757,7 +4764,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "fork_runner_last_probe_task_id_fork_agent_task_id_fk": {
@@ -4775,7 +4782,15 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "fork_runner_agent_id_unique": {
+          "name": "fork_runner_agent_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "agent_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "fork_runner_targets_ck": {

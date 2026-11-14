@@ -40,6 +40,11 @@ export const ACTION_MATRIX: Record<`${string}#${string}`, ActionRow> = {
     "agent-channel.action.ts#rotateAgentCredentialAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, ...pw})),
     "agent-channel.action.ts#revokeAgentEnrollmentAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id})),
     "agent-channel.action.ts#setAgentChannelEnabledAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, enabled: true})),
+    // ---- mirror runner (W21, ADR-008): system admin only (agents.channel.manage + host_role.manage), behind FORK_MIRRORS_ENABLED
+    "runner.action.ts#designateRunnerAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, ...pw})),
+    "runner.action.ts#undesignateRunnerAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id})),
+    "runner.action.ts#setRunnerTargetsAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, targets: []})),
+    "runner.action.ts#requestRunnerProbeAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id})),
     "agent-channel.action.ts#enqueueAgentTaskAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, type: "noop", payload: {echo: "w27a"}})),
     "agent-channel.action.ts#requestAgentCredentialRotationAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, ...pw})),
     "agent-channel.action.ts#pinDashboardKeyAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, ...pw, pem: "not-a-pem"})),

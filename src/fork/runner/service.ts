@@ -87,13 +87,14 @@ const TargetsInput = z.strictObject({agentId: z.uuid(), targets: z.array(z.unkno
 
 type Gated = {organizationId: string | null; userId: string; agent: {id: string; name: string}};
 async function gated(d: RunnerDeps, action: string, agentId: string, needsHostRole: boolean): Promise<Gated | RunnerRefusal> {
-    if (!enabled(d)) return refuse("mirrors_disabled", msg("mirrors_disabled"));
+    // ACL + D21 + rate first (a forbidden caller is audited as forbidden whatever the flag says); the feature flag is checked once the caller is allowed
     const g = await gate(d, action, agentId);
     if ("ok" in g) return g;
     if (needsHostRole && !forkCan(actorOf(d, g.organizationId), "host_role.manage")) {
         await recordAudit(d.db, {organizationId: g.organizationId, actorUserId: g.userId, action, resourceType: "agent", resourceId: agentId, result: "denied", details: {reason: "forbidden", capability: "host_role.manage"}, now: chNow(d)});
         return refuse("forbidden", "Only a system administrator can designate a mirror runner.");
     }
+    if (!enabled(d)) return refuse("mirrors_disabled", msg("mirrors_disabled"));
     return g;
 }
 const denied = (d: RunnerDeps, g: Gated, action: string, reason: string, db: ForkDb = d.db) =>
