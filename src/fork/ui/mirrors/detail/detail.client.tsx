@@ -13,6 +13,7 @@ import {BANNER, MIRRORS, reasonText} from "@/fork/ui/mirrors/labels";
 import {DeleteMirrorButton} from "@/fork/ui/mirrors/lifecycle/delete-button.client";
 import {StopStartButtons} from "@/fork/ui/mirrors/lifecycle/stop-start.client";
 import {failedNewerRevision, MIRROR_TABS, type MirrorTab, mirrorActions, startTestedLabel} from "@/fork/ui/mirrors/model";
+import {useRouter} from "next/navigation";
 import {MirrorProgress} from "@/fork/ui/mirrors/progress/progress.client";
 import {rollbackTargets} from "@/fork/ui/mirrors/refresh/model";
 import {RefreshMirrorButton} from "@/fork/ui/mirrors/refresh/refresh-dialog.client";
@@ -31,6 +32,7 @@ export type DetailProps = {
 
 /** 4-tab mirror detail (W23): persistent ADR-009 banner, URL-synced Radix tabs (`?tab=`), Overview = the W22b progress view with facet, alerts and lifecycle buttons. */
 export function MirrorDetail({initial, extras, log, canManage, locked, flagOn, stopStart = true, now, staleAfterDays, tab: initialTab, refreshFacts}: DetailProps) {
+    const router = useRouter();
     const [tab, setTab] = React.useState<MirrorTab>(initialTab);
     const onTab = (t: string) => {
         const next = (MIRROR_TABS as readonly string[]).includes(t) ? (t as MirrorTab) : "overview";
@@ -86,7 +88,7 @@ export function MirrorDetail({initial, extras, log, canManage, locked, flagOn, s
                         {TAB_LABELS.map(([v, label]) => <TabsTrigger key={v} value={v}>{label}</TabsTrigger>)}
                     </TabsList>
                 </div>
-                <TabsContent className={FOCUS_RING_AA} value="overview"><MirrorProgress initial={initial} canManage={canManage} locked={locked} embedded lastFrom={extras.lastOp?.status === "failed" ? (extras.lastOp.from ?? null) : null} extra={overviewExtra}/></TabsContent>
+                <TabsContent className={FOCUS_RING_AA} value="overview"><MirrorProgress initial={initial} canManage={canManage} locked={locked} embedded lastFrom={extras.lastOp?.status === "failed" ? (extras.lastOp.from ?? null) : null} extra={overviewExtra} onCommitted={() => router.refresh()}/></TabsContent>
                 <TabsContent className={FOCUS_RING_AA} value="configuration"><ConfigurationTab view={initial} extras={extras} now={now}/></TabsContent>
                 <TabsContent className={FOCUS_RING_AA} value="history"><HistoryTab view={initial} rpDates={extras.rpDates}/></TabsContent>
                 <TabsContent className={FOCUS_RING_AA} value="logs"><LogsTab entries={log}/></TabsContent>

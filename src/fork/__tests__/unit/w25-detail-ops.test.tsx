@@ -135,6 +135,8 @@ describe("progress during a refresh / rollback (F-1, F-2, F-3)", () => {
         const calls = h.view.mock.calls.length;
         await act(async () => { await vi.advanceTimersByTimeAsync(MIRROR_POLL_MS * 3); });
         expect(h.view.mock.calls.length).toBe(calls); // settled: polling stopped
+        // W25 browser finding: the commit (new active revision) makes the page re-read the server-rendered tabs + Refresh facts, once
+        expect(h.refresh).toHaveBeenCalledTimes(1);
     });
     it("rolling back: names the target; a Ready mirror with a failed newest revision says Ready and announces the failed-newer sentence", async () => {
         mount(props({initial: view(now, {status: "rolling_back", op: "r1"})}));
