@@ -143,6 +143,7 @@ const schema = z.object({
     FORK_MIRROR_MAX_HOURS: intRange(1, 24, 4),
     FORK_MIRROR_TICK_SECONDS: intRangeExplicit(0, 300, 10),
     FORK_TEST_RESTORE_STALE_DAYS: intRange(1, 90, 14),
+    FORK_MIRROR_START_STALE_DAYS: intRange(1, 90, 14), // W23, ADR-016: "App start-tested" turns "Out of date" after this many days
 });
 
 export type ForkEnv = z.infer<typeof schema>;
@@ -189,6 +190,7 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_MIRROR_MAX_HOURS: source.FORK_MIRROR_MAX_HOURS,
         FORK_MIRROR_TICK_SECONDS: source.FORK_MIRROR_TICK_SECONDS,
         FORK_TEST_RESTORE_STALE_DAYS: source.FORK_TEST_RESTORE_STALE_DAYS,
+        FORK_MIRROR_START_STALE_DAYS: source.FORK_MIRROR_START_STALE_DAYS,
     });
 }
 

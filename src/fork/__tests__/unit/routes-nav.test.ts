@@ -88,6 +88,20 @@ describe("sidebar nav model", () => {
         expect(buildForkNav("locked", {systemRole: "superadmin", orgRole: "owner"})).toEqual([]); // OD-W18b-4: no Recovery nav while locked
         expect(buildForkNav("off", {systemRole: "superadmin", orgRole: "owner"})).toEqual([]);
     });
+    it("W23: Test Mirrors (mirrors.view = member+) appears last, only with the mirrors flag; default flags leave every list unchanged", () => {
+        const member = {systemRole: "user", orgRole: "member"};
+        const mirrors = {title: "Test Mirrors", url: "/mirrors", iconKey: "flask"};
+        const on = buildForkNav("on", member, {mirrors: true});
+        expect(on[0].items.at(-1)).toEqual(mirrors);
+        expect(on[0].items.map((i) => i.title)).toEqual(["Docker Stacks", "Recovery", "Test Mirrors"]);
+        expect(buildForkNav("on", member, {mirrors: false})[0].items.map((i) => i.title)).not.toContain("Test Mirrors");
+        expect(buildForkNav("on", member)[0].items.map((i) => i.title)).not.toContain("Test Mirrors"); // default = flag off
+        expect(buildForkNav("on", {systemRole: "admin"}, {mirrors: true}).flatMap((g) => g.items.map((i) => i.title))).not.toContain("Test Mirrors"); // no membership ⇒ no mirrors.view
+        expect(buildForkNav("locked", member, {mirrors: true})).toEqual([]);
+        expect(buildForkNav("off", member, {mirrors: true})).toEqual([]);
+        expect(JSON.parse(JSON.stringify(on))).toEqual(on);
+        expect(JSON.stringify(on)).not.toMatch(/badge|\bnew\b/i);
+    });
     it("model is serialisable (no component functions cross the server/client boundary)", () => {
         expect(JSON.parse(JSON.stringify(buildForkNav("on", sys)))).toEqual(buildForkNav("on", sys));
     });
