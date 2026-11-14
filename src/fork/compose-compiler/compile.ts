@@ -79,8 +79,8 @@ export function compileMirror(input: {view: string | Uint8Array; raw: RawResult;
     // D-2: the source view must be clean under the shared engine; mirror mode has no override path.
     const source = evaluateRenderedCompose({rendered: input.view, roots: [workspace], raw: input.raw, drift: null});
     const refusals: MirrorRefusal[] = [];
-    for (const h of source.hard) refusals.push(refusal("policy_hard", h.service, `${h.code}: ${h.detail}`));
-    for (const f of source.findings) refusals.push(refusal("policy_finding", f.service, `${f.rule}: ${f.detail}`));
+    for (const h of source.hard) refusals.push(refusal("policy_hard", h.service, `${h.code}:${h.detail}`));
+    for (const f of source.findings) refusals.push(refusal("policy_finding", f.service, `${f.rule}:${f.detail}`));
     if (source.hard.length > 0) return {ok: false, refusals: sortRefusals(refusals), source};
 
     const text = typeof input.view === "string" ? input.view : Buffer.from(input.view).toString("utf8");
@@ -97,7 +97,7 @@ export function compileMirror(input: {view: string | Uint8Array; raw: RawResult;
     if (refusals.length > 0 || built === null) return {ok: false, refusals: sortRefusals(refusals), source};
 
     const chk = checkMirrorView(built.view, {project, workspace, access, source: doc as Record<string, unknown>});
-    if (!chk.ok) return {ok: false, refusals: sortRefusals(chk.violations.map((v) => refusal("post_check", v.service, `${v.code}: ${v.detail}`))), source};
+    if (!chk.ok) return {ok: false, refusals: sortRefusals(chk.violations.map((v) => refusal("post_check", v.service, `${v.code}:${v.detail}`))), source};
 
     const spec: MirrorSpecV1 = {
         v: 1,
