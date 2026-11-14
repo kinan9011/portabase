@@ -300,6 +300,10 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
     }
     const greeting = (html: string | null) => /greeting=(\S+)/.exec(html ?? "")?.[1] ?? null;
     const uploads = (html: string | null) => Number(/uploads=(\d+)/.exec(html ?? "")?.[1] ?? NaN);
+    /** what the runner and the orchestrator said (failure diagnostics only; the rows are value-free by contract) */
+    const diag = async (mirrorId: string) => JSON.stringify({events: await q("select kind, from_state, to_state, code, details from fork_mirror_event where mirror_id=$1 order by at desc limit 8", [mirrorId]),
+        routeTasks: await q("select seq, status, result from fork_agent_task where agent_id=$1 and type='mirror_route' order by seq desc limit 4", [runnerAgent])});
+    const activeIs = async (mirrorId: string, mir: Record<string, any>, id: string) => { if (mir.active_revision_id !== id) throw new Error(`active revision is ${mir.active_revision_id}, expected ${id}: ${await diag(mirrorId)}`); };
     const refresh = (m: {mirrorId: string; name: string}, w: W17) => refreshMirror(mdeps(), {mirrorId: m.mirrorId, rpId: w.rp, confirmName: m.name, acknowledgePrivacy: false});
     async function driveRefresh(m: {mirrorId: string}, revisionId: string, each?: () => Promise<void>) {
         const row = await drive(revisionId, {ms: 600_000, each: each ? async () => each() : undefined});
@@ -341,7 +345,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         expect(mir.status, JSON.stringify(mir)).toBe("ready");
         expect(probeR1.s.failed, "r1 answered every poll while r2 was built").toEqual([]);
         expect(probeR1.s.ok).toBeGreaterThan(3);
-        expect(mir.active_revision_id).toBe(r2id);
+        await activeIs(M.mirrorId, mir, r2id);
         expect(mir.route_revision_id).toBe(r2id);
         routePort = mir.route_port as number;
         const r2port = (await revRow(r2id)).host_port as number;
@@ -397,8 +401,8 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         const ins = JSON.parse(inbox(["docker", "inspect", routeName(M.mirrorId)]))[0];
         expect(Object.keys(ins.NetworkSettings.Networks)).toEqual([`${r1.project}_pbm_access`]);
         expect((await startTestedFact(db, world.stack))?.revisionId).toBe(r1.revisionId);
-        const audits = await q("select action, outcome, details from fork_audit_event where action in ('fork.mirror.rollback') order by created_at");
-        expect(audits.map((a) => a.details?.phase).filter(Boolean)).toEqual(expect.arrayContaining(["requested", "done"]));
+        const audits = await q("select action, result, redacted_details from fork_audit_event where action = 'fork.mirror.rollback' order by created_at");
+        expect(audits.map((a) => a.redacted_details?.phase).filter(Boolean), JSON.stringify(audits)).toEqual(expect.arrayContaining(["requested", "done"]));
         RUN.push(`L3 PASS rollback: route ${routePort} → greeting A; r2 rolled_back + wipe verified + nothing left; route on ${r1.project}_pbm_access only; start-tested fact = r1`);
     }, 900_000);
 
@@ -449,7 +453,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         const r5id = (a as {revisionId: string}).revisionId; revs.r5 = r5id;
         const {row, mir} = await driveRefresh(M, r5id);
         expect(row.state, `reason=${row.reason}`).toBe("ready");
-        expect(mir.active_revision_id).toBe(r5id);
+        await activeIs(M.mirrorId, mir, r5id);
         expect(mir.route_revision_id).toBe(r5id);
         expect(greeting(page(routePort))).toBe("hello-from-rp-e");
         const r1row = await revRow(r1.revisionId);
@@ -467,7 +471,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         const r6id = (asked as {revisionId: string}).revisionId; revs.r6 = r6id;
         const {row, mir} = await driveRefresh(M, r6id);
         expect(row.state, `reason=${row.reason}`).toBe("ready");
-        expect(mir.active_revision_id).toBe(r6id);
+        await activeIs(M.mirrorId, mir, r6id);
         await tickUntil("r1 retired + wiped", async () => ["verified", "failed"].includes((await revRow(r1.revisionId)).wipe_state));
         const r1row = await revRow(r1.revisionId);
         expect(r1row.retired_at).not.toBeNull();
@@ -485,7 +489,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         expect(del).toEqual({ok: true});
         const end = Date.now() + 300_000;
         for (;;) { await tickAllMirrors(mdeps()); const m = await mirrorRow(M.mirrorId); if (m.status === "deleted") break; if (Date.now() > end) throw new Error(`delete timeout: ${m.status}`); await sleep(1000); }
-        const tasks = await q("select step, created_at, result from fork_mirror_task where mirror_id=$1 and created_at >= (select max(at) from fork_mirror_event where mirror_id=$1 and to_state='deleting') order by created_at", [M.mirrorId]);
+        const tasks = await q("select t.step, t.created_at from fork_mirror_task t join fork_mirror_revision r on r.id=t.revision_id where r.mirror_id=$1 and t.created_at >= (select max(at) from fork_mirror_event where mirror_id=$1 and to_state='deleting') order by t.created_at, t.step", [M.mirrorId]);
         const routeIdx = tasks.findIndex((x) => x.step === "route"); const firstWipe = tasks.findIndex((x) => x.step === "wipe");
         expect(routeIdx, JSON.stringify(tasks.map((x) => x.step))).toBeGreaterThanOrEqual(0);
         expect(routeIdx).toBeLessThan(firstWipe);
@@ -509,6 +513,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
     it("L9 canary: no audit / event / task / revision / mirror row of the whole run carries the production password, the signed-URL secret, the rotated database password or the seed bytes", async () => {
         const secrets = [PROD_PW, SECRET_QS.split("=")[1]!, NONCE, "/srv/portabase-mirrors"];
         const rows = (await Promise.all(["fork_audit_event", "fork_mirror_event", "fork_mirror_task", "fork_mirror_revision", "fork_mirror"].map((tbl) => q(`select to_jsonb(x)::text as j from ${tbl} x`)))).flat().map((r) => r.j as string);
+        rows.push(...(await q("select to_jsonb(x)::text as j from fork_agent_task x where type like 'mirror_%'")).map((r) => r.j as string)); // the agents' results (payloads are encrypted at rest)
         const hay = rows.join("\n");
         expect(hay.length).toBeGreaterThan(1000);
         for (const s of secrets.filter((x) => x !== NONCE && x !== "/srv/portabase-mirrors")) expect(hay.includes(s), `a row carries a secret (${s.slice(0, 8)}…)`).toBe(false);
