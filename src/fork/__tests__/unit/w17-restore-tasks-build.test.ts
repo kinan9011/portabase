@@ -20,7 +20,7 @@ const bi = (plan: ReturnType<typeof planOf>["plan"], approvals: BuildInput["appr
 describe("W17-i vocabulary", () => {
     it("restore types are targeted, require restore.target.v1 and are never public", () => {
         expect([...RESTORE_TASK_TYPES]).toEqual(["restore_probe", "restore_stage", "restore_apply", "restore_cleanup"]);
-        expect([...TARGETED_TASK_TYPES]).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, "restore_verify"]); // W17b appends the two quiesce types, W-TR restore_verify
+        expect([...TARGETED_TASK_TYPES]).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, "restore_verify", "runner_probe"]); // W17b appends the two quiesce types, W-TR restore_verify, W21 runner_probe
         for (const t of COMPOSE_TASK_TYPES) { expect(TASK_REQUIRES[t]).toEqual(["restore.target.v1", "compose.render.v1"]); expect(PUBLIC_TASK_TYPES as readonly string[]).not.toContain(t); }
         for (const t of RESTORE_TASK_TYPES) { expect(TASK_REQUIRES[t]).toEqual(["restore.target.v1"]); expect(TASK_TYPES).toContain(t); expect(PUBLIC_TASK_TYPES as readonly string[]).not.toContain(t); }
         // envelope type grammar has no dots (ADR-007 A13)

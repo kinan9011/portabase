@@ -19,6 +19,7 @@ import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
 import {ApplyPayload, CleanupPayload, DbPayload, ProbePayload, RenderPayload, StagePayload, UpPayload, VerifyPayload} from "@/fork/restore-tasks/payload-schema";
 import {CAPABILITY_RE, KID_RE, MAX_CAPABILITIES, MAX_PAYLOAD_BYTES, MAX_PINS, MAX_RESULT_BYTES, NOOP_ECHO_RE, PIN_PEM_MAX, PUBLIC_TASK_TYPES, TARGETED_TASK_TYPES, TASK_REQUIRES, type TaskType} from "./vocab";
 import {redactDetails} from "@/fork/audit";
+import {RunnerProbePayload} from "@/fork/runner/payload-schema";
 import {QuiescePayloadSchema, QuiesceStartPayloadSchema} from "@/fork/quiesce/payload";
 
 /**
@@ -27,7 +28,7 @@ import {QuiescePayloadSchema, QuiesceStartPayloadSchema} from "@/fork/quiesce/pa
  * expiry never interleave. A task is leased only by the agent it was signed for: every query filters on `agent_id` AND the enrolment generation.
  */
 const MAX_ATTEMPTS = 5;
-const REASONS = ["bad_signature", "unknown_kid", "bad_envelope", "agent_mismatch", "enroll_mismatch", "expired", "not_yet_valid", "replayed", "seq_rollback", "unsupported_type", "capability_missing", "payload_hash", "payload_invalid", "channel_disabled", "state_unavailable", "target_mismatch", "execution_error", ...RESTORE_REASONS] as const;
+const REASONS = ["bad_signature", "unknown_kid", "bad_envelope", "agent_mismatch", "enroll_mismatch", "expired", "not_yet_valid", "replayed", "seq_rollback", "unsupported_type", "capability_missing", "payload_hash", "payload_invalid", "channel_disabled", "state_unavailable", "target_mismatch", "execution_error", "role_forbidden", "helper_failed", "wipe_incomplete", ...RESTORE_REASONS] as const;
 export type ResultReason = (typeof REASONS)[number];
 
 type Refusal = {ok: false; code: "forbidden" | "locked" | "rate_limited" | "invalid_input" | "not_enrolled" | "insecure_transport" | "invalid_url" | "capability_missing" | "agent_disabled" | "signing_unavailable"; message: string; retryAfterSeconds?: number};
@@ -48,6 +49,7 @@ const PAYLOAD_SCHEMAS: Record<TaskType, z.ZodType> = {
     compose_render: RenderPayload, restore_db: DbPayload, compose_up: UpPayload,
     quiesce: QuiescePayloadSchema, quiesce_start: QuiesceStartPayloadSchema,
     restore_verify: VerifyPayload,
+    runner_probe: RunnerProbePayload,
 };
 
 /** Per-type payload validation (closed: unknown keys are refused). */
