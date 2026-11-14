@@ -625,7 +625,7 @@ describe.skipIf(!LAB)(`W25 refresh failure-injection drills [${DRILL}] on an emu
         for (const x of RUNNER_SECRETS) expect(hay.includes(x), "a row carries a runner-side secret (seed / rotated password)").toBe(false);
         const pj = PREVIEWS.join("\n");
         for (const s of [...secrets, ...RUNNER_SECRETS, MIRROR_ROOT, SECRET_QS, GW]) expect(pj.includes(s), "a refresh preview carries a secret / runner path").toBe(false);
-        expect(PREVIEWS.length).toBeGreaterThan(0);
+        if (["bad-dump", "disk", "all"].includes(DRILL)) expect(PREVIEWS.length, "these drills preview every refresh").toBeGreaterThan(0);
         keep("l9-canary.txt", `scanned ${rows.length} rows (${hay.length} chars) and ${PREVIEWS.length} previews; secrets absent`);
         RUN.push(`L9 PASS canary: ${rows.length} rows + ${PREVIEWS.length} preview answers scanned, no production password / signed-URL secret / seed / runner root`);
     }, 120_000);
