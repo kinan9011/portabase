@@ -183,7 +183,7 @@ export const MIRRORS = {
         unauthorized: {title: "No access", body: "Your role cannot see test mirrors."},
         empty: {title: "No test mirrors yet.", manager: "Open an app and choose Create test mirror to start one.", link: "Open the apps"},
         counts: {label: "Summary", healthy: "Healthy", stopped: "Stopped", attention: "Needs attention"},
-        region: "Test mirrors",
+        region: "Table of test mirrors",
         cols: {name: "Name", stack: "Source app", runner: "Runner", revision: "Revision", rp: "Backup", status: "Status", access: "Private access", actions: "Actions"},
         rp: (seq: number, date: string) => `#${seq} · ${date}`,
         loopback: (runner: string) => `Loopback only · on ${runner}`,
