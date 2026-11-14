@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {act, fireEvent, render, screen, within} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, screen, within} from "@testing-library/react";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {axeViolations} from "@/fork/__tests__/axe";
 import {CANARY, richInventory} from "@/fork/__tests__/w08-fixtures";
@@ -39,8 +39,8 @@ const detail = (o: Partial<StackDetail> & {inv?: Parameters<typeof richInventory
     const {inv: _i, ...rest} = o;
     return StackDetailSchema.parse({id: ID, name: "forklab-demo", composeProject: "forklab-demo", environmentName: "local", runtime: "running", protection: "unprotected", staleSince: null, lastSyncAt: "2026-11-07T01:05:00.000Z", syncing: false, inventory: okState(richInventory(o.inv), {version: 2}), ...rest});
 };
-const mountDetail = (d: StackDetail, o: {tab?: "overview" | "resources"; canConfigure?: boolean; canRestore?: boolean; configLocked?: boolean; mirror?: MirrorEntry} = {}) =>
-    render(<StatusAnnouncer><StackDetailsClient detail={d} initialTab={o.tab ?? "overview"} canConfigure={o.canConfigure ?? true} canRestore={o.canRestore} configLocked={o.configLocked} mirror={o.mirror}/></StatusAnnouncer>);
+const mountDetail = (d: StackDetail, o: {tab?: "overview" | "resources"; canConfigure?: boolean; canRestore?: boolean; configLocked?: boolean; mirror?: MirrorEntry; startTested?: {readiedAt: string; rpSequence: number; staleAfterDays: number; now: string}} = {}) =>
+    render(<StatusAnnouncer><StackDetailsClient detail={d} initialTab={o.tab ?? "overview"} canConfigure={o.canConfigure ?? true} canRestore={o.canRestore} configLocked={o.configLocked} mirror={o.mirror} startTested={o.startTested}/></StatusAnnouncer>);
 
 beforeEach(() => refresh.mockReset());
 afterEach(() => vi.useRealTimers());
@@ -199,6 +199,20 @@ describe("W08 details: header, actions with visible reasons, tabs", () => {
         mountDetail(detail(), {canConfigure: true, canRestore: true, configLocked: true});
         expect(screen.queryByTestId("restore-link")).toBeNull();
         expect(screen.getByRole("button", {name: STACK_DETAILS.actions.restore.label}).getAttribute("aria-disabled")).toBe("true");
+    });
+    it("W23: the App start-tested line shows under the protection strip only when a fact exists; fresh and out-of-date wording; never verified / restore-tested", () => {
+        const now = new Date();
+        const at = (d: number) => new Date(now.getTime() - d * 86_400_000).toISOString();
+        mountDetail(detail());
+        expect(screen.queryByTestId("start-tested")).toBeNull();
+        cleanup();
+        mountDetail(detail(), {startTested: {readiedAt: at(1), rpSequence: 4, staleAfterDays: 14, now: now.toISOString()}});
+        expect(screen.getByTestId("start-tested").textContent).toContain("App start-tested · 1 d ago");
+        expect(screen.getByTestId("start-tested").textContent).toContain("From backup #4");
+        cleanup();
+        mountDetail(detail(), {startTested: {readiedAt: at(20), rpSequence: 4, staleAfterDays: 14, now: now.toISOString()}});
+        expect(screen.getByTestId("start-tested").textContent).toContain("Out of date (20 d ago)");
+        expect(screen.getByTestId("start-tested").textContent).not.toMatch(/verified|restore-tested/i);
     });
     it("W22b: Create test mirror is a link into the wizard when the entry holds, else a disabled button with the visible reason (never the old stub)", () => {
         const {unmount} = mountDetail(detail(), {canConfigure: true, mirror: {href: `/dashboard/mirrors/new?stack=${ID}`}});

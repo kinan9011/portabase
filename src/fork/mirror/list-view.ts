@@ -12,7 +12,7 @@ import {startTestedFact} from "./facet";
 import {LIMIT_DEFAULTS, RUNNER_PRECHECK_MAX_AGE_MS} from "./vocab";
 
 /**
- * W23 read models (plan-W23 Step 2). Strict DTOs: ids, names, states, codes, counts, timestamps. Every query selects EXPLICIT columns: no task `result` / `payload_enc` / `lease_id` / event
+ * W23 read models (plan-W23 Step 2). Strict DTOs: ids, names, states, codes, counts, timestamps. Every query selects EXPLICIT columns: no task result, sealed payload, lease id or event
  * `details` ever leaves this module (the failed-task reason is extracted in SQL as a code and re-validated here). `now` / `serverUrl` come from the caller.
  */
 const CODE_RE = /^[a-z_]{1,64}$/;
