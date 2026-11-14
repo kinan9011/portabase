@@ -179,7 +179,7 @@ async function moveMirror(c: OpCtx, from: MirrorStatus, ev: LifecycleEvent, o: {
         if (o.extra) await o.extra(tx);
         await addEvent(tx, {mirrorId: c.m.id, revisionId: null, kind: "state_changed", at: c.now, fromState: from, toState: to, code: o.code ?? null, details: {scope: "mirror"}});
         await recordAudit(tx, {organizationId: c.m.organizationId, actorKind: "system", action: `fork.mirror.${o.action}`, resourceType: "mirror", resourceId: c.m.id, result: failed || (ev === "start_aborted" && o.code) ? "failure" : "success", now: c.now,
-            details: {phase: o.phase, revisionId: o.revisionId ?? c.rev.id, ...(o.code ? {reason: o.code} : {})}});
+            details: {phase: o.phase, revisionId: o.revisionId ?? c.rev?.id ?? null, ...(o.code ? {reason: o.code} : {})}});
         return true;
     });
 }
