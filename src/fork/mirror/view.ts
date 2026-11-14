@@ -1,7 +1,7 @@
 import {z} from "zod";
 import {PLAIN, type RefusalCode} from "@/fork/compose-compiler/ir";
 import type {RevRow, MirrorRow} from "./steps";
-import {GATES, type Gate} from "./vocab";
+import {GATES, type Gate, REVISION_MAX_AGE_DAYS} from "./vocab";
 
 /**
  * Read model of a mirror (W22a → W22b / W23). A strict allowlist: ids, names, states, codes, booleans, counts, timestamps. NO workspace path, spec, env key or action, URL, task result,
@@ -9,7 +9,7 @@ import {GATES, type Gate} from "./vocab";
  */
 const iso = z.string();
 export const MirrorView = z.strictObject({
-    mirror: z.strictObject({id: z.string(), name: z.string(), status: z.string(), runnerName: z.string(), stackId: z.string(), activeRevisionId: z.string().nullable(), createdAt: iso}),
+    mirror: z.strictObject({id: z.string(), name: z.string(), status: z.string(), runnerName: z.string(), stackId: z.string(), activeRevisionId: z.string().nullable(), opRevisionId: z.string().nullable(), retentionDue: z.boolean(), createdAt: iso}),
     revisions: z.array(z.strictObject({
         id: z.string(), seq: z.number(), state: z.string(), reason: z.string().nullable(), failedStep: z.string().nullable(),
         steps: z.array(z.strictObject({name: z.string(), status: z.string()})),
@@ -18,7 +18,7 @@ export const MirrorView = z.strictObject({
             side_effects: z.strictObject({ok: z.boolean(), code: z.string().nullable()}).nullable()}),
         refusals: z.array(z.strictObject({code: z.string(), service: z.string().nullable(), text: z.string()})),
         services: z.array(z.strictObject({service: z.string(), state: z.string(), health: z.string().nullable()})),
-        hostPort: z.number(), rpSequence: z.number(), readiedAt: iso.nullable(), wipeState: z.string().nullable(), deadlineAt: iso, createdAt: iso,
+        hostPort: z.number(), rpSequence: z.number(), readiedAt: iso.nullable(), activatedAt: iso.nullable(), retiredAt: iso.nullable(), wipeState: z.string().nullable(), deadlineAt: iso, createdAt: iso,
     })),
     privacy: z.strictObject({containsPersonalData: z.boolean().nullable(), optIn: z.boolean()}),
 });
@@ -31,9 +31,12 @@ const refusalText = (code: string, service: string | null): string =>
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
-export function toMirrorView(m: MirrorRow, revs: RevRow[], p: {containsPersonalData: boolean | null; optIn: boolean}): MirrorView {
+export function toMirrorView(m: MirrorRow, revs: RevRow[], p: {containsPersonalData: boolean | null; optIn: boolean}, now: Date = new Date()): MirrorView {
+    // ADR-009 §8: an ACTIVE revision older than 30 days is never auto-wiped, only flagged (the operator refreshes it)
+    const active = revs.find((r) => r.id === m.activeRevisionId);
+    const retentionDue = !!active?.readiedAt && now.getTime() - active.readiedAt.getTime() > REVISION_MAX_AGE_DAYS * 86_400_000;
     return MirrorView.parse({
-        mirror: {id: m.id, name: m.name, status: m.status, runnerName: m.runnerAgentName, stackId: m.stackId, activeRevisionId: m.activeRevisionId, createdAt: m.createdAt.toISOString()},
+        mirror: {id: m.id, name: m.name, status: m.status, runnerName: m.runnerAgentName, stackId: m.stackId, activeRevisionId: m.activeRevisionId, opRevisionId: m.opRevisionId, retentionDue, createdAt: m.createdAt.toISOString()},
         revisions: [...revs].sort((a, b) => b.seq - a.seq).map((r) => {
             const g = (r.gates && typeof r.gates === "object" ? r.gates : {}) as Partial<Record<Gate, {ok?: unknown; code?: unknown}>>;
             const gate = (k: Gate) => (g[k] ? {ok: g[k]?.ok === true, code: str(g[k]?.code)} : null);
@@ -43,7 +46,7 @@ export function toMirrorView(m: MirrorRow, revs: RevRow[], p: {containsPersonalD
                 gates: Object.fromEntries(GATES.map((k) => [k, gate(k)])),
                 refusals: asArray(r.refusals).map((x) => ({code: String((x as {code?: unknown}).code ?? ""), service: str((x as {service?: unknown}).service), text: refusalText(String((x as {code?: unknown}).code ?? ""), str((x as {service?: unknown}).service))})),
                 services: asArray(r.services).map((s) => ({service: String((s as {service?: unknown}).service ?? ""), state: String((s as {state?: unknown}).state ?? ""), health: str((s as {health?: unknown}).health)})),
-                hostPort: r.hostPort, rpSequence: r.rpSequence, readiedAt: r.readiedAt ? r.readiedAt.toISOString() : null, wipeState: r.wipeState, deadlineAt: r.deadlineAt.toISOString(), createdAt: r.createdAt.toISOString(),
+                hostPort: r.hostPort, rpSequence: r.rpSequence, readiedAt: r.readiedAt ? r.readiedAt.toISOString() : null, activatedAt: r.activatedAt ? r.activatedAt.toISOString() : null, retiredAt: r.retiredAt ? r.retiredAt.toISOString() : null, wipeState: r.wipeState, deadlineAt: r.deadlineAt.toISOString(), createdAt: r.createdAt.toISOString(),
             };
         }),
         privacy: p,

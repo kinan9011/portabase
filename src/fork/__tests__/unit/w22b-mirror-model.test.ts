@@ -103,8 +103,8 @@ describe("createBlockReason (first failing reason)", () => {
 });
 
 describe("settled (progress poll stops)", () => {
-    const view = (state: string, wipeState: string | null): MirrorView => ({mirror: {id: ID, name: "m", status: "creating", runnerName: "r", stackId: ID, activeRevisionId: null, createdAt: ""}, privacy: {containsPersonalData: null, optIn: false},
-        revisions: [{id: ID, seq: 1, state, reason: null, failedStep: null, steps: [], gates: {expected_data: null, db_health: null, app_smoke: null, isolation: null, side_effects: null}, refusals: [], services: [], hostPort: 41000, rpSequence: 1, readiedAt: null, wipeState, deadlineAt: "", createdAt: ""}]});
+    const view = (state: string, wipeState: string | null): MirrorView => ({mirror: {id: ID, name: "m", status: "creating", runnerName: "r", stackId: ID, activeRevisionId: null, opRevisionId: null, retentionDue: false, createdAt: ""}, privacy: {containsPersonalData: null, optIn: false},
+        revisions: [{id: ID, seq: 1, state, reason: null, failedStep: null, steps: [], gates: {expected_data: null, db_health: null, app_smoke: null, isolation: null, side_effects: null}, refusals: [], services: [], hostPort: 41000, rpSequence: 1, readiedAt: null, activatedAt: null, retiredAt: null, wipeState, deadlineAt: "", createdAt: ""}]});
     it("ready ⇒ settled; active ⇒ not", () => {
         expect(settled(view("ready", null))).toBe(true);
         for (const s of ["requested", "validating", "staging", "starting", "healthchecking"]) expect(settled(view(s, null))).toBe(false);
