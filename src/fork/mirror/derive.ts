@@ -6,7 +6,7 @@
 import {checkMirrorView, type MirrorAccess, type MirrorSpecV1} from "@/fork/compose-compiler/compile";
 import type {RestorePlanV1} from "@/fork/restore/schema";
 import {isPolicyView} from "@/fork/restore-tasks/view";
-import {MirrorCheckResult, MirrorDbResult} from "./payload-schema";
+import {MirrorCheckResult, MirrorDbResult, MirrorRouteSwitchResult} from "./payload-schema";
 import {neededBytes} from "@/fork/restore-run/derive";
 import {CAPACITY_DISK_FACTOR, MIRROR_STEPS, type MirrorStep, PORT_RANGE} from "./vocab";
 
@@ -113,5 +113,20 @@ export function checkMirrorCapacity(result: unknown, plan: RestorePlanV1, o: {re
     if (o.refresh && (free === null || mem === null)) return bad("capacity_unknown");
     if (free !== null && free < Math.ceil(neededBytes(plan) * CAPACITY_DISK_FACTOR)) return bad("insufficient_disk");
     if (o.refresh && mem !== null && mem < o.memNeed) return bad("insufficient_memory");
+    return OK;
+}
+
+/**
+ * W24 `mirror_route {switch}` result: the route points to the asked revision (`switched`), on the stable port the dashboard allocated, and the app answered THROUGH the forwarder
+ * (a 5xx or no answer is `route_smoke_failed`; an unreported smoke is never believed).
+ */
+export function checkRouteSwitch(result: unknown, routePort: number | null, policy: {http_path: string | null}): Check {
+    const r = MirrorRouteSwitchResult.safeParse(result);
+    if (!r.success || routePort === null || r.data.route_port !== routePort) return bad("route_failed");
+    if (r.data.smoke.status !== "ok") return bad("route_failed");
+    if (policy.http_path !== null) {
+        const s = r.data.smoke.http_status;
+        if (s === null || s < 100 || s > 499) return bad("route_failed");
+    }
     return OK;
 }

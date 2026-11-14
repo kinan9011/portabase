@@ -12,7 +12,7 @@ import {nowOf, ownerOf, principalOfUser, type MirrorDeps} from "./deps";
 import {addEvent} from "./events";
 import {MirrorPolicyV1} from "./policy";
 import {stateOf, transition} from "./machine";
-import {advanceMirrorDeletes, advanceMirrorLifecycles, type DeleteTick, type OpTick} from "./lifecycle";
+import {advanceMirrorDeletes, advanceMirrorLifecycles, advanceMirrorRetention, type DeleteTick, type OpTick} from "./lifecycle";
 import {advanceMirrorWipes} from "./wipe";
 import {evaluateGates, handlers, type MirrorRow, type RevCtx, type RevRow} from "./steps";
 import {ACTIVE_REVISION_STATES, type MirrorStep, type RevisionState} from "./vocab";
@@ -156,11 +156,15 @@ export async function activateRevision(d: MirrorDeps, rev: RevRow, steps: StepRe
         if (!g.ok) return g;
         const next = transition(cur.state as RevisionState, "ready");
         const duration = Math.max(0, Math.round((now.getTime() - cur.createdAt.getTime()) / 1000));
-        await tx.update(forkMirrorRevision).set({state: next, steps, readiedAt: now, activatedAt: now, finishedAt: now, durationSeconds: duration, updatedAt: now}).where(eq(forkMirrorRevision.id, rev.id));
-        await tx.update(forkMirror).set({status: "ready", activeRevisionId: rev.id, updatedAt: now}).where(eq(forkMirror.id, rev.mirrorId));
+        // W24: a mirror that already has an ACTIVE revision keeps serving it. A refresh revision becomes READY (a truthful start-tested fact) with `activated_at` NULL;
+        // only the lifecycle's switch (route task succeeded + commit) moves the pointer.
+        const [m] = await tx.select({active: forkMirror.activeRevisionId}).from(forkMirror).where(eq(forkMirror.id, rev.mirrorId));
+        const refresh = m?.active != null && m.active !== rev.id;
+        await tx.update(forkMirrorRevision).set({state: next, steps, readiedAt: now, ...(refresh ? {} : {activatedAt: now}), finishedAt: now, durationSeconds: duration, updatedAt: now}).where(eq(forkMirrorRevision.id, rev.id));
+        if (!refresh) await tx.update(forkMirror).set({status: "ready", activeRevisionId: rev.id, updatedAt: now}).where(eq(forkMirror.id, rev.mirrorId));
         await addEvent(tx, {mirrorId: rev.mirrorId, revisionId: rev.id, kind: "ready", at: now, fromState: cur.state, toState: next});
         await recordAudit(tx, {organizationId: rev.organizationId, actorKind: "system", action: "fork.mirror.ready", resourceType: "mirror", resourceId: rev.mirrorId, result: "success", now,
-            details: {revisionId: rev.id, specSha256: cur.specSha256, finalViewSha256: cur.finalViewSha256, rpSequence: cur.rpSequence, durationSeconds: duration}});
+            details: {revisionId: rev.id, specSha256: cur.specSha256, finalViewSha256: cur.finalViewSha256, rpSequence: cur.rpSequence, durationSeconds: duration, ...(refresh ? {refresh: true} : {})}});
         return {ok: true};
     });
     if (out.ok) return true;
@@ -170,8 +174,8 @@ export async function activateRevision(d: MirrorDeps, rev: RevRow, steps: StepRe
 }
 
 /** Every active revision, oldest first, then the wipe phase of every terminal one; one revision's failure never stops the next (messages are never read or logged). */
-export async function tickAllMirrors(d: MirrorDeps): Promise<{advanced: number; done: number; failed: number; busy: number; wipes: {advanced: number; verified: number; failed: number}; ops: OpTick; deletes: DeleteTick}> {
-    const out = {advanced: 0, done: 0, failed: 0, busy: 0, wipes: {advanced: 0, verified: 0, failed: 0}, ops: {advanced: 0, stopped: 0, ready: 0, failed: 0}, deletes: {advanced: 0, deleted: 0, failed: 0}};
+export async function tickAllMirrors(d: MirrorDeps): Promise<{advanced: number; done: number; failed: number; busy: number; wipes: {advanced: number; verified: number; failed: number}; retention: {retired: number}; ops: OpTick; deletes: DeleteTick}> {
+    const out = {advanced: 0, done: 0, failed: 0, busy: 0, wipes: {advanced: 0, verified: 0, failed: 0}, retention: {retired: 0}, ops: {advanced: 0, stopped: 0, ready: 0, failed: 0, refreshed: 0, rolledBack: 0}, deletes: {advanced: 0, deleted: 0, failed: 0}};
     const ids = await d.db.select({id: forkMirrorRevision.id}).from(forkMirrorRevision).where(inArray(forkMirrorRevision.state, [...ACTIVE_REVISION_STATES])).orderBy(asc(forkMirrorRevision.createdAt));
     for (const {id} of ids) {
         try {
@@ -184,8 +188,9 @@ export async function tickAllMirrors(d: MirrorDeps): Promise<{advanced: number; 
             // isolated: the next tick retries (the engine counts handler errors itself); the message is never read
         }
     }
+    out.ops = await advanceMirrorLifecycles(d); // W23 Part B + W24: stop / start / refresh / rollback operations (before retention: a mirror in an op is never retained)
+    out.retention = await advanceMirrorRetention(d); // W24: retire superseded / over-age kept revisions, then the wipe phase removes them
     out.wipes = await advanceMirrorWipes(d);
-    out.ops = await advanceMirrorLifecycles(d); // W23 Part B: stop / start operations, before deletes
     out.deletes = await advanceMirrorDeletes(d); // W23: after the wipes, so a deleting mirror's non-ready revisions are already advanced
     return out;
 }
