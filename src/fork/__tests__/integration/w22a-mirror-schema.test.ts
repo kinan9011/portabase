@@ -101,6 +101,8 @@ describe("W22a migration 0018_mirror", () => {
         await rejects(q("insert into fork_mirror_task (revision_id, step, attempt, task_type, created_at) values ($1,'nope',1,'mirror_probe',now())", [rev]), /fork_mirror_task_step_ck/);
         await rejects(q("insert into fork_mirror_task (revision_id, step, attempt, task_type, created_at) values ($1,'stage',0,'mirror_stage',now())", [rev]), /fork_mirror_task_attempt_ck/);
         await q("insert into fork_mirror_task (revision_id, step, attempt, task_type, created_at) values ($1,'stage',1,'mirror_stage',now())", [rev]);
+        // W23 (0019): the stop step is a journal step
+        await q("insert into fork_mirror_task (revision_id, step, attempt, task_type, created_at) values ($1,'stop',1,'mirror_stop',now())", [rev]);
         await rejects(q("insert into fork_mirror_task (revision_id, step, attempt, task_type, created_at) values ($1,'stage',1,'mirror_stage',now())", [rev]), /fork_mirror_task_step_attempt_uq/);
     });
 

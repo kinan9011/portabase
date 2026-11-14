@@ -5,8 +5,8 @@ import {ACCESS, CLEAN_RAW, labViewJson, PROJECT as LAB_PROJECT, WS as LAB_WS} fr
 import {PAYLOAD_SCHEMAS_FOR_TEST, validatePayload} from "@/fork/agent-channel/tasks";
 import {MAINT_TASK_TYPES, MIRROR_CAPABILITY, MIRROR_TASK_TYPES, PUBLIC_TASK_TYPES, RUNNER_CAPABILITY, TARGETED_TASK_TYPES, TASK_REQUIRES} from "@/fork/agent-channel/vocab";
 import {compileMirror} from "@/fork/compose-compiler/compile";
-import {buildMirrorApply, buildMirrorCheck, buildMirrorDb, buildMirrorFinalize, buildMirrorProbe, buildMirrorRender, buildMirrorStage, buildMirrorUp, buildMirrorWipe, mirrorDbWork, type MirrorBuildInput} from "@/fork/mirror/build";
-import {MirrorCheckResult, MirrorDbResult, MirrorFinalizeResult, MirrorUpResult, MirrorWipeResult} from "@/fork/mirror/payload-schema";
+import {buildMirrorApply, buildMirrorCheck, buildMirrorDb, buildMirrorFinalize, buildMirrorProbe, buildMirrorRender, buildMirrorStage, buildMirrorStop, buildMirrorUp, buildMirrorWipe, mirrorDbWork, type MirrorBuildInput} from "@/fork/mirror/build";
+import {MirrorCheckResult, MirrorDbResult, MirrorFinalizeResult, MirrorStopResult, MirrorUpResult, MirrorWipeResult} from "@/fork/mirror/payload-schema";
 import {resolvePolicy} from "@/fork/mirror/policy";
 import {LIMIT_DEFAULTS} from "@/fork/mirror/vocab";
 import {planRestore} from "@/fork/restore/plan";
@@ -36,6 +36,7 @@ describe("W22a mirror task contract: builders → strict schemas", () => {
         ok("mirror_up", buildMirrorUp(input, FINAL));
         ok("mirror_check", buildMirrorCheck(input, FINAL, {access: {service: "web", target: 8080}, http_path: "/"}));
         ok("mirror_wipe", buildMirrorWipe(input));
+        ok("mirror_stop", buildMirrorStop(input)); // W23
     });
 
     it("headers: mirror purpose, new_stack, runner, NO approvals, workspace = <root>/<project>; mirror_render carries no override and no env", () => {
@@ -78,7 +79,7 @@ describe("W22a mirror task contract: builders → strict schemas", () => {
 
 describe("W22a mirror task contract: vocabulary", () => {
     it("every mirror type requires runner.v1 AND mirror.v1, is targeted, never public or maint, and has a payload schema", () => {
-        expect(MIRROR_TASK_TYPES).toHaveLength(9);
+        expect(MIRROR_TASK_TYPES).toHaveLength(10);
         for (const t of MIRROR_TASK_TYPES) {
             expect(TASK_REQUIRES[t], t).toEqual([RUNNER_CAPABILITY, MIRROR_CAPABILITY]);
             expect(TARGETED_TASK_TYPES).toContain(t);
@@ -102,5 +103,9 @@ describe("W22a mirror results are strict", () => {
         expect(MirrorCheckResult.safeParse({v: 1, services: [], smoke: {status: "ok", http_status: 99}}).success).toBe(false);
         expect(MirrorWipeResult.safeParse({v: 1, containers: 1, networks: 1, volumes: 1, workspace_removed: true, remaining: 0}).success).toBe(true);
         expect(MirrorWipeResult.safeParse({v: 1, containers: 1, networks: 1, volumes: 1, workspace_removed: true, remaining: 1}).success).toBe(false);
+        // W23: a stop result with anything still running is never believed (the agent reports `stop_incomplete` instead)
+        expect(MirrorStopResult.safeParse({v: 1, stopped: 2, services: [{service: "web", state: "exited"}], remaining: 0}).success).toBe(true);
+        expect(MirrorStopResult.safeParse({v: 1, stopped: 2, services: [], remaining: 1}).success).toBe(false);
+        expect(MirrorStopResult.safeParse({v: 1, stopped: 2, services: [], remaining: 0, x: 1}).success).toBe(false);
     });
 });

@@ -144,6 +144,7 @@ export async function mirrorWorld() {
             case "mirror_up": return {result: {v: 1, services: [{service: "db", state: "running"}, {service: "web", state: "running"}]}};
             case "mirror_check": return {result: {v: 1, services: [{service: "db", state: "running", health: "healthy"}, {service: "web", state: "running", health: "none"}], smoke: {status: "ok", http_status: 200}}};
             case "mirror_wipe": return {result: {v: 1, containers: 2, networks: 2, volumes: 2, workspace_removed: true, remaining: 0}};
+            case "mirror_stop": return {result: {v: 1, stopped: 2, services: [{service: "db", state: "exited"}, {service: "web", state: "exited"}], remaining: 0}};
             case "runner_probe": return {result: {}}; // filled by probeResult below
             default: return {};
         }

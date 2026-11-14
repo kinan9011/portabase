@@ -90,7 +90,8 @@ const WAIT: Wait = {kind: "wait"};
 const failOf = (code: string): Fail => ({kind: "fail", code: safe(code)});
 const refusalOf = (code: string): Wait | Fail => (TRANSIENT_ENQUEUE_CODES.includes(code) ? WAIT : failOf(code === "forbidden" ? "reauth_failed" : code));
 
-type OpCtx = {d: MirrorDeps; m: typeof forkMirror.$inferSelect; rev: RevRow; opAt: Date; actorUserId: string | null; now: Date};
+/** `late` = the operation is older than `LIFECYCLE_BUDGET_MS`: no new task is enqueued and a task still in the agent's hands ends it `run_timeout` (an offline agent is still reported `agent_offline` first). */
+type OpCtx = {d: MirrorDeps; m: typeof forkMirror.$inferSelect; rev: RevRow; opAt: Date; actorUserId: string | null; now: Date; late: boolean};
 
 /** The journal rows of THIS operation (created at or after its start), the next attempt number over ALL rows of the step, and the task outcome like the creation's `taskStep`. */
 async function opTask(c: OpCtx, step: MirrorJournalStep, enqueue: (attempt: number) => Promise<{ok: true} | {ok: false; code: string}>): Promise<Outcome> {
@@ -100,13 +101,14 @@ async function opTask(c: OpCtx, step: MirrorJournalStep, enqueue: (attempt: numb
     if (last?.task?.status === "queued" && last.task.attempts === 0 && last.taskId && c.rev.runnerAgentId && last.task.notAfter.getTime() < c.now.getTime()
         && (await expireQueuedTask(c.d.db, {taskId: last.taskId, agentId: c.rev.runnerAgentId, now: c.now}))) last.task.status = "expired";
     const go = async (): Promise<Outcome> => {
+        if (c.late) return failOf("run_timeout");
         const r = await enqueue((all[0]?.attempt ?? 0) + 1);
         return r.ok ? WAIT : refusalOf(r.code);
     };
     if (!last) return go();
     if (!last.task) return failOf("internal_error");
     switch (last.task.status) {
-        case "queued": case "leased": case "running": return WAIT;
+        case "queued": case "leased": case "running": return c.late ? failOf("run_timeout") : WAIT;
         case "succeeded": return {kind: "ok", result: last.task.result, taskId: last.taskId};
         case "failed": case "rejected": return failOf(agentReason(last.task.result));
         case "expired": return rows.filter((r) => r.task?.status === "expired").length >= MAX_EXPIRED_REENQUEUES ? failOf("agent_offline") : go();
@@ -137,7 +139,7 @@ type Loaded = Extract<Awaited<ReturnType<typeof loadPlanRow>>, {ok: true}>;
 async function opContext(d: MirrorDeps, m: typeof forkMirror.$inferSelect, status: MirrorStatus, now: Date): Promise<{c: OpCtx; plan: Loaded} | {error: string; c: OpCtx}> {
     const op = await opOf(d.db, m.id, status);
     const [rev] = m.activeRevisionId ? await d.db.select().from(forkMirrorRevision).where(eq(forkMirrorRevision.id, m.activeRevisionId)) : [];
-    const base = {d, m, rev: rev as RevRow, opAt: op?.at ?? now, actorUserId: op?.actorUserId ?? null, now};
+    const base = {d, m, rev: rev as RevRow, opAt: op?.at ?? now, actorUserId: op?.actorUserId ?? null, now, late: op ? now.getTime() - op.at.getTime() > LIFECYCLE_BUDGET_MS : false};
     if (!op || !rev || !rev.planId) return {error: "internal_error", c: base};
     const loaded = await loadPlanRow(d, rev.planId, rev.planHash);
     if (!loaded.ok) return {error: "plan_tampered", c: base};
@@ -148,7 +150,6 @@ export async function advanceStopping(d: MirrorDeps, m: typeof forkMirror.$infer
     const ctx = await opContext(d, m, "stopping", now);
     if ("error" in ctx) { await moveMirror(ctx.c, "stopping", "stop_failed", {code: ctx.error, action: "stop", phase: "failed"}); return "failed"; }
     const {c, plan} = ctx;
-    if (now.getTime() - c.opAt.getTime() > LIFECYCLE_BUDGET_MS) { await moveMirror(c, "stopping", "stop_failed", {code: "run_timeout", action: "stop", phase: "failed"}); return "failed"; }
     const o = await opTask(c, "stop", stopEnqueue(c, plan.plan));
     if (o.kind === "wait") return "advanced";
     if (o.kind === "fail") { await moveMirror(c, "stopping", "stop_failed", {code: o.code, action: "stop", phase: "failed"}); return "failed"; }
@@ -186,7 +187,6 @@ export async function advanceStarting(d: MirrorDeps, m: typeof forkMirror.$infer
 
     const upRows = (await journalRows(d.db, c.rev.id, "up")).filter((r) => r.createdAt.getTime() >= c.opAt.getTime());
     const abort = async (code: string) => { await moveMirror(c, "starting", "start_aborted", {code, action: "start", phase: "aborted"}); return "stopped" as const; };
-    if (now.getTime() - c.opAt.getTime() > LIFECYCLE_BUDGET_MS) return upRows.length === 0 ? abort("run_timeout") : cleanup("run_timeout");
     if (!enabledOf(d)) return upRows.length === 0 ? abort("mirrors_disabled") : cleanup("mirrors_disabled");
 
     // D31: the requester's CURRENT right on this mirror, every tick
@@ -213,7 +213,7 @@ export async function advanceStarting(d: MirrorDeps, m: typeof forkMirror.$infer
         if (iso.state === "isolated") {
             if (fr?.taskId !== o.taskId || iso.probedAt.getTime() < c.opAt.getTime() - 1000) return abort("probe_stale");
         } else if (iso.state === "not_isolated") return abort("runner_not_isolated");
-        else if (iso.reason === "probe_pending") return "advanced";
+        else if (iso.reason === "probe_pending") return c.late ? abort("run_timeout") : "advanced";
         else return abort("probe_stale");
     }
 

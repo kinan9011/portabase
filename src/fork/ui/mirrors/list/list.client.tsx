@@ -5,6 +5,7 @@ import {useRouter} from "next/navigation";
 import {Button} from "@/components/ui/button";
 import type {MirrorListRow} from "@/fork/mirror/list-view";
 import {DeleteMirrorButton} from "@/fork/ui/mirrors/lifecycle/delete-button.client";
+import {StopStartButtons} from "@/fork/ui/mirrors/lifecycle/stop-start.client";
 import {MIRRORS, statusText} from "@/fork/ui/mirrors/labels";
 import {ago, mirrorActions, type Health} from "@/fork/ui/mirrors/model";
 import {PRIMARY_AA} from "@/fork/ui/recovery/style";
@@ -19,7 +20,7 @@ const day = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 
 export type MirrorListProps = {rows: MirrorListRow[]; canManage: boolean; locked: boolean; flagOn: boolean; stopStart?: boolean; now: string};
 
-export function MirrorList({rows, canManage, locked, flagOn, stopStart = false, now}: MirrorListProps) {
+export function MirrorList({rows, canManage, locked, flagOn, stopStart = true, now}: MirrorListProps) {
     const router = useRouter();
     const at = new Date(now);
     const healthy = rows.filter((r) => r.health === "healthy").length;
@@ -82,6 +83,7 @@ function Row({r, at, canManage, locked, flagOn, stopStart}: {r: MirrorListRow; a
             <td className="px-3 py-2">
                 <span className="flex flex-wrap items-start gap-2">
                     <Link href={`/dashboard/mirrors/${r.id}`} className="inline-flex h-8 items-center rounded-md border px-3 text-sm">{L.open}<span className="sr-only"> {r.name}</span></Link>
+                    <StopStartButtons mirrorId={r.id} name={r.name} stop={actions.stop} start={actions.start}/>
                     <DeleteMirrorButton mirrorId={r.id} name={r.name} runner={r.runnerName} action={actions.delete}/>
                 </span>
             </td>

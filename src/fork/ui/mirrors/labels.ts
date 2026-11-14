@@ -249,6 +249,8 @@ export const MIRRORS = {
         start: "Start", started: "Start requested.", startingLine: "Starting the mirror: isolation, health and app checks…",
         startNote: "Start checks isolation, container health and the app; it does not re-check the data.",
         stopFailedLine: "Some containers may still be running. Try Stop again or Delete the mirror.",
+        startFailedLine: (reason: string) => `The last start did not complete: ${reason} The mirror is stopped.`, lastStopFailed: (reason: string) => `The last stop did not complete: ${reason}`,
+        stopRequested: "Stopping the mirror…", startRequested: "Starting the mirror…",
         working: "Working…", failed: "That did not work. Try again.",
         reasons: {
             cancelFirst: "Cancel creating it first.", busy: "Wait for the running action to finish.", locked: "Configuration is locked.",
@@ -260,6 +262,7 @@ export const MIRRORS = {
 /** Mirror status words (exhaustive over the closed list: tsc forces a sentence for every new status). */
 export const STATUS_TEXT: Record<MirrorStatus, string> = {
     creating: "Creating", ready: "Ready", failed: "Needs attention", cancelled: "Cancelled", refreshing: "Refreshing", deleting: "Deleting", deleted: "Deleted",
+    stopping: "Stopping", stopped: "Stopped", starting: "Starting",
 };
 export const statusText = (s: string): string => (Object.hasOwn(STATUS_TEXT, s) ? STATUS_TEXT[s as MirrorStatus] : s);
 
@@ -356,6 +359,7 @@ export const GATE_TEXT: Record<Gate, string> = {
 const GENERIC_REASON = "The mirror stopped. Check the runner and try again.";
 export const REASON_TEXT: Record<MirrorReasonCode, string> = {
     plan_blocked: "The restore plan is blocked.",
+    stop_incomplete: "Some containers could not be stopped and may still be running.",
     compile_refused: "The app cannot be mirrored safely.",
     kept_secret_unconfirmed: "A kept production secret was not confirmed.",
     final_view_invalid: "The prepared app did not match what was planned.",

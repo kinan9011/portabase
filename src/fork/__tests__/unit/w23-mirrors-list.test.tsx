@@ -6,8 +6,8 @@ import type {MirrorListRow} from "@/fork/mirror/list-view";
 import {MIRROR_REFUSAL_TEXT, MIRRORS} from "@/fork/ui/mirrors/labels";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 
-const h = vi.hoisted(() => ({del: vi.fn(), refresh: vi.fn()}));
-vi.mock("@/fork/actions/mirror.action", () => ({deleteMirrorAction: h.del}));
+const h = vi.hoisted(() => ({del: vi.fn(), stop: vi.fn(), start: vi.fn(), refresh: vi.fn()}));
+vi.mock("@/fork/actions/mirror.action", () => ({deleteMirrorAction: h.del, stopMirrorAction: h.stop, startMirrorAction: h.start}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh: h.refresh, push: vi.fn()}), usePathname: () => "/dashboard/mirrors"}));
 
 import {MirrorList, type MirrorListProps} from "@/fork/ui/mirrors/list/list.client";
@@ -19,7 +19,7 @@ const row = (o: Partial<MirrorListRow> = {}): MirrorListRow => ({
 });
 const props = (rows: MirrorListRow[], o: Partial<MirrorListProps> = {}): MirrorListProps => ({rows, canManage: true, locked: false, flagOn: true, now: new Date().toISOString(), ...o});
 const mount = (p: MirrorListProps) => render(<StatusAnnouncer><MirrorList {...p}/></StatusAnnouncer>);
-beforeEach(() => { h.del.mockReset(); h.refresh.mockReset(); });
+beforeEach(() => { h.del.mockReset(); h.stop.mockReset(); h.start.mockReset(); h.refresh.mockReset(); });
 afterEach(() => cleanup());
 
 describe("empty / member / banner", () => {
@@ -146,5 +146,53 @@ describe("Delete by keyboard (typed confirmation = the mirror name)", () => {
         fireEvent.change(within(dialog).getByLabelText(MIRRORS.lifecycle.deleteInput), {target: {value: "shop-3"}});
         fireEvent.click(within(dialog).getByRole("button", {name: MIRRORS.lifecycle.deleteConfirm}));
         expect((await screen.findByTestId("delete-error")).textContent).toBe(MIRRORS.lifecycle.failed);
+    });
+});
+
+describe("Stop / Start in the list (W23 Part B)", () => {
+    const L = MIRRORS.lifecycle;
+    const ready = row({id: "a0000000-0000-4000-8000-0000000000a1", name: "run-one"});
+    const stopped = row({id: "a0000000-0000-4000-8000-0000000000a2", name: "idle-one", status: "stopped", health: "not_running"});
+    it("a ready row offers Stop, a stopped row offers Start; the stopped row says Stopped / Not running; axe clean", async () => {
+        const {container} = mount(props([ready, stopped]));
+        const rows = screen.getAllByTestId("mirror-row");
+        expect(within(rows[0]!).getByTestId("mirror-stop")).toBeTruthy();
+        expect(within(rows[0]!).queryByTestId("mirror-start")).toBeNull();
+        expect(within(rows[1]!).getByTestId("mirror-start")).toBeTruthy();
+        expect(within(rows[1]!).queryByTestId("mirror-stop")).toBeNull();
+        expect(within(rows[1]!).getByText("Stopped")).toBeTruthy();
+        expect(within(rows[1]!).getByText("Not running")).toBeTruthy();
+        expect(await axeViolations(container)).toEqual([]);
+    });
+    it("Stop by keyboard: Enter on the button opens the confirm, the confirm calls the action once, Escape closes without calling", async () => {
+        h.stop.mockResolvedValue({data: {ok: true}});
+        mount(props([ready]));
+        const b = screen.getByTestId("mirror-stop");
+        b.focus(); fireEvent.click(b);
+        fireEvent.keyDown(await screen.findByRole("alertdialog"), {key: "Escape"});
+        await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+        expect(h.stop).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(b);
+        fireEvent.click(b);
+        fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: L.stopConfirm}));
+        await waitFor(() => expect(h.stop).toHaveBeenCalledTimes(1));
+        expect(h.stop).toHaveBeenCalledWith({mirrorId: ready.id});
+        await waitFor(() => expect(screen.getByRole("status").textContent).toBe(L.stopRequested));
+        expect(h.refresh).toHaveBeenCalled();
+    });
+    it("Start is blocked with a visible reason while locked or with the flag off", () => {
+        mount(props([stopped], {locked: true}));
+        expect(screen.getByTestId("mirror-start").getAttribute("aria-disabled")).toBe("true");
+        expect(screen.getByText(L.reasons.startLocked)).toBeTruthy();
+    });
+    it("a failed mirror that still has its revision shows 'Last attempt failed', counts as needs attention and offers Stop (retry)", () => {
+        mount(props([row({id: "a0000000-0000-4000-8000-0000000000a3", name: "bad-one", status: "failed", health: "failed", alert: true})]));
+        expect(screen.getByTestId("mirror-last-failed")).toBeTruthy();
+        expect(screen.getByTestId("mirror-stop")).toBeTruthy();
+    });
+    it("members see no Stop / Start", () => {
+        mount(props([ready, stopped], {canManage: false}));
+        expect(screen.queryByTestId("mirror-stop")).toBeNull();
+        expect(screen.queryByTestId("mirror-start")).toBeNull();
     });
 });
