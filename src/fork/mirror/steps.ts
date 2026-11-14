@@ -204,7 +204,9 @@ export function handlers(ctx0: RevCtx): Handlers<MirrorStep, RevCtx> {
                 const fin = await ownRender(c, "mirror_finalize", last.taskId);
                 const [pass1] = await journalRows(c.d.db, c.rev.id, "render");
                 const src = await ownRender(c, "mirror_render", pass1?.taskId ?? null);
-                if (!res.success || !fin || !src || fin.renderedSha256 !== res.data.view_sha256) return fail(!res.success || !fin ? "final_view_invalid" : "render_missing");
+                if (!res.success) return fail("final_view_invalid");
+                if (!fin || !src) return fail("render_missing"); // the upload is not the journaled finalize / render task of this runner
+                if (fin.renderedSha256 !== res.data.view_sha256) return fail("final_view_invalid");
                 const v = checkFinalView(fin.policyView, {project: c.plan.target.project, workspace: c.rev.workspace, access: accessOf(c), sourceViewText: src.policyView, limits: c.policy.limits});
                 if (!v.ok) { await setGate(c, "side_effects", false, v.code); return fail(v.code); }
                 await patchRev(c, {finalViewSha256: fin.renderedSha256});

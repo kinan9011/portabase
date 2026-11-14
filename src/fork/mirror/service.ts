@@ -191,10 +191,10 @@ export async function createMirror(d: MirrorDeps, raw: unknown): Promise<{ok: tr
             id: revisionId, mirrorId, organizationId: orgId, stackId: req.stackId, seq: 1, rpId: req.rpId, rpSequence: pl.rp.sequence, planId: planRow.id, planHash, runnerAgentId: req.runnerAgentId,
             project, workspace, hostPort: port, startedBy: p.userId, createdAt: now, deadlineAt: new Date(now.getTime() + maxRunMsOf(d)), updatedAt: now,
         };
-        await addEvent(tx, {mirrorId, revisionId, kind: "requested", at: now, toState: "requested", actor: {userId: p.userId}});
         if (blocked) {
             const next = transition("requested", "blocked");
             await tx.insert(forkMirrorRevision).values({...base, state: "requested"});
+            await addEvent(tx, {mirrorId, revisionId, kind: "requested", at: now, toState: "requested", actor: {userId: p.userId}});
             await tx.update(forkMirrorRevision).set({state: next, reason: "plan_blocked", finishedAt: now, durationSeconds: 0, wipeState: "not_needed", wipeFinishedAt: now, updatedAt: now}).where(eq(forkMirrorRevision.id, revisionId));
             await addEvent(tx, {mirrorId, revisionId, kind: "blocked", at: now, fromState: "requested", toState: next, code: "plan_blocked", details: {blockers: pl.blockers.slice(0, 10)}});
             await recordAudit(tx, {organizationId: orgId, actorUserId: p.userId, action: "fork.mirror.finish", resourceType: "mirror", resourceId: mirrorId, result: "failure", now, details: {revisionId, planHash, state: next, reason: "plan_blocked", blockers: pl.blockers.slice(0, 20)}});
@@ -204,6 +204,7 @@ export async function createMirror(d: MirrorDeps, raw: unknown): Promise<{ok: tr
         const planning = transition("requested", "planning");
         const next = transition(planning, "validating");
         await tx.insert(forkMirrorRevision).values({...base, state: next, steps: initialSteps(deriveMirrorSteps(pl))});
+        await addEvent(tx, {mirrorId, revisionId, kind: "requested", at: now, toState: "requested", actor: {userId: p.userId}});
         await addEvent(tx, {mirrorId, revisionId, kind: "state_changed", at: now, fromState: "requested", toState: planning});
         await addEvent(tx, {mirrorId, revisionId, kind: "state_changed", at: now, fromState: planning, toState: next});
         await recordAudit(tx, {organizationId: orgId, actorUserId: p.userId, action: "fork.mirror.create", resourceType: "mirror", resourceId: mirrorId, result: "success", now,
