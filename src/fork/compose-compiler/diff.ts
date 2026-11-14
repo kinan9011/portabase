@@ -33,7 +33,7 @@ export function mirrorDiff(ir: MirrorIR, spec: MirrorSpecV1): MirrorDiffEntry[] 
         if (s.containerName !== null && s.containerName !== svc) add("container_name_to_alias", svc, s.containerName, `${svc}: container name ${san(s.containerName)} → kept as a network alias so other services still find it`);
         if (s.networkMode === "bridge" || s.networkMode === "default") add("network_mode_reset", svc, s.networkMode, `${svc}: network_mode ${san(s.networkMode)} → reset, attached to an isolated mirror network`);
         for (const [n, a] of Object.entries(s.networks ?? {})) if (a.hadStaticIp) add("static_ip_dropped", svc, n, `${svc}: fixed network address (static IP or MAC) on network ${san(n)} dropped`);
-        for (const k of Object.keys(s.labels)) if (isDroppedLabel(k)) add("label_dropped", svc, k, `${svc}: label ${san(k)} dropped (proxy, updater and scheduler labels do not belong to a mirror)`);
+        for (const k of Object.keys(s.labels)) if (isDroppedLabel(k) && !k.startsWith("com.portabase.fork.")) add("label_dropped", svc, k, `${svc}: label ${san(k)} dropped (proxy, updater and scheduler labels do not belong to a mirror)`);
         for (const [key, action] of Object.entries(spec.env[svc] ?? {})) {
             if (action === "rotate") add("env_rotate", svc, key, `${svc}: environment ${san(key)} → replaced by a mirror-only value`);
             else if (action === "disable") add("env_disable", svc, key, `${svc}: environment ${san(key)} → pointed at disabled.invalid so it cannot reach a real service`);
@@ -44,7 +44,7 @@ export function mirrorDiff(ir: MirrorIR, spec: MirrorSpecV1): MirrorDiffEntry[] 
             if (k.startsWith("x-")) add("removed_key", svc, k, `${svc}: extension ${san(k)} removed`);
             else add("removed_key", svc, k, `${svc}: ${san(k)} removed (${n} ${n === 1 ? "entry" : "entries"}; values are never shown)`);
         }
-        for (const r of spec.credential_resets) if (r.service === svc) add("credential_reset", svc, r.password_key, `${svc}: ${r.engine} password for ${san(r.user_key ?? "the admin role")} must be reset to the mirror-only value after a volume restore`);
+        for (const r of spec.credential_resets) if (r.service === svc) add("credential_reset", svc, r.password_key, `${svc}: ${r.engine} role password (${r.user_key === null ? "admin role" : `user from ${san(r.user_key)}`}) must be reset to the mirror-only value after a volume restore`);
         if (s.image !== null && !s.image.includes("@sha256:")) add("image_unpinned", svc, s.image, `${svc}: image ${san(s.image)} is not pinned by digest`);
     }
     for (const [k, n] of Object.entries(ir.networks)) {
