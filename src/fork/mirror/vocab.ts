@@ -75,4 +75,6 @@ export const REFUSAL_MESSAGES: Record<string, string> = {
     invalid_input: "The request is invalid.",
     locked: "Configuration changes are locked.",
     rate_limited: "Too many requests. Try again shortly.",
+    mirror_busy: "Stop creating it first (Cancel), or wait for the running action to finish.",
+    mirror_state_invalid: "This action is not possible in the mirror's current state.",
 };

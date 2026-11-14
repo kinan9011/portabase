@@ -34,7 +34,7 @@ import {ACTIVE_REVISION_STATES, keepConfirmPhrase, PORT_RANGE, REFUSAL_MESSAGES,
  */
 export type MirrorRefusalCode = "forbidden" | "not_found" | "invalid_input" | "locked" | "rate_limited" | "mirrors_disabled" | "privacy_ack_required" | "confirmation_mismatch" | "runner_ineligible"
     | "runner_not_isolated" | "runner_busy" | "name_taken" | "port_unavailable" | "rp_not_verified" | "mirror_not_ready" | "plan_blocked" | "not_active" | "mirror_mode_invalid" | "mirror_target_not_runner"
-    | "personal_data_no_mirror_opt_in" | "not_failed" | "rp_purged";
+    | "personal_data_no_mirror_opt_in" | "not_failed" | "rp_purged" | "mirror_busy" | "mirror_state_invalid";
 export type MirrorRefusal = {ok: false; code: MirrorRefusalCode; message: string; retryAfterSeconds?: number; blockers?: string[]};
 const refuse = (code: MirrorRefusalCode, extra: Partial<MirrorRefusal> = {}): MirrorRefusal => ({ok: false, code, message: REFUSAL_MESSAGES[code] ?? "Refused.", ...extra});
 const allowed = (d: MirrorDeps): Promise<boolean> => (d.configAllowed ? d.configAllowed() : assertForkConfigAllowed().then(() => true, () => false));
