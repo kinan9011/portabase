@@ -1,6 +1,6 @@
 import {randomUUID} from "node:crypto";
 import {lookup} from "node:dns/promises";
-import {and, eq, inArray, or, sql, gte} from "drizzle-orm";
+import {and, eq, inArray, isNull, or, sql, gte} from "drizzle-orm";
 import {actorIn, forkCan} from "@/fork/acl";
 import {recordAudit} from "@/fork/audit";
 import {gate, loadTaskKey, stepUp, type Refusal as AdminRefusal} from "@/fork/agent-channel/admin";
@@ -11,6 +11,7 @@ import {RUNNER_CAPABILITY} from "@/fork/agent-channel/vocab";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkAgentEnrollment, forkAgentTask} from "@/fork/db/schema/agent-channel";
 import {forkArcaneConnection, forkArcaneEnvironment} from "@/fork/db/schema/arcane";
+import {forkMirror} from "@/fork/db/schema/mirror";
 import {forkRunner} from "@/fork/db/schema/runner";
 import {forkEnv} from "@/fork/env";
 import {withForkLock} from "@/fork/locks";
@@ -48,6 +49,7 @@ const MSG: Partial<Record<RunnerRefusalCode, string>> = {
     probe_in_progress: "An isolation check is already running for this runner.",
     target_invalid: "One of the check targets is not valid.",
     too_many_targets: "There are too many check targets.",
+    mirrors_exist: "This runner still hosts test mirrors. Delete them first.",
 };
 const msg = (c: RunnerRefusalCode) => MSG[c] ?? "Refused.";
 
@@ -127,7 +129,7 @@ export async function designateRunner(d: RunnerDeps, raw: unknown): Promise<Desi
     });
 }
 
-/** Remove the designation. (W22a adds "refuse while mirrors exist".) */
+/** Remove the designation; refused while the runner still hosts mirrors (W22a). */
 export async function undesignateRunner(d: RunnerDeps, raw: unknown): Promise<DesignateResult> {
     const parsed = PlainInput.safeParse(raw);
     if (!parsed.success) return refuse("invalid_input", "Check the values you entered.");
@@ -136,6 +138,9 @@ export async function undesignateRunner(d: RunnerDeps, raw: unknown): Promise<De
     const g = await gated(d, ACTION, agentId, true);
     if ("ok" in g) return g;
     return withForkLock(d.db, `runner:${agentId}`, async (tx): Promise<DesignateResult> => {
+        // W22a (ADR-008 §10): a runner that still hosts mirrors (any non-deleted mirror row) cannot be undesignated
+        const [hosted] = await tx.select({n: sql<number>`count(*)::int`}).from(forkMirror).where(and(eq(forkMirror.runnerAgentId, agentId), isNull(forkMirror.deletedAt)));
+        if (Number(hosted?.n ?? 0) > 0) { await denied(d, g, ACTION, "mirrors_exist", tx); return refuse("mirrors_exist", msg("mirrors_exist")); }
         const gone = await tx.delete(forkRunner).where(eq(forkRunner.agentId, agentId)).returning({a: forkRunner.agentId});
         if (gone.length === 0) { await denied(d, g, ACTION, "not_a_runner", tx); return refuse("not_a_runner", msg("not_a_runner")); }
         await recordAudit(tx, {organizationId: g.organizationId, actorUserId: g.userId, action: ACTION, resourceType: "agent", resourceId: agentId, result: "success", details: {}, now: chNow(d)});
@@ -175,7 +180,58 @@ export async function setRunnerTargets(d: RunnerDeps, raw: unknown): Promise<Tar
 }
 
 // ---- the probe ---------------------------------------------------------------------------------------------------------------------------------
-export type ProbeRequestResult = {ok: true; taskId: string; probeId: string; targetCount: number; skipped: number; configSha256: string} | RunnerRefusal;
+type ProbeStartRefusal = {ok: false; code: RunnerRefusalCode | "insecure_transport" | "invalid_url" | "signing_unavailable" | "not_enrolled" | "agent_disabled"};
+export type ProbeStarted = {ok: true; taskId: string; probeId: string; targetCount: number; skipped: number; configSha256: string};
+
+/**
+ * Builds, signs and enqueues ONE runner probe and binds it to `fork_runner.last_probe_*`. Shared by the admin action (`requestRunnerProbe`, after its gates) and by the
+ * W22a mirror orchestrator (`trigger: "mirror"`, acting as the revision's starter, who is re-authorised on every tick). `onDenied` lets the caller audit refusals;
+ * `onInserted` runs inside the insert transaction (the mirror step journal row is written there, so a crash can neither lose nor duplicate the task).
+ */
+export async function startRunnerProbe(d: RunnerDeps, a: {agentId: string; agentName: string; actorUserId: string; organizationId: string | null; trigger: "admin" | "mirror";
+    onDenied?: (reason: string, db: ForkDb) => Promise<unknown>; onInserted?: (tx: ForkDb, taskId: string) => Promise<void>}): Promise<ProbeStarted | ProbeStartRefusal> {
+    const {agentId} = a;
+    const ACTION = "fork.runner.probe";
+    const deny = async (reason: string, db: ForkDb = d.db) => { await a.onDenied?.(reason, db); };
+    const serverUrl = d.serverUrl();
+    const tp = checkChannelTransport(serverUrl, chEnv(d));
+    if (!tp.ok) { await deny(tp.code); return {ok: false, code: tp.code === "insecure_transport" ? "insecure_transport" : "invalid_url"}; }
+    let signing: Awaited<ReturnType<ChannelDeps["keys"]["signing"]>>;
+    try { signing = await d.keys.signing(); } catch { return {ok: false, code: "signing_unavailable"}; }
+    const {kidOfPublicKey} = await import("@/fork/manifest/sign");
+    const kid = kidOfPublicKey(signing.publicKeyPem);
+
+    const [run] = await d.db.select({probeTargets: forkRunner.probeTargets}).from(forkRunner).where(eq(forkRunner.agentId, agentId));
+    const {config, sha256} = await loadConfig(d.db, serverUrl, run?.probeTargets ?? []);
+    const m = await materialize(config, d.resolve ?? defaultResolve);
+    if (!m.ok) { await deny(m.code); return {ok: false, code: m.code}; }
+    const probeId = randomUUID();
+    const payload = {v: 1 as const, probe_id: probeId, targets_sha256: targetsSha(m.targets), timeout_ms: PROBE_TIMEOUT_MS,
+        targets: m.targets.map((t) => ({id: t.id, kind: t.kind, host: t.host, ...(t.port !== undefined ? {port: t.port} : {})}))};
+    if (!RunnerProbePayload.safeParse(payload).success) { await deny("target_invalid"); return {ok: false, code: "target_invalid"}; }
+    const plaintext = Buffer.from(JSON.stringify(payload), "utf8");
+    const now = chNow(d);
+    const ttlMs = Math.min(chEnv(d).FORK_AGENT_TASK_TTL_MINUTES * 60_000, PROBE_TASK_TTL_MS);
+
+    return withForkLock(d.db, `agent-task:${agentId}`, async (tx): Promise<ProbeStarted | ProbeStartRefusal> => {
+        const [e] = await tx.select().from(forkAgentEnrollment).where(eq(forkAgentEnrollment.agentId, agentId));
+        if (!e || e.revokedAt) return {ok: false, code: "not_enrolled"};
+        if (!e.enabled) return {ok: false, code: "agent_disabled"};
+        if (!e.capabilities.includes(RUNNER_CAPABILITY)) { await deny("not_attested", tx); return {ok: false, code: "not_attested"}; }
+        const [busy] = await tx.select({n: sql<number>`count(*)::int`}).from(forkAgentTask).where(and(eq(forkAgentTask.agentId, agentId), eq(forkAgentTask.type, "runner_probe"),
+            or(inArray(forkAgentTask.status, ["leased", "running"]), and(eq(forkAgentTask.status, "queued"), gte(forkAgentTask.notAfter, now)))));
+        if (Number(busy?.n ?? 0) > 0) { await deny("probe_in_progress", tx); return {ok: false, code: "probe_in_progress"}; }
+        const taskKey = await loadTaskKey(d, e);
+        const {taskId} = await insertSignedTask(tx, {e, agentName: a.agentName, type: "runner_probe", plaintext, targetAgentId: agentId, actorUserId: a.actorUserId, signing, kid, taskKey, now, ttlMs});
+        await tx.update(forkRunner).set({lastProbeTaskId: taskId, lastProbeTargets: {probeId, targets: m.targets}, lastProbeConfigSha256: sha256, lastProbeRequestedAt: now, updatedAt: now}).where(eq(forkRunner.agentId, agentId));
+        await a.onInserted?.(tx, taskId);
+        await recordAudit(tx, {organizationId: a.organizationId, actorUserId: a.actorUserId, action: ACTION, resourceType: "agent", resourceId: agentId, result: "success",
+            details: {taskId, targetCount: m.targets.length, configSha256: sha256, ...(a.trigger === "mirror" ? {trigger: "mirror"} : {})}, now});
+        return {ok: true, taskId, probeId, targetCount: m.targets.length, skipped: m.skipped.length, configSha256: sha256};
+    });
+}
+
+export type ProbeRequestResult = ProbeStarted | RunnerRefusal;
 
 export async function requestRunnerProbe(d: RunnerDeps, raw: unknown): Promise<ProbeRequestResult> {
     const parsed = PlainInput.safeParse(raw);
@@ -188,40 +244,21 @@ export async function requestRunnerProbe(d: RunnerDeps, raw: unknown): Promise<P
     if (!rl.ok) return refuse("rate_limited", `Too many attempts. Try again in ${rl.retryAfterSeconds} s.`, {retryAfterSeconds: rl.retryAfterSeconds});
     const el = await assertRunnerTarget(d.db, agentId);
     if (!el.ok) { await denied(d, g, ACTION, el.code); return refuse(el.code, msg(el.code)); }
-    const serverUrl = d.serverUrl();
-    const tp = checkChannelTransport(serverUrl, chEnv(d));
-    if (!tp.ok) { await denied(d, g, ACTION, tp.code); return tp.code === "insecure_transport" ? refuse("insecure_transport", "Agent tasks need an https:// dashboard URL.") : refuse("invalid_url", "The dashboard URL is not valid."); }
-    let signing: Awaited<ReturnType<ChannelDeps["keys"]["signing"]>>;
-    try { signing = await d.keys.signing(); } catch { return refuse("signing_unavailable", "The dashboard signing key is not available."); }
-    const {kidOfPublicKey} = await import("@/fork/manifest/sign");
-    const kid = kidOfPublicKey(signing.publicKeyPem);
+    const r = await startRunnerProbe(d, {agentId, agentName: g.agent.name, actorUserId: g.userId, organizationId: g.organizationId, trigger: "admin", onDenied: (reason, db) => denied(d, g, ACTION, reason, db)});
+    if (r.ok) return r;
+    switch (r.code) {
+        case "insecure_transport": return refuse("insecure_transport", "Agent tasks need an https:// dashboard URL.");
+        case "invalid_url": return refuse("invalid_url", "The dashboard URL is not valid.");
+        case "signing_unavailable": return refuse("signing_unavailable", "The dashboard signing key is not available.");
+        default: return refuse(r.code, msg(r.code as RunnerRefusalCode));
+    }
+}
 
-    const [run] = await d.db.select({probeTargets: forkRunner.probeTargets}).from(forkRunner).where(eq(forkRunner.agentId, agentId));
-    const {config, sha256} = await loadConfig(d.db, serverUrl, run?.probeTargets ?? []);
-    const m = await materialize(config, d.resolve ?? defaultResolve);
-    if (!m.ok) { await denied(d, g, ACTION, m.code); return refuse(m.code, msg(m.code)); }
-    const probeId = randomUUID();
-    const payload = {v: 1 as const, probe_id: probeId, targets_sha256: targetsSha(m.targets), timeout_ms: PROBE_TIMEOUT_MS,
-        targets: m.targets.map((t) => ({id: t.id, kind: t.kind, host: t.host, ...(t.port !== undefined ? {port: t.port} : {})}))};
-    if (!RunnerProbePayload.safeParse(payload).success) { await denied(d, g, ACTION, "target_invalid"); return refuse("target_invalid", msg("target_invalid")); }
-    const plaintext = Buffer.from(JSON.stringify(payload), "utf8");
-    const now = chNow(d);
-    const ttlMs = Math.min(chEnv(d).FORK_AGENT_TASK_TTL_MINUTES * 60_000, PROBE_TASK_TTL_MS);
-
-    return withForkLock(d.db, `agent-task:${agentId}`, async (tx): Promise<ProbeRequestResult> => {
-        const [e] = await tx.select().from(forkAgentEnrollment).where(eq(forkAgentEnrollment.agentId, agentId));
-        if (!e || e.revokedAt) return refuse("not_enrolled", msg("not_enrolled"));
-        if (!e.enabled) return refuse("agent_disabled", msg("agent_disabled"));
-        if (!e.capabilities.includes(RUNNER_CAPABILITY)) { await denied(d, g, ACTION, "not_attested", tx); return refuse("not_attested", msg("not_attested")); }
-        const [busy] = await tx.select({n: sql<number>`count(*)::int`}).from(forkAgentTask).where(and(eq(forkAgentTask.agentId, agentId), eq(forkAgentTask.type, "runner_probe"),
-            or(inArray(forkAgentTask.status, ["leased", "running"]), and(eq(forkAgentTask.status, "queued"), gte(forkAgentTask.notAfter, now)))));
-        if (Number(busy?.n ?? 0) > 0) { await denied(d, g, ACTION, "probe_in_progress", tx); return refuse("probe_in_progress", msg("probe_in_progress")); }
-        const taskKey = await loadTaskKey(d, e);
-        const {taskId} = await insertSignedTask(tx, {e, agentName: g.agent.name, type: "runner_probe", plaintext, targetAgentId: agentId, actorUserId: g.userId, signing, kid, taskKey, now, ttlMs});
-        await tx.update(forkRunner).set({lastProbeTaskId: taskId, lastProbeTargets: {probeId, targets: m.targets}, lastProbeConfigSha256: sha256, lastProbeRequestedAt: now, updatedAt: now}).where(eq(forkRunner.agentId, agentId));
-        await recordAudit(tx, {organizationId: g.organizationId, actorUserId: g.userId, action: ACTION, resourceType: "agent", resourceId: agentId, result: "success", details: {taskId, targetCount: m.targets.length, configSha256: sha256}, now});
-        return {ok: true, taskId, probeId, targetCount: m.targets.length, skipped: m.skipped.length, configSha256: sha256};
-    });
+/** Number of admin-configured probe targets of a runner (the READY isolation gate needs ≥ 1, OD-W22a-7). */
+export async function adminTargetCount(db: ForkDb, agentId: string): Promise<number> {
+    const [row] = await db.select({t: forkRunner.probeTargets}).from(forkRunner).where(eq(forkRunner.agentId, agentId));
+    const admin = parseAdminTargets(row?.t ?? []);
+    return Array.isArray(admin) ? admin.length : 0;
 }
 
 // ---- the verdict ---------------------------------------------------------------------------------------------------------------------------

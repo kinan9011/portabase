@@ -31,6 +31,9 @@ const RenderBody = z.strictObject({
     compose_version: z.string().max(32).nullable(), rules_sha256: hex64.nullable(),
 });
 
+/** Task types whose agent uploads a policy view here: the restore render and (W22a) the mirror render / finalize (the FINAL view of the mirror project). */
+export const RENDER_TASK_TYPES = ["compose_render", "mirror_render", "mirror_finalize"] as const;
+
 export type RenderCallResult = {ok: true; duplicate?: boolean} | {ok: false; code: string; status: 400 | 404 | 409};
 const refuse = (status: 400 | 404 | 409, code: string): RenderCallResult => ({ok: false, status, code});
 
@@ -49,7 +52,7 @@ export async function submitRender(db: ForkDb, e: Enrollment, a: {taskId: string
     return withForkLock(db, `agent-task:${e.agentId}`, async (tx) => {
         const [t] = await tx.select().from(forkAgentTask).where(and(eq(forkAgentTask.id, a.taskId), eq(forkAgentTask.agentId, e.agentId!), eq(forkAgentTask.enrollId, e.enrollId)));
         if (!t) return refuse(404, "not_found");
-        if (t.type !== "compose_render") return refuse(409, "wrong_type");
+        if (!(RENDER_TASK_TYPES as readonly string[]).includes(t.type)) return refuse(409, "wrong_type");
         const [prev] = await tx.select().from(forkComposeRender).where(eq(forkComposeRender.taskId, t.id));
         if (prev) return prev.renderedSha256 === b.view_sha256 ? {ok: true as const, duplicate: true} : refuse(409, "conflict");
         if (!["leased", "running"].includes(t.status) || t.leaseId !== b.lease_id) return refuse(409, t.status === "leased" || t.status === "running" ? "lease_mismatch" : "conflict");
@@ -64,9 +67,9 @@ export async function submitRender(db: ForkDb, e: Enrollment, a: {taskId: string
 export type RenderRow = typeof forkComposeRender.$inferSelect;
 
 /** Newest render of this restore produced by `agentId` whose task SUCCEEDED (a failed / running render task is never trusted). */
-export async function latestRender(db: ForkDb, a: {restoreId: string; agentId: string}): Promise<RenderRow | null> {
+export async function latestRender(db: ForkDb, a: {restoreId: string; agentId: string; type?: (typeof RENDER_TASK_TYPES)[number]}): Promise<RenderRow | null> {
     const rows = await db.select({r: forkComposeRender}).from(forkComposeRender).innerJoin(forkAgentTask, eq(forkAgentTask.id, forkComposeRender.taskId))
-        .where(and(eq(forkComposeRender.restoreId, a.restoreId), eq(forkAgentTask.agentId, a.agentId), eq(forkAgentTask.type, "compose_render"), eq(forkAgentTask.status, "succeeded")))
+        .where(and(eq(forkComposeRender.restoreId, a.restoreId), eq(forkAgentTask.agentId, a.agentId), eq(forkAgentTask.type, a.type ?? "compose_render"), eq(forkAgentTask.status, "succeeded")))
         .orderBy(desc(forkComposeRender.createdAt)).limit(1);
     return rows[0]?.r ?? null;
 }
