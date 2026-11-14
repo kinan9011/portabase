@@ -228,7 +228,7 @@ export const STACK_DETAILS = {
         configure: {label: "Configure backup", admin: "Backup configuration is locked while Fork configuration is locked.", member: "Only a system administrator configures backups."},
         backupNow: {label: "Back up now"},
         restore: {label: "Restore", reason: "Restoring from the dashboard is planned for release R2."},
-        mirror: {label: "Create test mirror", reason: "Test mirrors are not part of this release."},
+        mirror: {label: "Create test mirror", reason: "Test mirrors are not enabled on this installation."},
     },
     overview: {
         resources: "Resource summary",
@@ -872,7 +872,7 @@ export const BACKUPS = {
     runNow: "Back up now",
     verify: {label: "Verify", reason: "Verification arrives with the verify job in a later step of this release. Until then a finished backup stays \"Backed up · verifying\"."},
     restore: {label: "Restore", reason: "Restoring from the dashboard is planned for release R2."},
-    mirror: {label: "Create test mirror", reason: "Test mirrors are not part of this release."},
+    mirror: {label: "Create test mirror", reason: "Test mirrors are not enabled on this installation."},
     columns: {id: "Recovery point", time: "Created", consistency: "Consistency", destinations: "Stored in", size: "Size", duration: "Took", verification: "Verification", status: "Status"},
     consistency: {
         crash_consistent_files: "Files copied while running", engine_dump: "Database saved safely", mixed: "Database dump plus files copied while running", unknown: "Not recorded", stopped: "App paused during copy",
