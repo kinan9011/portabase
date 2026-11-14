@@ -492,9 +492,9 @@ async function commitRollback(c: OpCtx, target: RevRow, previous: RevRow, servic
         if (!pr || pr.state !== "ready") return false;
         await tx.update(forkMirror).set({status: to, activeRevisionId: target.id, routeRevisionId: target.id, opRevisionId: null, updatedAt: c.now}).where(eq(forkMirror.id, c.m.id));
         await tx.update(forkMirrorRevision).set({activatedAt: c.now, services, updatedAt: c.now}).where(eq(forkMirrorRevision.id, target.id));
-        const rolled = transition("ready", "rolled_back");
-        await tx.update(forkMirrorRevision).set({state: rolled, updatedAt: c.now}).where(eq(forkMirrorRevision.id, previous.id));
-        await addEvent(tx, {mirrorId: c.m.id, revisionId: previous.id, kind: "rolled_back", at: c.now, fromState: "ready", toState: rolled, details: {toRevisionId: target.id}});
+        const next = transition("ready", "rolled_back");
+        await tx.update(forkMirrorRevision).set({state: next, updatedAt: c.now}).where(eq(forkMirrorRevision.id, previous.id));
+        await addEvent(tx, {mirrorId: c.m.id, revisionId: previous.id, kind: "rolled_back", at: c.now, fromState: "ready", toState: next, details: {toRevisionId: target.id}});
         await addEvent(tx, {mirrorId: c.m.id, revisionId: target.id, kind: "activated", at: c.now, details: {fromRevisionId: previous.id}});
         await addEvent(tx, {mirrorId: c.m.id, revisionId: null, kind: "state_changed", at: c.now, fromState: "rolling_back", toState: to, details: {scope: "mirror"}});
         await recordAudit(tx, {organizationId: c.m.organizationId, actorKind: "system", action: "fork.mirror.rollback", resourceType: "mirror", resourceId: c.m.id, result: "success", now: c.now,

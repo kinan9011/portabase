@@ -1,6 +1,9 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import type {ForkPrincipal} from "@/fork/acl";
+import {enqueueMirrorTask} from "@/fork/mirror/enqueue";
 import {startTestedFact} from "@/fork/mirror/facet";
+import {revisionOf, taskDeps} from "@/fork/mirror/steps";
+import {loadPlanRow} from "@/fork/restore/service";
 import {advanceMirrorRetention} from "@/fork/mirror/lifecycle";
 import {createMirror, deleteMirror, getMirrorAccess, getMirrorView, refreshMirror, rollbackMirror, startMirror, stopMirror} from "@/fork/mirror/service";
 import {tickAllMirrors} from "@/fork/mirror/tick";
@@ -541,4 +544,40 @@ describe("seed preservation contract (I-15)", () => {
         expect(payloads).toHaveLength(1);
         expect("seed_from" in (payloads[0] as Doc)).toBe(false);
     }, 240_000);
+});
+
+const asRev = (r: Doc) => ({id: r.id, mirrorId: r.mirror_id, organizationId: r.organization_id, planId: r.plan_id, planHash: r.plan_hash, runnerAgentId: r.runner_agent_id, startedBy: r.started_by, workspace: r.workspace}) as never;
+describe("enqueue of mirror_route (A2)", () => {
+    it("REMOVE is a safety step (no principal, allowed locked / flag off); SWITCH is a forward step (principal + unlocked); a missing route argument is invalid_input", async () => {
+        const c = await make();
+        const rev = await w.rev(c.r1);
+        const row = await loadPlanRow(c.d, rev.plan_id, rev.plan_hash);
+        if (!row.ok) throw new Error("plan");
+        const route = (action: "switch" | "remove", over: Record<string, unknown> = {}) => ({action, mirrorId: c.mirrorId, routePort: 41700, service: "web", target: 8080, httpPath: "/", ...over});
+        const go = (step: "route", a: "switch" | "remove", p: ForkPrincipal | null, attempt: number, d = c.d, over: Record<string, unknown> = {}) => enqueueMirrorTask(
+            {...taskDeps(d, {principal: p, now: w.now(), revisionId: c.r1, step, attempt}), configAllowed: d.configAllowed},
+            {revision: revisionOf(asRev(rev)), plan: row.plan, step, attempt, route: route(a, over) as never});
+        const locked = {...c.d, configAllowed: async () => false, mirrorsEnabled: () => false};
+        const first = await go("route", "remove", null, 1, locked);
+        expect(first, JSON.stringify(first)).toMatchObject({ok: true});
+        expect(await go("route", "switch", null, 2)).toMatchObject({ok: false, code: "forbidden"});
+        expect(await go("route", "switch", orgAdmin, 3, locked)).toMatchObject({ok: false, code: "locked"});
+        expect(await go("route", "switch", member, 4)).toMatchObject({ok: false, code: "forbidden"});
+        expect(await go("route", "switch", orgAdmin, 5)).toMatchObject({ok: true});
+        expect(await go("route", "switch", orgAdmin, 6, c.d, {routePort: 40999})).toMatchObject({ok: false, code: "invalid_input"}); // payload schema refuses an out-of-range port
+        const noRoute = await enqueueMirrorTask({...taskDeps(c.d, {principal: orgAdmin, now: w.now(), revisionId: c.r1, step: "route", attempt: 7})}, {revision: revisionOf(asRev(rev)), plan: row.plan, step: "route", attempt: 7});
+        expect(noRoute).toMatchObject({ok: false, code: "invalid_input"});
+    }, 120_000);
+});
+
+describe("audit hygiene (A11 c)", () => {
+    it("audit rows of refresh / rollback / route / retention carry only ids, codes and counts: no workspace, spec, policy, env or path", async () => {
+        const rows = (await Promise.all(["fork.mirror.refresh", "fork.mirror.rollback", "fork.mirror.route", "fork.mirror.retention"].map((a) => w.audits(a)))).flat();
+        expect(rows.length).toBeGreaterThan(10);
+        const allowed = new Set(["reason", "isolation", "rpId", "detail", "phase", "revisionId", "fromRevisionId", "rpSequence", "hostPort", "routePort", "revisionIds"]);
+        for (const a of rows) {
+            for (const k of Object.keys(a.d)) expect(allowed.has(k), `${k} in ${JSON.stringify(a.d).slice(0, 120)}`).toBe(true);
+            expect(JSON.stringify(a.d)).not.toMatch(/\/srv\/|workspace|spec|env|policy|password|secret/i);
+        }
+    });
 });
