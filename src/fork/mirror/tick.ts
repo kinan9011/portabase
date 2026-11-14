@@ -12,6 +12,7 @@ import {nowOf, ownerOf, principalOfUser, type MirrorDeps} from "./deps";
 import {addEvent} from "./events";
 import {MirrorPolicyV1} from "./policy";
 import {stateOf, transition} from "./machine";
+import {advanceMirrorDeletes, type DeleteTick} from "./lifecycle";
 import {advanceMirrorWipes} from "./wipe";
 import {evaluateGates, handlers, type MirrorRow, type RevCtx, type RevRow} from "./steps";
 import {ACTIVE_REVISION_STATES, type MirrorStep, type RevisionState} from "./vocab";
@@ -169,8 +170,8 @@ export async function activateRevision(d: MirrorDeps, rev: RevRow, steps: StepRe
 }
 
 /** Every active revision, oldest first, then the wipe phase of every terminal one; one revision's failure never stops the next (messages are never read or logged). */
-export async function tickAllMirrors(d: MirrorDeps): Promise<{advanced: number; done: number; failed: number; busy: number; wipes: {advanced: number; verified: number; failed: number}}> {
-    const out = {advanced: 0, done: 0, failed: 0, busy: 0, wipes: {advanced: 0, verified: 0, failed: 0}};
+export async function tickAllMirrors(d: MirrorDeps): Promise<{advanced: number; done: number; failed: number; busy: number; wipes: {advanced: number; verified: number; failed: number}; deletes: DeleteTick}> {
+    const out = {advanced: 0, done: 0, failed: 0, busy: 0, wipes: {advanced: 0, verified: 0, failed: 0}, deletes: {advanced: 0, deleted: 0, failed: 0}};
     const ids = await d.db.select({id: forkMirrorRevision.id}).from(forkMirrorRevision).where(inArray(forkMirrorRevision.state, [...ACTIVE_REVISION_STATES])).orderBy(asc(forkMirrorRevision.createdAt));
     for (const {id} of ids) {
         try {
@@ -184,5 +185,6 @@ export async function tickAllMirrors(d: MirrorDeps): Promise<{advanced: number; 
         }
     }
     out.wipes = await advanceMirrorWipes(d);
+    out.deletes = await advanceMirrorDeletes(d); // W23: after the wipes, so a deleting mirror's non-ready revisions are already advanced
     return out;
 }

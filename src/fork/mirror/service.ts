@@ -26,7 +26,8 @@ import {addEvent} from "./events";
 import {transition} from "./machine";
 import {MirrorPolicyInput, resolvePolicy} from "./policy";
 import {toMirrorView, type MirrorView} from "./view";
-import {ACTIVE_REVISION_STATES, keepConfirmPhrase, PORT_RANGE, REFUSAL_MESSAGES, RUNNER_PRECHECK_MAX_AGE_MS, WIPE_REVISION_STATES, type RevisionState} from "./vocab";
+import {isWipeEligible} from "./wipe";
+import {ACTIVE_REVISION_STATES, keepConfirmPhrase, PORT_RANGE, REFUSAL_MESSAGES, RUNNER_PRECHECK_MAX_AGE_MS, type RevisionState} from "./vocab";
 
 /**
  * W22a services (plan A8). ONE pipeline like W18a: signed-in principal → strict input → config lock → resource-scoped capability (SEC-12: unknown and foreign resources are indistinguishable)
@@ -253,10 +254,52 @@ export async function retryMirrorWipe(d: MirrorDeps, raw: unknown): Promise<{ok:
     const r = await revisionGate(d, raw, "fork.mirror.wipe_retry", "mirrors.manage");
     if ("err" in r && r.err) return r.err;
     const {rev, g, audit} = r as Exclude<typeof r, {err: MirrorRefusal}>;
-    if (!(WIPE_REVISION_STATES as readonly string[]).includes(rev.state) || rev.wipeState !== "failed") { await audit("denied", {reason: "not_failed", state: rev.state, wipeState: rev.wipeState}, g.organizationId); return refuse("not_failed"); }
+    const [mir] = await d.db.select({status: forkMirror.status}).from(forkMirror).where(eq(forkMirror.id, rev.mirrorId));
+    if (!isWipeEligible(rev.state, mir?.status) || rev.wipeState !== "failed") { await audit("denied", {reason: "not_failed", state: rev.state, wipeState: rev.wipeState}, g.organizationId); return refuse("not_failed"); }
     const now = nowOf(d);
     await d.db.update(forkMirrorRevision).set({wipeState: null, wipeReason: null, wipeStartedAt: null, wipeFinishedAt: null, updatedAt: now}).where(and(eq(forkMirrorRevision.id, rev.id), eq(forkMirrorRevision.wipeState, "failed")));
     await audit("success", {revisionId: rev.id}, g.organizationId);
+    return {ok: true};
+}
+
+// ---- delete (W23, DD-6) -------------------------------------------------------------------------------------------------------------------
+export const DeleteMirrorRequest = z.strictObject({mirrorId: z.uuid(), confirmName: z.string().max(40)});
+export const MIRROR_OP_RATE = {limit: 10, windowMs: 60_000} as const;
+/** Statuses a mirror can be deleted from; `creating` must be cancelled first, `stopping` / `starting` / `deleting` are in flight. */
+const DELETABLE = ["ready", "failed", "cancelled", "stopped"] as const;
+
+/**
+ * Delete = a verified wipe of EVERY revision's runner copy (existing `mirror_wipe` + independent `mirror_probe`, ADR-009 §8), then `deleted_at` (name reusable, port freed). Allowed while configuration is locked and
+ * with the flag off (OD-W23-2: removing a production-data copy is always allowed, like the wipe). This call only marks the mirror `deleting`; the tick does the work.
+ */
+export async function deleteMirror(d: MirrorDeps, raw: unknown): Promise<{ok: true} | MirrorRefusal> {
+    const input = DeleteMirrorRequest.safeParse(raw);
+    const p = d.principal;
+    if (!p) return refuse("forbidden");
+    const audit = auditor(d, "fork.mirror.delete", "mirror", input.success ? input.data.mirrorId : null);
+    if (!input.success) { await audit("denied", {reason: "invalid_input"}); return refuse("invalid_input"); }
+    const g = await gate(d, "mirrors.manage", "mirror", input.data.mirrorId, audit);
+    if (!g.ok) return g;
+    const orgId = g.organizationId;
+    const deny = async (code: MirrorRefusalCode, extra: Partial<MirrorRefusal> = {}): Promise<MirrorRefusal> => { await audit("denied", {reason: code}, orgId); return refuse(code, extra); };
+    const now = nowOf(d);
+    const rl = (d.rate ?? checkRate)(`mirror-op:${p.userId}`, MIRROR_OP_RATE.limit, MIRROR_OP_RATE.windowMs, now.getTime());
+    if (!rl.ok) return deny("rate_limited", {retryAfterSeconds: rl.retryAfterSeconds});
+    const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, input.data.mirrorId));
+    if (!m) return refuse("not_found");
+    if (m.status === "deleting" || m.status === "deleted" || m.deletedAt) return {ok: true}; // idempotent
+    if (input.data.confirmName !== m.name) return deny("confirmation_mismatch");
+    const revs = await d.db.select({id: forkMirrorRevision.id, state: forkMirrorRevision.state}).from(forkMirrorRevision).where(eq(forkMirrorRevision.mirrorId, m.id));
+    if (m.status === "creating" || m.status === "stopping" || m.status === "starting" || revs.some((r) => (ACTIVE_REVISION_STATES as readonly string[]).includes(r.state))) return deny("mirror_busy");
+    if (!(DELETABLE as readonly string[]).includes(m.status)) return deny("mirror_state_invalid");
+    const done = await withForkLock(d.db, `mirror:${m.id}`, async (tx) => {
+        const rows = await tx.update(forkMirror).set({status: "deleting", updatedAt: now}).where(and(eq(forkMirror.id, m.id), eq(forkMirror.status, m.status))).returning({id: forkMirror.id});
+        if (rows.length !== 1) return false;
+        await addEvent(tx, {mirrorId: m.id, revisionId: null, kind: "state_changed", at: now, fromState: m.status, toState: "deleting", actor: {userId: p.userId}, details: {scope: "mirror"}});
+        await recordAudit(tx, {organizationId: orgId, actorUserId: p.userId, action: "fork.mirror.delete", resourceType: "mirror", resourceId: m.id, result: "success", now, details: {phase: "requested", revisionIds: revs.map((r) => r.id)}});
+        return true;
+    });
+    if (!done) return deny("mirror_busy");
     return {ok: true};
 }
 

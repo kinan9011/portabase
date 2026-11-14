@@ -1,6 +1,6 @@
 import {and, asc, eq, inArray, isNull, or} from "drizzle-orm";
 import {recordAudit} from "@/fork/audit";
-import {forkMirrorRevision} from "@/fork/db/schema/mirror";
+import {forkMirror, forkMirrorRevision} from "@/fork/db/schema/mirror";
 import {acquireLease, releaseLease} from "@/fork/locks";
 import {loadPlanRow} from "@/fork/restore/service";
 import {nowOf, ownerOf, type MirrorDeps} from "./deps";
@@ -16,6 +16,12 @@ import {MAX_EXPIRED_REENQUEUES, WIPE_BUDGET_MS} from "./vocab";
  * result alone is never trusted). Never touches the revision's `state` / `reason`. Needs no principal: removing a production-data copy is always allowed (flag off, config locked, starter demoted).
  */
 const WIPE_STATES = ["blocked", "failed", "cancelled"] as const;
+/**
+ * A terminal non-ready revision is always wiped. A READY revision (the running copy, W23) is wiped ONLY while its mirror is `deleting`: a live mirror's copy is never touched
+ * (hard rule, tested + mutation M1).
+ */
+export const isWipeEligible = (revState: string, mirrorStatus: string | null | undefined): boolean =>
+    (WIPE_STATES as readonly string[]).includes(revState) || (revState === "ready" && mirrorStatus === "deleting");
 export type WipeStep = "advanced" | "waiting" | "verified" | "not_needed" | "failed" | "gone" | "busy";
 const leaseName = (id: string) => `mirror-wipe:${id}`;
 const REASON_RE = /^[a-z_]{1,64}$/;
@@ -32,7 +38,9 @@ export async function advanceMirrorWipe(d: MirrorDeps, revisionId: string): Prom
 
 async function advanceLocked(d: MirrorDeps, revisionId: string, now: Date): Promise<WipeStep> {
     const [rev] = await d.db.select().from(forkMirrorRevision).where(eq(forkMirrorRevision.id, revisionId));
-    if (!rev || !(WIPE_STATES as readonly string[]).includes(rev.state)) return "gone";
+    if (!rev) return "gone";
+    const [mir] = await d.db.select({status: forkMirror.status}).from(forkMirror).where(eq(forkMirror.id, rev.mirrorId));
+    if (!isWipeEligible(rev.state, mir?.status)) return "gone";
     if (rev.wipeState !== null && rev.wipeState !== "running") return "gone";
     const audit = (result: "success" | "failure", details: Record<string, unknown>) => recordAudit(d.db, {organizationId: rev.organizationId, actorKind: "system", action: "fork.mirror.wipe", resourceType: "mirror", resourceId: rev.mirrorId, result, now, details: {revisionId: rev.id, ...details}});
 
@@ -55,7 +63,8 @@ async function advanceLocked(d: MirrorDeps, revisionId: string, now: Date): Prom
         return "not_needed";
     }
     // 2. deadline: counted from the arming (a never-armed wipe counts from the end of the creation)
-    const startedAt = rev.wipeStartedAt ?? rev.finishedAt ?? rev.createdAt;
+    // a READY copy's budget starts when its wipe is armed (its `finishedAt` is when it became ready, hours or days ago: an immediate `wipe_timeout`)
+    const startedAt = rev.wipeStartedAt ?? (rev.state === "ready" ? now : rev.finishedAt ?? rev.createdAt);
     if (now.getTime() > startedAt.getTime() + WIPE_BUDGET_MS) return fail("wipe_timeout");
 
     if (!rev.planId) return fail("internal_error");
