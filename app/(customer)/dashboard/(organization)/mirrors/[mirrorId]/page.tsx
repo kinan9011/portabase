@@ -6,7 +6,7 @@ import {appDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
 import {z} from "zod";
 import {forkEnv} from "@/fork/env";
-import {loadMirrorDetailExtras, loadMirrorLog} from "@/fork/mirror/list-view";
+import {loadMirrorDetailExtras, loadMirrorLog, loadMirrorRefreshFacts} from "@/fork/mirror/list-view";
 import {getMirrorView} from "@/fork/mirror/service";
 import {currentForkMode} from "@/fork/mode";
 import {getForkPrincipal} from "@/fork/principal";
@@ -54,8 +54,9 @@ export default async function MirrorPage(props: {params: Promise<{mirrorId: stri
     const now = new Date();
     let extras: Awaited<ReturnType<typeof loadMirrorDetailExtras>>;
     let log: Awaited<ReturnType<typeof loadMirrorLog>>;
+    let refreshFacts: Awaited<ReturnType<typeof loadMirrorRefreshFacts>>;
     try {
-        [extras, log] = await Promise.all([loadMirrorDetailExtras(db, mirrorId, {now, serverUrl: getServerUrl(), canManage}), loadMirrorLog(db, mirrorId)]);
+        [extras, log, refreshFacts] = await Promise.all([loadMirrorDetailExtras(db, mirrorId, {now, serverUrl: getServerUrl(), canManage}), loadMirrorLog(db, mirrorId), loadMirrorRefreshFacts(db, mirrorId)]);
     } catch {
         return <Page><PageContent><StateNotice testId="load-error" tone="danger" alert title={MIRRORS.detail.loadError.title} body={MIRRORS.detail.loadError.body}/></PageContent></Page>;
     }
@@ -64,7 +65,7 @@ export default async function MirrorPage(props: {params: Promise<{mirrorId: stri
             <PageContent>
                 <StatusAnnouncer>
                     <MirrorDetail initial={r.view} extras={extras} log={log} canManage={canManage} locked={forkBannerText(mode) !== null} flagOn={forkEnv().FORK_MIRRORS_ENABLED} now={now.toISOString()}
-                        staleAfterDays={forkEnv().FORK_MIRROR_START_STALE_DAYS} tab={tab}/>
+                        staleAfterDays={forkEnv().FORK_MIRROR_START_STALE_DAYS} tab={tab} refreshFacts={refreshFacts}/>
                 </StatusAnnouncer>
             </PageContent>
         </Page>

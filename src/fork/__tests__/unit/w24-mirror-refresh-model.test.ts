@@ -92,12 +92,13 @@ describe("UI model (W24): refreshing / rolling_back", () => {
         for (const s of ["refreshing", "rolling_back"]) expect(mirrorHealth(s, [{state: "exited", health: null}]), s).toBe("degraded");
         expect(mirrorHealth("starting", ok)).toBe("pending");
     });
-    it("no Stop / Start / Delete while refreshing or rolling back (visible reason); no Refresh / Rollback control exists in W24", () => {
+    it("no Stop / Start / Delete while refreshing or rolling back (visible reason); Refresh / Rollback carry the same busy reason (W25 added the keys)", () => {
         const can = {manage: true, locked: false, flagOn: true, stopStart: true};
         for (const status of ["refreshing", "rolling_back"]) {
             const a = mirrorActions({status, hasActiveRevision: true, activeCreation: false, wipeFailed: false}, can);
             expect(a.stop).toHaveProperty("reason"); expect(a.start).toHaveProperty("reason"); expect(a.delete).toHaveProperty("reason");
-            expect(Object.keys(a).sort()).toEqual(["cancel", "delete", "retryWipe", "start", "stop"]);
+            expect(a.refresh).toHaveProperty("reason"); expect(a.rollback).toHaveProperty("reason");
+            expect(Object.keys(a).sort()).toEqual(["cancel", "delete", "refresh", "retryWipe", "rollback", "start", "stop"]);
         }
     });
 });

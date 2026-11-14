@@ -30,16 +30,18 @@ export function mirrorHealth(status: string, services: readonly ServiceState[]):
 }
 
 export type Action = {hidden: true} | {enabled: true} | {reason: string};
-export type ActionKey = "stop" | "start" | "delete" | "cancel" | "retryWipe";
-export type MirrorFacts = {status: string; hasActiveRevision: boolean; activeCreation: boolean; wipeFailed: boolean};
+export type ActionKey = "stop" | "start" | "delete" | "cancel" | "retryWipe" | "refresh" | "rollback";
+/** `newerVerifiedCount` / `rollbackTargetCount` (W25) default to 0: without the facts Refresh / Roll back show their "nothing to do" reason. */
+export type MirrorFacts = {status: string; hasActiveRevision: boolean; activeCreation: boolean; wipeFailed: boolean; newerVerifiedCount?: number; rollbackTargetCount?: number};
 export type CanFacts = {manage: boolean; locked: boolean; flagOn: boolean; stopStart: boolean};
 const L = MIRRORS.lifecycle;
+const RR = MIRRORS.refresh.reasons;
 const BUSY = new Set(["stopping", "starting", "deleting", "refreshing", "rolling_back"]);
 
 /** DD-7. Members get nothing (read-only page). `hidden` = the action does not apply; `reason` = applies but is blocked now (visible reason, `aria-disabled`). */
 export function mirrorActions(m: MirrorFacts, can: CanFacts): Record<ActionKey, Action> {
     const hidden: Action = {hidden: true};
-    const none: Record<ActionKey, Action> = {stop: hidden, start: hidden, delete: hidden, cancel: hidden, retryWipe: hidden};
+    const none: Record<ActionKey, Action> = {stop: hidden, start: hidden, delete: hidden, cancel: hidden, retryWipe: hidden, refresh: hidden, rollback: hidden};
     if (!can.manage) return none;
     const out = {...none};
     if (m.activeCreation) out.cancel = {enabled: true};
@@ -50,9 +52,16 @@ export function mirrorActions(m: MirrorFacts, can: CanFacts): Record<ActionKey, 
         const wait = {reason: L.reasons.busy};
         out.delete = m.status === "deleting" ? {hidden: true} : wait;
         if (can.stopStart && m.status !== "deleting") { out.stop = wait; out.start = wait; }
+        if (m.status !== "deleting") { out.refresh = wait; out.rollback = wait; }
         return out;
     }
     out.delete = {enabled: true};
+    // W25 (plan A4): Refresh / Roll back apply to a running or stopped-but-not-failed-away mirror; first failing reason wins
+    const refreshBlock = !can.flagOn ? MIRRORS.list.flagOff : can.locked ? L.reasons.locked : m.status === "stopped" ? RR.startFirst : m.status !== "ready" ? RR.notReady : null;
+    if (m.status === "ready" || m.status === "stopped" || (m.status === "failed" && m.hasActiveRevision)) {
+        out.refresh = refreshBlock ? {reason: refreshBlock} : (m.newerVerifiedCount ?? 0) > 0 ? {enabled: true} : {reason: RR.noNewer};
+        out.rollback = refreshBlock ? {reason: refreshBlock} : (m.rollbackTargetCount ?? 0) > 0 ? {enabled: true} : {reason: RR.noTarget};
+    }
     if (can.stopStart) {
         if (m.status === "ready" || (m.status === "failed" && m.hasActiveRevision)) out.stop = {enabled: true};
         if (m.status === "stopped") out.start = !can.flagOn ? {reason: MIRRORS.list.flagOff} : can.locked ? {reason: L.reasons.startLocked} : {enabled: true};

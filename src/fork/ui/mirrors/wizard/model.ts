@@ -93,7 +93,7 @@ export function createBlockReason(s: {preview: PreviewUi | null; ack: boolean; n
 
 /** The progress poll stops: the latest revision is `ready`, or terminal with its wipe over (`verified`, `not_needed` or `failed` = needs a human). */
 export function settled(view: MirrorView): boolean {
-    if (["deleting", "stopping", "starting"].includes(view.mirror.status)) return false; // W23: a lifecycle action is in flight
+    if (["deleting", "stopping", "starting", "refreshing", "rolling_back"].includes(view.mirror.status)) return false; // W23 / W25 (F-1): a lifecycle action is in flight (the newest revision may already be `ready` while the route switch is pending)
     const r = view.revisions[0];
     if (!r) return true;
     if (r.state === "ready") return true;

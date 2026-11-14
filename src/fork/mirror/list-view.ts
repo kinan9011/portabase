@@ -1,10 +1,11 @@
-import {and, asc, desc, eq, inArray, isNull, max, sql} from "drizzle-orm";
+import {and, asc, count, desc, eq, inArray, isNull, max, sql} from "drizzle-orm";
 import {z} from "zod";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkMirror, forkMirrorEvent, forkMirrorRevision, forkMirrorTask} from "@/fork/db/schema/mirror";
 import {forkAgentTask} from "@/fork/db/schema/agent-channel";
 import {forkRecoveryPoint} from "@/fork/db/schema/recovery";
 import {forkStack} from "@/fork/db/schema/stack";
+import {RP_STATUSES} from "@/fork/recovery/status";
 import {runnerIsolation} from "@/fork/runner/service";
 import {mirrorHealth, HEALTHS} from "@/fork/ui/mirrors/model";
 import {eventTitle, taskTitle} from "@/fork/ui/mirrors/labels";
@@ -80,8 +81,8 @@ export const MirrorDetailExtras = z.strictObject({
     }),
     runnerIsolation: z.strictObject({state: z.enum(["isolated", "not_isolated", "unknown"]), probedAt: z.string().nullable(), reason: z.string().nullable()}),
     facet: z.strictObject({readiedAt: z.string(), rpSequence: z.number().int()}).nullable(),
-    /** outcome of the newest stop / start attempt (a mirror-scoped event into `stopped` or `failed`): status + closed code + time; shown only while the mirror is still in that status */
-    lastOp: z.strictObject({status: z.enum(["stopped", "failed"]), code: z.string().nullable(), at: z.string()}).nullable(),
+    /** W25 (DD-11): the newest mirror-scoped state change IF it carried a failure code (stop / start / refresh / rollback outcome): the status it ended in, the status it came from (a string, never an enum: an unexpected value must not break the page), closed code, time. Shown only while the mirror is still in that status. */
+    lastOp: z.strictObject({status: z.string(), from: z.string().nullable().optional(), code: z.string().nullable(), at: z.string()}).nullable(),
 });
 export type MirrorDetailExtras = z.infer<typeof MirrorDetailExtras>;
 
@@ -102,8 +103,8 @@ export async function loadMirrorDetailExtras(db: ForkDb, mirrorId: string, o: {n
     const active = revs.find((r) => r.id === m.activeRevisionId) ?? revs[0];
     const iso = m.runnerAgentId ? await runnerIsolation(db, m.runnerAgentId, {now: o.now, maxAgeMs: RUNNER_PRECHECK_MAX_AGE_MS, serverUrl: o.serverUrl}) : null;
     const fact = await startTestedFact(db, m.stackId);
-    const [op] = await db.select({toState: forkMirrorEvent.toState, code: forkMirrorEvent.code, at: forkMirrorEvent.at}).from(forkMirrorEvent)
-        .where(and(eq(forkMirrorEvent.mirrorId, mirrorId), eq(forkMirrorEvent.kind, "state_changed"), inArray(forkMirrorEvent.toState, ["stopped", "failed"]), sql`details->>'scope' = 'mirror'`)).orderBy(desc(forkMirrorEvent.at)).limit(1);
+    const [op] = await db.select({toState: forkMirrorEvent.toState, fromState: forkMirrorEvent.fromState, code: forkMirrorEvent.code, at: forkMirrorEvent.at}).from(forkMirrorEvent)
+        .where(and(eq(forkMirrorEvent.mirrorId, mirrorId), eq(forkMirrorEvent.kind, "state_changed"), sql`details->>'scope' = 'mirror'`)).orderBy(desc(forkMirrorEvent.at)).limit(1);
     return MirrorDetailExtras.parse({
         stack: {id: m.stackId, name: m.stackName}, rpDates,
         config: {
@@ -116,8 +117,19 @@ export async function loadMirrorDetailExtras(db: ForkDb, mirrorId: string, o: {n
             : iso.state === "not_isolated" ? {state: "not_isolated", probedAt: iso.probedAt?.toISOString() ?? null, reason: null}
             : {state: "unknown", probedAt: null, reason: codeOrNull(iso.reason)},
         facet: fact ? {readiedAt: fact.readiedAt.toISOString(), rpSequence: fact.rpSequence} : null,
-        lastOp: op && (op.toState === "stopped" || op.toState === "failed") ? {status: op.toState, code: codeOrNull(op.code), at: op.at.toISOString()} : null,
+        lastOp: op && op.toState && codeOrNull(op.code) ? {status: op.toState, from: op.fromState, code: codeOrNull(op.code), at: op.at.toISOString()} : null,
     });
+}
+
+/** W25 (DD-10): how many strictly newer verified, unpurged backups of the mirror's app exist (the Refresh button's enable rule; the same predicate as `previewMirrorRefresh` / `refreshMirror`). */
+export async function loadMirrorRefreshFacts(db: ForkDb, mirrorId: string): Promise<{newerVerifiedCount: number}> {
+    const [m] = await db.select({stackId: forkMirror.stackId, activeRevisionId: forkMirror.activeRevisionId}).from(forkMirror).where(eq(forkMirror.id, mirrorId));
+    if (!m) throw new Error("mirror_not_found");
+    const [active] = m.activeRevisionId ? await db.select({rpSequence: forkMirrorRevision.rpSequence}).from(forkMirrorRevision).where(eq(forkMirrorRevision.id, m.activeRevisionId)) : [];
+    if (!active) return {newerVerifiedCount: 0};
+    const [n] = await db.select({n: count()}).from(forkRecoveryPoint)
+        .where(and(eq(forkRecoveryPoint.stackId, m.stackId), eq(forkRecoveryPoint.status, RP_STATUSES[2]), isNull(forkRecoveryPoint.purgedAt), sql`${forkRecoveryPoint.sequence} > ${Number(active.rpSequence)}`));
+    return {newerVerifiedCount: Number(n?.n ?? 0)};
 }
 
 export const MirrorLogEntry = z.strictObject({

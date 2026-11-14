@@ -1,10 +1,11 @@
 import {randomUUID} from "node:crypto";
-import {and, eq, gte, inArray, isNotNull, isNull, sql} from "drizzle-orm";
+import {and, desc, eq, gte, inArray, isNotNull, isNull, sql} from "drizzle-orm";
 import {z} from "zod";
 import {actorIn, ForkForbiddenError, ForkNotFoundError, forkCan, type ForkPrincipal, type ForkResourceKind} from "@/fork/acl";
 import {recordAudit} from "@/fork/audit";
 import type {ForkDb} from "@/fork/db/handle";
-import {forkMirror, forkMirrorEvent, forkMirrorRevision} from "@/fork/db/schema/mirror";
+import {forkAgentTask} from "@/fork/db/schema/agent-channel";
+import {forkMirror, forkMirrorEvent, forkMirrorRevision, forkMirrorTask} from "@/fork/db/schema/mirror";
 import {forkRecoveryPoint} from "@/fork/db/schema/recovery";
 import {forkRestorePlan} from "@/fork/db/schema/restore";
 import {forkStack} from "@/fork/db/schema/stack";
@@ -20,15 +21,17 @@ import {EMPTY_MAPPINGS} from "@/fork/restore/schema";
 import {PLAN_VERSION} from "@/fork/restore/vocab";
 import {adminTargetCount, runnerIsolation, assertRunnerTarget} from "@/fork/runner/service";
 import {initialSteps} from "@/fork/runs/engine";
-import {allocatePort, deriveMirrorSteps} from "./derive";
+import {neededBytes} from "@/fork/restore-run/derive";
+import {allocatePort, capacityFacts, deriveMirrorSteps} from "./derive";
 import {maxRunMsOf, enabledOf, nowOf, type MirrorDeps} from "./deps";
 import {addEvent} from "./events";
 import {transition} from "./machine";
 import {MirrorPolicyInput, resolvePolicy} from "./policy";
+import {PreviewRefreshRequest, REFRESH_CANDIDATES_MAX, RefreshPreview} from "./refresh-preview";
 import {toMirrorView, type MirrorView} from "./view";
 import {nextMirrorStatus, opOf} from "./lifecycle";
 import {isWipeEligible} from "./wipe";
-import {ACTIVE_REVISION_STATES, keepConfirmPhrase, PORT_RANGE, REFUSAL_MESSAGES, RUNNER_PRECHECK_MAX_AGE_MS, type RevisionState} from "./vocab";
+import {ACTIVE_REVISION_STATES, CAPACITY_DISK_FACTOR, keepConfirmPhrase, LIMIT_DEFAULTS, PORT_RANGE, REFUSAL_MESSAGES, RUNNER_PRECHECK_MAX_AGE_MS, type RevisionState} from "./vocab";
 
 /**
  * W22a services (plan A8). ONE pipeline like W18a: signed-in principal → strict input → config lock → resource-scoped capability (SEC-12: unknown and foreign resources are indistinguishable)
@@ -554,6 +557,72 @@ export async function rollbackMirror(d: MirrorDeps, raw: unknown): Promise<{ok: 
     if (done === "port") return deny("port_unavailable");
     if (done === "lost") return deny("mirror_busy");
     return {ok: true};
+}
+
+// ---- refresh preview (W25 DD-1/2/3/4: read-only, writes nothing) -----------------------------------------------------------------------------
+/**
+ * What the Refresh dialog shows BEFORE the destructive call: the strictly newer verified backups (the same rule as `refreshMirror`, OD-W24-2), the plan outcome / blockers of the selected one, the space
+ * it needs (`ceil(plaintext need × 1.1)`), the memory both revisions need, whether the app definition changed, and the runner's LAST REPORTED free disk / memory (newest succeeded `mirror_probe`).
+ * Same trust pipeline as `previewMirrorPlan`: signed-in → strict input → resource-scoped `mirrors.manage` → flag. Writes nothing; audits only denials (`fork.mirror.refresh_preview`).
+ */
+export async function previewMirrorRefresh(d: MirrorDeps, raw: unknown): Promise<{ok: true; preview: RefreshPreview} | MirrorRefusal> {
+    const input = PreviewRefreshRequest.safeParse(raw);
+    if (!d.principal) return refuse("forbidden");
+    const audit = auditor(d, "fork.mirror.refresh_preview", "mirror", input.success ? input.data.mirrorId : null);
+    if (!input.success) { await audit("denied", {reason: "invalid_input"}); return refuse("invalid_input"); }
+    const req = input.data;
+    const g = await gate(d, "mirrors.manage", "mirror", req.mirrorId, audit);
+    if (!g.ok) return g;
+    const orgId = g.organizationId;
+    const deny = async (code: MirrorRefusalCode, extra: Partial<MirrorRefusal> = {}): Promise<MirrorRefusal> => { await audit("denied", {reason: code}, orgId); return refuse(code, extra); };
+    if (!enabledOf(d)) return deny("mirrors_disabled");
+    const now = nowOf(d);
+    const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, req.mirrorId));
+    if (!m || m.deletedAt) return refuse("not_found");
+    if (m.status !== "ready" || !m.activeRevisionId || !m.runnerAgentId) return deny("mirror_state_invalid");
+    const [activeRev] = await d.db.select().from(forkMirrorRevision).where(eq(forkMirrorRevision.id, m.activeRevisionId));
+    const [stack] = await d.db.select().from(forkStack).where(eq(forkStack.id, m.stackId));
+    if (!activeRev || !stack || stack.organizationId !== orgId) return refuse("not_found");
+    const rpCols = {id: forkRecoveryPoint.id, sequence: forkRecoveryPoint.sequence, createdAt: forkRecoveryPoint.createdAt, verifiedAt: forkRecoveryPoint.verifiedAt, inventoryHash: forkRecoveryPoint.inventoryHash};
+    const cands = await d.db.select(rpCols).from(forkRecoveryPoint)
+        .where(and(eq(forkRecoveryPoint.stackId, m.stackId), eq(forkRecoveryPoint.status, RP_STATUSES[2]), isNull(forkRecoveryPoint.purgedAt), sql`${forkRecoveryPoint.sequence} > ${Number(activeRev.rpSequence)}`))
+        .orderBy(desc(forkRecoveryPoint.sequence)).limit(REFRESH_CANDIDATES_MAX);
+    let sel: (typeof cands)[number] | undefined;
+    if (req.rpId !== null) {
+        sel = cands.find((c) => c.id === req.rpId);
+        if (!sel) {
+            const [rp] = await d.db.select({stackId: forkRecoveryPoint.stackId, purgedAt: forkRecoveryPoint.purgedAt, status: forkRecoveryPoint.status}).from(forkRecoveryPoint).where(eq(forkRecoveryPoint.id, req.rpId));
+            if (!rp || rp.stackId !== m.stackId) return deny("not_found");
+            return deny(rp.purgedAt !== null ? "rp_purged" : rp.status !== RP_STATUSES[2] ? "rp_not_verified" : "rp_not_newer");
+        }
+    }
+    const [{seq: maxSeq}] = await d.db.select({seq: sql<number>`coalesce(max(${forkMirrorRevision.seq}), 0)::int`}).from(forkMirrorRevision).where(eq(forkMirrorRevision.mirrorId, m.id)) as [{seq: number}];
+    const [activeRp] = activeRev.rpId ? await d.db.select(rpCols).from(forkRecoveryPoint).where(eq(forkRecoveryPoint.id, activeRev.rpId)) : [];
+    const pol = (m.policy ?? {}) as {limits?: {mem_bytes?: unknown}};
+    const memLimit = typeof pol.limits?.mem_bytes === "number" && pol.limits.mem_bytes > 0 ? pol.limits.mem_bytes : LIMIT_DEFAULTS.mem_bytes;
+    const memNeedBytes = memLimit * Math.max(1, Array.isArray(activeRev.services) ? activeRev.services.length : 1);
+    let selected: RefreshPreview["selected"] = null;
+    if (sel) {
+        const plan = await mirrorPlan(d, d.db, {rpId: sel.id, runnerAgentId: m.runnerAgentId, project: `pbm-${m.name}-r${Number(maxSeq) + 1}`, organizationId: orgId, now});
+        if (!plan.ok) return deny(plan.code);
+        const pl = plan.result.plan;
+        const sized = pl.actions.filter((a) => a.op !== "skip" && a.artifact_ids[0] !== undefined);
+        selected = {rpId: sel.id, sequence: Number(sel.sequence), outcome: pl.outcome, blockers: pl.blockers.slice(0, 20), requiredDiskBytes: Math.ceil(neededBytes(pl) * CAPACITY_DISK_FACTOR),
+            sizeUnknown: sized.some((a) => a.expect.plaintext_size === null), memNeedBytes, appChanged: activeRp?.inventoryHash && sel.inventoryHash ? activeRp.inventoryHash !== sel.inventoryHash : null};
+    }
+    // last REPORTED capacity of the runner: the newest succeeded probe of any revision of this mirror (never a live value)
+    const [probe] = await d.db.select({result: forkAgentTask.result, finishedAt: forkAgentTask.finishedAt, createdAt: forkAgentTask.createdAt}).from(forkMirrorTask)
+        .innerJoin(forkMirrorRevision, eq(forkMirrorRevision.id, forkMirrorTask.revisionId)).innerJoin(forkAgentTask, eq(forkAgentTask.id, forkMirrorTask.taskId))
+        .where(and(eq(forkMirrorRevision.mirrorId, m.id), eq(forkMirrorTask.step, "probe"), eq(forkAgentTask.status, "succeeded")))
+        .orderBy(sql`${forkAgentTask.finishedAt} desc nulls last`).limit(1);
+    const facts = probe ? capacityFacts(probe.result, forkEnv().FORK_MIRROR_ROOT) : null;
+    const iso = (x: Date | null | undefined) => (x ? x.toISOString() : null);
+    return {ok: true, preview: RefreshPreview.parse({
+        mirror: {name: m.name, status: m.status, activeSeq: activeRev.seq, activeRpSequence: Number(activeRev.rpSequence), activeRpAt: iso(activeRp?.createdAt), activeSince: iso(activeRev.activatedAt ?? activeRev.readiedAt)},
+        candidates: cands.map((c) => ({id: c.id, sequence: Number(c.sequence), createdAt: c.createdAt.toISOString(), verifiedAt: iso(c.verifiedAt)})), selected,
+        lastCapacity: probe && facts ? {freeDiskBytes: facts.free, memAvailableBytes: facts.mem, at: (probe.finishedAt ?? probe.createdAt).toISOString()} : null,
+        containsPersonalData: stack.containsPersonalData,
+    })};
 }
 
 // ---- read model + access ------------------------------------------------------------------------------------------------------------------
