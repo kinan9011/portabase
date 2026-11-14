@@ -1,0 +1,2 @@
+meta skuid != "systemd-resolve" udp dport 53 drop
+meta skuid != "systemd-resolve" tcp dport 53 drop

@@ -83,6 +83,12 @@ export async function updateEnvironment(d: ServiceDeps, raw: unknown): Promise<E
             await audit("denied", organizationId, {reason: "agent-not-available"});
             return refuse("invalid_input", "That agent is not available for this organization.");
         }
+        // FORK(w21): a designated mirror runner is a dedicated host and never an Arcane environment's agent (ADR-008 DD-1/DD-2)
+        const runner = await d.db.execute(sql`select 1 from fork_runner where agent_id = ${input.agentId}`);
+        if (runner.rows.length) {
+            await audit("denied", organizationId, {reason: "agent-is-runner"});
+            return refuse("invalid_input", "That agent is a mirror runner, so it cannot be mapped to an Arcane environment.");
+        }
         agentName = String((r.rows[0] as {name: string}).name).slice(0, 256);
     } else if (input.agentId === null) {
         agentName = null;

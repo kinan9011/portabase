@@ -159,7 +159,7 @@ describe("W28: upgrade from the R1 build (fork/w14b-done) to the merged tree", (
         expect(dump2).toHaveBeenCalledTimes(1);
         expect(order).toEqual([R1_FORK_COUNT]);
         expect(await forkRows()).toBe(N);
-        expect(N).toBe(17);
+        expect(N).toBe(18); // W21 added 0017_runner (was 17)
 
         // 6. preservation: R1 columns of every R1 row byte-identical, counts equal
         for (const [table, s] of Object.entries(before)) {

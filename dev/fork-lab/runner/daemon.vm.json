@@ -1,0 +1,11 @@
+{
+  "bridge": "none",
+  "default-address-pools": [{"base": "10.213.0.0/16", "size": 24}],
+  "dns": ["192.0.2.53"],
+  "ipv6": false,
+  "log-driver": "local",
+  "log-opts": {"max-size": "10m", "max-file": "3"},
+  "default-ulimits": {"nofile": {"Name": "nofile", "Soft": 65536, "Hard": 65536}},
+  "cgroup-parent": "pbm-mirrors.slice",
+  "live-restore": false
+}

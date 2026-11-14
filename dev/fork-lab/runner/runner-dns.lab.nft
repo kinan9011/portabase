@@ -1,0 +1,2 @@
+udp dport 53 drop
+tcp dport 53 drop

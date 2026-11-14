@@ -6,12 +6,13 @@ import {describe, expect, it} from "vitest";
 import {verifyEnvelope, type Envelope} from "@/fork/agent-channel/envelope";
 import {encryptPayload, payloadSha256} from "@/fork/agent-channel/payload";
 import {validatePayload} from "@/fork/agent-channel/tasks";
-import {COMPOSE_TASK_TYPES, QUIESCE_TASK_TYPES, RESTORE_TASK_TYPES, SIGN_DOMAIN, TEST_RESTORE_TASK_TYPES, TASK_REQUIRES, TARGETED_TASK_TYPES} from "@/fork/agent-channel/vocab";
+import {COMPOSE_TASK_TYPES, QUIESCE_TASK_TYPES, RESTORE_TASK_TYPES, RUNNER_CAPABILITY, RUNNER_TASK_TYPES, SIGN_DOMAIN, TEST_RESTORE_TASK_TYPES, TASK_REQUIRES, TARGETED_TASK_TYPES} from "@/fork/agent-channel/vocab";
 import {canonicalJson} from "@/fork/canonical";
 import {buildManifest} from "@/fork/manifest/build";
 import {signManifest} from "@/fork/manifest/sign";
 import {verifyManifestBundle} from "@/fork/manifest/verify";
 import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
+import {RunnerProbePayload} from "@/fork/runner/payload-schema";
 import {testKeypair} from "@/fork/__tests__/w14-fixtures";
 
 /**
@@ -42,6 +43,8 @@ const samples = {
     compose_up: {...header(), manifest_sha256: HEX("b"), compose: composeRef(), compose_sha256: HEX("c"), approval: null, volumes: ["app_appdata"]},
     // W-TR (ADR-007 A16): engine integrity checks of a data-only TEST restore
     restore_verify: {...header({purpose: "test_restore", mode: "new_stack"}), manifest_sha256: HEX("b"), checks: [{index: 0, engine: "sqlite"}, {index: 1, engine: "postgresql"}]},
+    // W21 (ADR-008): runner isolation probe
+    runner_probe: {v: 1, probe_id: "99999999-9999-4999-8999-999999999999", targets_sha256: HEX("d"), timeout_ms: 1500, targets: [{id: "t01", kind: "tcp", host: "10.20.30.40", port: 25}, {id: "t02", kind: "dns_tcp", host: "10.20.30.53", port: 53}, {id: "t03", kind: "dns_name", host: "example.com"}]},
 } as const;
 const ALL_TYPES = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES] as const;
 
@@ -103,6 +106,55 @@ function payloadCases(): PCase[] {
     return out;
 }
 
+/** W21: shared forged-input corpus of the `runner_probe` payload. The TS schema and the Rust `validate()` must AGREE on every row (`valid`). */
+function runnerPayloadCases(): {name: string; payload: unknown; valid: boolean}[] {
+    const ok = samples.runner_probe;
+    const t = (o: Record<string, unknown>) => ({id: "t01", kind: "tcp", host: "10.20.30.40", port: 25, ...o});
+    const withTargets = (targets: unknown[]) => ({...ok, targets});
+    const many = (n: number) => Array.from({length: n}, (_, i) => t({id: `t${String(i).padStart(2, "0")}`}));
+    const c = (name: string, payload: unknown, valid = false) => ({name, payload, valid});
+    return [
+        c("valid_full", ok, true),
+        c("valid_ipv6_tcp", withTargets([t({host: "2001:db8::1"})]), true),
+        c("valid_32_targets", withTargets(many(32)), true),
+        c("valid_timeout_min", {...ok, timeout_ms: 500}, true),
+        c("valid_timeout_max", {...ok, timeout_ms: 5000}, true),
+        c("host_semicolon", withTargets([t({host: "1.2.3.4;id"})])),
+        c("host_command_substitution", withTargets([t({host: "$(id)"})])),
+        c("host_newline", withTargets([t({host: "1.2.3.4\n5.6.7.8"})])),
+        c("hostname_uppercase", withTargets([{id: "t01", kind: "dns_name", host: "Example.com"}])),
+        c("hostname_trailing_dot", withTargets([{id: "t01", kind: "dns_name", host: "example.com."}])),
+        c("hostname_single_label", withTargets([{id: "t01", kind: "dns_name", host: "localhost"}])),
+        c("hostname_underscore", withTargets([{id: "t01", kind: "dns_name", host: "a_b.example.com"}])),
+        c("ip_for_dns_name", withTargets([{id: "t01", kind: "dns_name", host: "10.0.0.1"}])),
+        c("hostname_for_tcp", withTargets([t({host: "example.com"})])),
+        c("tcp_port_zero", withTargets([t({port: 0})])),
+        c("tcp_port_65536", withTargets([t({port: 65536})])),
+        c("tcp_port_missing", withTargets([{id: "t01", kind: "tcp", host: "10.20.30.40"}])),
+        c("dns_name_with_port", withTargets([{id: "t01", kind: "dns_name", host: "example.com", port: 53}])),
+        c("loopback_v4", withTargets([t({host: "127.0.0.1"})])),
+        c("unspecified_v4", withTargets([t({host: "0.0.0.0"})])),
+        c("link_local_v4", withTargets([t({host: "169.254.169.254"})])),
+        c("multicast_v4", withTargets([t({host: "224.0.0.1"})])),
+        c("loopback_v6", withTargets([t({host: "::1"})])),
+        c("link_local_v6", withTargets([t({host: "fe80::1"})])),
+        c("mapped_v6", withTargets([t({host: "::ffff:10.0.0.1"})])),
+        c("duplicate_id", withTargets([t({id: "t01"}), t({id: "t01", port: 26})])),
+        c("id_uppercase", withTargets([t({id: "T01"})])),
+        c("id_too_long", withTargets([t({id: "abcdefghi"})])),
+        c("too_many_targets", withTargets(many(33))),
+        c("no_targets", withTargets([])),
+        c("timeout_499", {...ok, timeout_ms: 499}),
+        c("timeout_5001", {...ok, timeout_ms: 5001}),
+        c("unknown_top_field", {...ok, extra: 1}),
+        c("unknown_target_field", withTargets([t({extra: 1})])),
+        c("version_2", {...ok, v: 2}),
+        c("probe_id_not_uuid", {...ok, probe_id: "nope"}),
+        c("sha_not_hex64", {...ok, targets_sha256: "abc"}),
+        c("kind_unknown", withTargets([t({kind: "udp"})])),
+    ];
+}
+
 function buildVectors() {
     const k = testKeypair(), other = testKeypair();
     const taskKey = randomBytes(32);
@@ -132,6 +184,21 @@ function buildVectors() {
     cases.push({name: "restore_verify_targeted_ok", expect: "ok", ...mk("restore_verify")});
     cases.push({name: "restore_verify_without_target", expect: "target_mismatch", ...mk("restore_verify", {omitTarget: true})});
     cases.push({name: "compose_down_unknown_type", expect: "unsupported_type", ...mk("compose_down", {requires: ["compose.render.v1"], target_agent_id: AGENT}, Buffer.from("{}"))});
+
+    // ---- W21 role gating (ADR-008 DD-3): an agent's role comes from its reported capabilities ----
+    cases.push({name: "runner_probe_on_non_runner", expect: "role_forbidden", ...mk("runner_probe")});
+    const runnerCases = [
+        {name: "runner_probe_ok", expect: "ok", ...mk("runner_probe")},
+        {name: "runner_probe_without_target", expect: "target_mismatch", ...mk("runner_probe", {omitTarget: true})},
+        {name: "noop_on_runner", expect: "ok", ...mk("noop", {}, Buffer.from('{"echo":"hi"}'))},
+        {name: "pin_add_on_runner", expect: "ok", ...mk("pin_add", {}, Buffer.from("{}"))},
+        {name: "restore_probe_on_runner", expect: "role_forbidden", ...mk("restore_probe")},
+        {name: "restore_stage_on_runner", expect: "role_forbidden", ...mk("restore_stage")},
+        {name: "compose_up_on_runner", expect: "role_forbidden", ...mk("compose_up")},
+        {name: "quiesce_on_runner", expect: "role_forbidden", ...mk("quiesce", {}, Buffer.from("{}"))},
+        {name: "restore_verify_on_runner", expect: "role_forbidden", ...mk("restore_verify")},
+        {name: "unknown_type_on_runner_is_unsupported", expect: "unsupported_type", ...mk("compose_down", {requires: ["compose.render.v1"], target_agent_id: AGENT}, Buffer.from("{}"))},
+    ];
 
     // ---- manifest cases (RSA PKCS#1 v1.5 / SHA-256 over the RAW bytes, no domain prefix) ----
     const art = {sourceName: "volume_app_data", engine: "docker-volume", archiveKind: "archive_enc", dumpFormat: null, archiveFormatVersion: 1, encrypted: true, channelId: null, channelKind: "s3", pathOrSnapshotId: "backups/a/vol.tar.gz.enc", generatedId: "g1",
@@ -177,7 +244,8 @@ function buildVectors() {
     return {note: "TEST-ONLY keys and data. Generated by dashboard src/fork/__tests__/unit/w17-restore-task-vectors.test.ts (W17_VECTORS_OUT=…). The Rust agent decides exactly like this.",
         now: NOW, agent_id: AGENT, enroll_id: ENROLL, own_capabilities: own, pins: [{kid: k.kid, pem: k.publicKey}], task_key_b64: taskKey.toString("base64"),
         ids: {stack_id: STACK, rp_id: RP, restore_id: RESTORE, plan_id: PLAN},
-        codes: [...RESTORE_REASONS], types: Object.fromEntries([...ALL_TYPES, ...QUIESCE_TASK_TYPES].map((t) => [t, [...TASK_REQUIRES[t]]])), targeted: [...TARGETED_TASK_TYPES],
+        codes: [...RESTORE_REASONS], types: Object.fromEntries([...ALL_TYPES, ...QUIESCE_TASK_TYPES, ...RUNNER_TASK_TYPES].map((t) => [t, [...TASK_REQUIRES[t]]])), targeted: [...TARGETED_TASK_TYPES],
+        runner: {capabilities: ["channel.v1", "noop.v1", "channel-maint.v1", RUNNER_CAPABILITY], cases: runnerCases, payload_cases: runnerPayloadCases()},
         cases, stage_world, payload_cases: payloadCases(), manifest_artifacts: [art, db].map((a) => ({source_name: a.sourceName, plaintext_sha256: a.plaintextSha256, plaintext_size: a.plaintextSize, dump_format: a.dumpFormat})), manifests};
 }
 const VECTORS = path.join(process.cwd(), "src/fork/__tests__/fixtures/restore-task-vectors.json");
@@ -212,11 +280,21 @@ describe("W17-i cross-language vectors", () => {
         expect(r.ok).toBe(true);
         if (r.ok) expect(r.manifest.artifacts.map((a) => a.plaintext_sha256)).toEqual(JSON.parse(readFileSync(path.join(process.cwd(), "scripts/fork/recover/fixtures/fixtures.json"), "utf8")).fixtures.map((f: {plaintext_sha256: string}) => f.plaintext_sha256).reverse());
     });
+    it("runner envelopes verify under the TS reference verifier; the runner capability set is exactly the four runner capabilities", () => {
+        const v = load();
+        expect(v.runner.capabilities).toEqual(["channel.v1", "noop.v1", "channel-maint.v1", "runner.v1"]);
+        for (const c of v.runner.cases) expect(verifyEnvelope(c.envelope, c.signature, v.pins).ok, c.name).toBe(true);
+    });
+    it("runner payload cases: the TS schema accepts exactly the valid ones (the Rust validate() asserts the same rows)", () => {
+        const v = load();
+        expect(v.runner.payload_cases.length).toBeGreaterThanOrEqual(35);
+        for (const c of v.runner.payload_cases) expect(RunnerProbePayload.safeParse(c.payload).success, c.name).toBe(c.valid);
+    });
     it("codes and types in the vectors equal the dashboard's lists", () => {
         const v = load();
         expect(v.codes).toEqual([...RESTORE_REASONS]);
-        expect(Object.keys(v.types).sort()).toEqual([...ALL_TYPES, ...QUIESCE_TASK_TYPES].sort()); // W17b: the agent compares this key set with its `TARGETED` list
-        expect(v.targeted).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES]);
+        expect(Object.keys(v.types).sort()).toEqual([...ALL_TYPES, ...QUIESCE_TASK_TYPES, ...RUNNER_TASK_TYPES].sort()); // W17b: the agent compares this key set with its `TARGETED` list
+        expect(v.targeted).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES, ...RUNNER_TASK_TYPES]);
         expect(v.codes).toHaveLength(47); // 34 + the 11 W17b quiesce codes + the 2 W-TR codes (appended, agent order)
     });
 });
