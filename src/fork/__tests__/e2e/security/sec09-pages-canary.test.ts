@@ -52,7 +52,7 @@ describe("SEC-09 pages canary (real build)", () => {
         const base = second.base;
         const admin = await signIn(base);
         const pages = ["/dashboard/integrations", "/dashboard/integrations/agent-channel", "/dashboard/integrations/recovery-kit", "/dashboard/stacks", `/dashboard/stacks/${w.stack}`, `/dashboard/stacks/${w.stack}/configure`,
-            "/dashboard/recovery", "/dashboard/recovery/new", `/dashboard/recovery/new?step=backup&stack=${w.stack}`, `/dashboard/recovery/plans/${plan.planId}`, `/dashboard/recovery/runs/${runId}`];
+            "/dashboard/recovery", "/dashboard/recovery/new", `/dashboard/recovery/new?step=backup&stack=${w.stack}`, `/dashboard/recovery/plans/${plan.planId}`, `/dashboard/recovery/runs/${runId}`, `/dashboard/mirrors/new?stack=${w.stack}`];
         const rsc = (p: string) => fetch(`${base}${p}`, {headers: {cookie: admin, RSC: "1"}}).then((r) => r.text());
         const leaks: string[] = [];
         for (const p of pages) {
