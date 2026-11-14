@@ -150,6 +150,13 @@ async function ownRender(ctx: RevCtx, type: "mirror_render" | "mirror_finalize",
     return row && row.taskId === taskId ? row : null;
 }
 
+/** The ACTIVE revision's id + workspace (the test-credential seed of a refresh revision is copied from there on the runner). */
+async function activeSeedFrom(c: RevCtx): Promise<{revisionId: string; workspace: string} | undefined> {
+    if (!c.mirror.activeRevisionId) return undefined;
+    const [a] = await c.d.db.select({id: forkMirrorRevision.id, workspace: forkMirrorRevision.workspace}).from(forkMirrorRevision).where(eq(forkMirrorRevision.id, c.mirror.activeRevisionId));
+    return a ? {revisionId: a.id, workspace: a.workspace} : undefined;
+}
+
 /** Services of the mirror's ACTIVE revision (≥ 1): the new revision is assumed to need as many as the running one (RAM preflight, OD-W24-5). */
 async function activeServiceCount(c: RevCtx): Promise<number> {
     if (!c.mirror.activeRevisionId) return 1;
@@ -209,9 +216,12 @@ export function handlers(ctx0: RevCtx): Handlers<MirrorStep, RevCtx> {
                 details: {revisionId: c.rev.id, specSha256: r.spec_sha256, kept: r.spec.kept_production_secrets.length, resets: r.spec.credential_resets.length, diffLines: r.diff.length}});
             return done();
         }),
-        finalize: on((c) => taskStep(c, {
+        finalize: on(async (c) => {
+            const seedFrom = c.rev.seq > 1 ? await activeSeedFrom(c) : undefined;
+            return taskStep(c, {
             step: "finalize", manifest: true,
-            args: () => ({spec: specOf(c.rev) ?? undefined, specSha256: c.rev.specSha256 ?? undefined, policy: c.policy}),
+            // W24 (DD-8): a refresh revision reuses the ACTIVE revision's test-credential seed (copied on the runner, never uploaded)
+            args: () => ({spec: specOf(c.rev) ?? undefined, specSha256: c.rev.specSha256 ?? undefined, policy: c.policy, ...(seedFrom ? {seedFrom} : {})}),
             check: async (result, last) => {
                 const res = MirrorFinalizeResult.safeParse(result);
                 const fin = await ownRender(c, "mirror_finalize", last.taskId);
@@ -226,7 +236,8 @@ export function handlers(ctx0: RevCtx): Handlers<MirrorStep, RevCtx> {
                 await setGate(c, "side_effects", true);
                 return {ok: true};
             },
-        })),
+            });
+        }),
         restore_db: on(async (c) => {
             const spec = specOf(c.rev);
             if (!spec) return fail("internal_error");

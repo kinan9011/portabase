@@ -1,6 +1,6 @@
 import {and, asc, desc, eq, gte, inArray, isNull, lt, sql} from "drizzle-orm";
 import {actorIn, forkCan, type ForkPrincipal} from "@/fork/acl";
-import {expireQueuedTask} from "@/fork/agent-channel/tasks";
+import {cancelQueuedTask, expireQueuedTask} from "@/fork/agent-channel/tasks";
 import {recordAudit} from "@/fork/audit";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkMirror, forkMirrorEvent, forkMirrorRevision, forkMirrorTask} from "@/fork/db/schema/mirror";
@@ -397,12 +397,48 @@ export async function advanceRefreshing(d: MirrorDeps, m: typeof forkMirror.$inf
     const cs: OpCtx = {...c, late: next.readiedAt ? now.getTime() - next.readiedAt.getTime() > LIFECYCLE_BUDGET_MS : false};
     if (next.activatedAt !== null) return failRefresh("internal_error", {retire: false});
     if (!enabledOf(d)) return "advanced"; // forward step: waits (the build deadline and the wipe still run)
+    const routeRows = (await journalRows(d.db, next.id, "route")).filter((r) => r.createdAt.getTime() >= c.opAt.getTime());
+    const activeLoaded = await loadPlanRow(d, c.active.planId ?? "", c.active.planHash);
+
+    /** The route was put back on the ACTIVE revision (route truth comes from the runner, never assumed); `principal` null ⇒ the requester is gone and the re-assert is refused ⇒ `refresh_broken`. */
+    const reassert = async (problem: string, principal: ForkPrincipal | null): Promise<"advanced" | "failed"> => {
+        if (!activeLoaded.ok || !principal) return brokenRefresh();
+        const ca: OpCtx = {...cs, rev: c.active as RevRow};
+        const ra = await opTask(ca, "route", routeEnqueue(ca, activeLoaded.plan, c.active as RevRow, "switch", principal, pol.data));
+        if (ra.kind === "wait") return "advanced";
+        if (ra.kind === "ok" && checkRouteSwitch(ra.result, m.routePort, pol.data).ok) return failRefresh(problem, {retire: true, routeToActive: true});
+        return brokenRefresh();
+    };
+    const brokenRefresh = async (): Promise<"failed"> => {
+        await moveMirror(c, "refreshing", "refresh_broken", {code: "route_failed", action: "refresh", phase: "failed",
+            extra: async (tx) => {
+                await addEvent(tx, {mirrorId: m.id, revisionId: null, kind: "failed", at: now, code: "route_failed", details: {scope: "mirror", phase: "refresh"}});
+                await retire(tx, c, next.id, "route_failed");
+            }});
+        return "failed";
+    };
+    /** A pre-switch check failed. If a route task of this op exists it is cancelled when it never started; one in the agent's hands is awaited; one that ran means the route may have moved ⇒ re-assert. */
+    const preFail = async (code: string, principal: ForkPrincipal | null): Promise<"advanced" | "failed"> => {
+        if (routeRows.length === 0) return failRefresh(code, {retire: true});
+        let inHands = false;
+        for (const r of routeRows) {
+            if (!r.task || !["queued", "leased", "running"].includes(r.task.status)) continue;
+            if (r.task.status === "queued" && r.task.attempts === 0 && r.taskId && next.runnerAgentId && (await cancelQueuedTask(d.db, {taskId: r.taskId, agentId: next.runnerAgentId, now}))) continue;
+            inHands = true;
+        }
+        if (inHands) return "advanced";
+        const started = routeRows.some((r) => r.task && (r.task.attempts > 0 || ["succeeded", "failed", "rejected"].includes(r.task.status)));
+        return started ? reassert(code, principal) : failRefresh(code, {retire: true});
+    };
+
     const lookup = c.actorUserId ? await principalOfUser(d, c.actorUserId) : null;
-    if (!lookup || lookup.kind !== "ok" || !forkCan(actorIn(lookup.principal, m.organizationId), "mirrors.manage")) return failRefresh("reauth_failed", {retire: true});
-    const principal = lookup.principal;
-    if (!next.runnerAgentId || !(await assertRunnerTarget(d.db, next.runnerAgentId)).ok) return failRefresh("runner_ineligible", {retire: true});
-    const gates = await evaluateGates(d.db, d, next, now);
-    if (!gates.ok && (await journalRows(d.db, next.id, "route")).filter((r) => r.createdAt.getTime() >= c.opAt.getTime()).length === 0) return failRefresh(gates.code, {retire: true});
+    const principal = lookup && lookup.kind === "ok" ? lookup.principal : null;
+    if (!principal || !forkCan(actorIn(principal, m.organizationId), "mirrors.manage")) return preFail("reauth_failed", null);
+    if (!next.runnerAgentId || !(await assertRunnerTarget(d.db, next.runnerAgentId)).ok) return preFail("runner_ineligible", principal);
+    if (routeRows.length === 0) { // the gates are the READY facts: re-checked once, right before the first route task
+        const gates = await evaluateGates(d.db, d, next, now);
+        if (!gates.ok) return failRefresh(gates.code, {retire: true});
+    }
 
     const sw = await opTask({...cs, rev: next}, "route", routeEnqueue(cs, plan.plan, next, "switch", principal, pol.data));
     if (sw.kind === "wait") return "advanced";
@@ -410,23 +446,10 @@ export async function advanceRefreshing(d: MirrorDeps, m: typeof forkMirror.$inf
     if (sw.kind === "fail") routeProblem = routeCode(sw.code);
     else { const chk = checkRouteSwitch(sw.result, m.routePort, pol.data); if (!chk.ok) routeProblem = routeCode(chk.code); }
     if (routeProblem === null) {
-        if (!(await commitRefreshSwitch(c, next, c.active))) return "advanced"; // the mirror moved under us: the next tick re-evaluates
-        return "advanced"; // the next tick stops the previous revision (keeps each tick small and every phase restartable)
+        await commitRefreshSwitch(c, next, c.active); // false ⇒ the mirror moved under us: the next tick re-evaluates; true ⇒ the next tick stops the previous revision (each phase restartable)
+        return "advanced";
     }
-
-    // route failure: put the route back on the ACTIVE revision (route truth comes from the runner, never assumed)
-    const re = await loadPlanRow(d, c.active.planId ?? "", c.active.planHash);
-    if (!re.ok) return failRefresh(routeProblem, {retire: true});
-    const ca: OpCtx = {...cs, rev: c.active};
-    const ra = await opTask(ca, "route", routeEnqueue(ca, re.plan, c.active, "switch", principal, pol.data));
-    if (ra.kind === "wait") return "advanced";
-    if (ra.kind === "ok" && checkRouteSwitch(ra.result, m.routePort, pol.data).ok) return failRefresh(routeProblem, {retire: true, routeToActive: true});
-    await moveMirror(c, "refreshing", "refresh_broken", {code: "route_failed", action: "refresh", phase: "failed",
-        extra: async (tx) => {
-            await addEvent(tx, {mirrorId: m.id, revisionId: null, kind: "failed", at: now, code: "route_failed", details: {scope: "mirror", phase: "refresh"}});
-            await retire(tx, c, next.id, "route_failed");
-        }});
-    return "failed";
+    return reassert(routeProblem, principal);
 }
 
 /** After the pointer moved: stop the previous revision (it stays READY, stopped, as the rollback target). A failed stop retires it (the wipe removes its containers) and is recorded, but the refresh is done. */

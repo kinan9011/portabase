@@ -462,10 +462,13 @@ export async function refreshMirror(d: MirrorDeps, raw: unknown): Promise<{ok: t
     const revisionId = randomUUID();
     const workspace = `${root}/${project}`;
 
-    type Created = {ok: true; hostPort: number; routePort: number} | {ok: false; code: MirrorRefusalCode};
+    type Created = {ok: true; hostPort: number; routePort: number} | {ok: true; already: string} | {ok: false; code: MirrorRefusalCode};
     let created: Created;
     try {
         created = await withForkLock(d.db, `runner:${runnerId}`, async (tx): Promise<Created> => {
+            // a concurrent refresh of THIS mirror that got the lock first: idempotent answer (same revision), nothing new is written
+            const [cur] = await tx.select({status: forkMirror.status, op: forkMirror.opRevisionId}).from(forkMirror).where(eq(forkMirror.id, m.id));
+            if (cur?.status === "refreshing" && cur.op) return {ok: true, already: cur.op};
             const [busy] = await tx.select({n: sql<number>`count(*)::int`}).from(forkMirrorRevision).where(and(eq(forkMirrorRevision.runnerAgentId, runnerId), inArray(forkMirrorRevision.state, [...ACTIVE_REVISION_STATES])));
             if (Number(busy?.n ?? 0) > 0) return {ok: false, code: "runner_busy"};
             const used = await usedPorts(tx, runnerId);
@@ -478,16 +481,16 @@ export async function refreshMirror(d: MirrorDeps, raw: unknown): Promise<{ok: t
                 organizationId: orgId, stackId: m.stackId, rpId: req.rpId, rpSequence: pl.rp.sequence, targetAgentId: runnerId, targetAgentName: pl.target.agent_name, purpose: "mirror", mode: "new_stack",
                 planVersion: PLAN_VERSION, mappings: {target_project: project, restore_root: root, volumes: null, select: null, sqlite: null}, plan: pl, planHash, inputsDigest, outcome: pl.outcome, approvals: [], createdBy: p.userId, createdAt: now, expiresAt,
             }).returning({id: forkRestorePlan.id});
-            // the per-mirror lock: only a READY mirror moves to `refreshing` (0 rows ⇒ somebody else got there first)
-            const cas = await tx.update(forkMirror).set({status: nextMirrorStatus("ready", "refresh_requested"), opRevisionId: revisionId, routePort, updatedAt: now}).where(and(eq(forkMirror.id, m.id), eq(forkMirror.status, "ready"))).returning({id: forkMirror.id});
-            // the revision row must exist before `op_revision_id` is consistent: the FK is checked at statement end, so insert it right away (the CAS above only claimed the mirror)
-            if (cas.length !== 1) throw new CasLost();
+            // the per-mirror lock: only a READY mirror moves to `refreshing` (0 rows ⇒ somebody else got there first ⇒ the whole transaction rolls back, nothing is left behind).
+            // The revision row goes first: `op_revision_id` is a foreign key checked immediately.
             const planning = transition("requested", "planning");
             const next = transition(planning, "validating");
             await tx.insert(forkMirrorRevision).values({
                 id: revisionId, mirrorId: m.id, organizationId: orgId, stackId: m.stackId, seq, rpId: req.rpId, rpSequence: pl.rp.sequence, planId: planRow.id, planHash, runnerAgentId: runnerId,
                 project, workspace, hostPort: port, startedBy: p.userId, createdAt: now, deadlineAt: new Date(now.getTime() + maxRunMsOf(d)), updatedAt: now, state: next, steps: initialSteps(deriveMirrorSteps(pl)),
             });
+            const cas = await tx.update(forkMirror).set({status: nextMirrorStatus("ready", "refresh_requested"), opRevisionId: revisionId, routePort, updatedAt: now}).where(and(eq(forkMirror.id, m.id), eq(forkMirror.status, "ready"))).returning({id: forkMirror.id});
+            if (cas.length !== 1) throw new CasLost();
             await addEvent(tx, {mirrorId: m.id, revisionId, kind: "requested", at: now, toState: "requested", actor: {userId: p.userId}});
             await addEvent(tx, {mirrorId: m.id, revisionId, kind: "state_changed", at: now, fromState: "requested", toState: planning});
             await addEvent(tx, {mirrorId: m.id, revisionId, kind: "state_changed", at: now, fromState: planning, toState: next});
@@ -501,6 +504,7 @@ export async function refreshMirror(d: MirrorDeps, raw: unknown): Promise<{ok: t
         throw e;
     }
     if (!created.ok) return deny(created.code);
+    if ("already" in created) return {ok: true, revisionId: created.already, already: true};
     return {ok: true, revisionId};
 }
 
