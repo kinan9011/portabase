@@ -343,11 +343,11 @@ export const FAILURE_GROUPS = [
     g(["host_role_mismatch", "mode_unsupported", "approval_missing"], {tone: "danger", text: () => "The machine refused this restore for its role or a missing approval."}),
     g(["forbidden", "locked", "rate_limited", "invalid_input", "not_found", "plan_blocked"], {tone: "danger", text: () => "The restore was refused when its next step was prepared. Make a new plan and try again."}),
     g(["bad_signature", "unknown_kid", "bad_envelope", "agent_mismatch", "enroll_mismatch", "not_yet_valid", "replayed", "seq_rollback", "unsupported_type", "capability_missing", "payload_hash", "payload_invalid",
-        "channel_disabled", "state_unavailable", "target_mismatch", "not_enrolled", "agent_disabled", "insecure_transport", "invalid_url", "signing_unavailable", "payload_too_large"],
+        "channel_disabled", "state_unavailable", "target_mismatch", "role_forbidden", "not_enrolled", "agent_disabled", "insecure_transport", "invalid_url", "signing_unavailable", "payload_too_large"],
         {tone: "danger", text: (m) => `${m} refused the instruction for a security reason. A system administrator should check the Agent channel page.`}),
     // fallback group: the step failed on the machine for a reason that is not worth its own sentence; the code is shown as a reference
     g(["execution_error", "restore_failed", "internal_error", "probe_invalid", "not_in_project", "protected_in_project", "container_changed", "replica_not_listed", "container_unstable", "restore_owned",
-        "quiesce_pending", "journal_unavailable", "stop_failed", "restart_unverified", "quiesce_interrupted"], {tone: "danger", reference: true, text: (m) => `The step failed on ${m}. Check the Portabase agent log there.`}),
+        "quiesce_pending", "journal_unavailable", "stop_failed", "restart_unverified", "quiesce_interrupted", "helper_failed", "wipe_incomplete"], {tone: "danger", reference: true, text: (m) => `The step failed on ${m}. Check the Portabase agent log there.`}),
 ] as const;
 /** Compile-time exhaustiveness: if the backend adds a code that no group covers, this line stops compiling. */
 type Covered = (typeof FAILURE_GROUPS)[number]["codes"][number];

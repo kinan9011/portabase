@@ -67,3 +67,9 @@ export async function agentsLastContact(db: ForkDb, ids: readonly string[]): Pro
     const rows = await db.select({id: agent.id, lastContact: agent.lastContact, version: agent.version, name: agent.name}).from(agent).where(inArray(agent.id, [...ids]));
     return new Map(rows.map((r) => [r.id, {lastContact: r.lastContact, version: r.version, name: r.name}]));
 }
+
+/** W21: how many (non-deleted) upstream databases are assigned to this agent. A designated mirror runner must own none (ADR-008 DD-2), so the stock loop never pushes it storage credentials. */
+export async function countDatabasesOfAgent(db: ForkDb, agentId: string): Promise<number> {
+    const [r] = await db.select({n: sql<number>`count(*)::int`}).from(database).where(and(eq(database.agentId, agentId), isNull(database.deletedAt)));
+    return Number(r?.n ?? 0);
+}

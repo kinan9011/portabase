@@ -28,7 +28,7 @@ import {QuiescePayloadSchema, QuiesceStartPayloadSchema} from "@/fork/quiesce/pa
  * expiry never interleave. A task is leased only by the agent it was signed for: every query filters on `agent_id` AND the enrolment generation.
  */
 const MAX_ATTEMPTS = 5;
-const REASONS = ["bad_signature", "unknown_kid", "bad_envelope", "agent_mismatch", "enroll_mismatch", "expired", "not_yet_valid", "replayed", "seq_rollback", "unsupported_type", "capability_missing", "payload_hash", "payload_invalid", "channel_disabled", "state_unavailable", "target_mismatch", "execution_error", "role_forbidden", "helper_failed", "wipe_incomplete", ...RESTORE_REASONS] as const;
+export const REASONS = ["bad_signature", "unknown_kid", "bad_envelope", "agent_mismatch", "enroll_mismatch", "expired", "not_yet_valid", "replayed", "seq_rollback", "unsupported_type", "capability_missing", "payload_hash", "payload_invalid", "channel_disabled", "state_unavailable", "target_mismatch", "execution_error", "role_forbidden", "helper_failed", "wipe_incomplete", ...RESTORE_REASONS] as const;
 export type ResultReason = (typeof REASONS)[number];
 
 type Refusal = {ok: false; code: "forbidden" | "locked" | "rate_limited" | "invalid_input" | "not_enrolled" | "insecure_transport" | "invalid_url" | "capability_missing" | "agent_disabled" | "signing_unavailable"; message: string; retryAfterSeconds?: number};
