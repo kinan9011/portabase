@@ -10,14 +10,12 @@ import {HistoryTab} from "@/fork/ui/mirrors/detail/history";
 import {LogsTab} from "@/fork/ui/mirrors/detail/logs.client";
 import {BANNER, MIRRORS, reasonText} from "@/fork/ui/mirrors/labels";
 import {DeleteMirrorButton} from "@/fork/ui/mirrors/lifecycle/delete-button.client";
-import {failedNewerRevision, mirrorActions, startTestedLabel} from "@/fork/ui/mirrors/model";
+import {failedNewerRevision, MIRROR_TABS, type MirrorTab, mirrorActions, startTestedLabel} from "@/fork/ui/mirrors/model";
 import {MirrorProgress} from "@/fork/ui/mirrors/progress/progress.client";
 import {FOCUS_RING_AA} from "@/fork/ui/a11y/focus";
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge} from "@/fork/ui/tone-badge";
 
-export const MIRROR_TABS = ["overview", "configuration", "history", "logs"] as const;
-export type MirrorTab = (typeof MIRROR_TABS)[number];
 const D = MIRRORS.detail;
 
 export type DetailProps = {

@@ -6,6 +6,9 @@ import {MIRRORS} from "@/fork/ui/mirrors/labels";
  * Pure model of the W23 Test Mirrors list + detail (plan-W23 Step 1). No React, no server import (values only from `@/fork/mirror/vocab` and fork UI labels): client components and tests share it.
  * The services re-check every rule; this only drives what is shown and which buttons are blocked (disabled-with-reason).
  */
+/** Detail tabs (`?tab=`). Lives here, not in a "use client" file: the server page needs the VALUE (a client module only exports references to a server component). */
+export const MIRROR_TABS = ["overview", "configuration", "history", "logs"] as const;
+export type MirrorTab = (typeof MIRROR_TABS)[number];
 export const HEALTHS = ["healthy", "degraded", "not_running", "pending", "failed", "unknown"] as const;
 export type Health = (typeof HEALTHS)[number];
 export type ServiceState = {state: string; health: string | null};
