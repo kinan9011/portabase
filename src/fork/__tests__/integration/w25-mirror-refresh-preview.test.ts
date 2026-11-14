@@ -159,11 +159,13 @@ describe("P-5 writes nothing", () => {
         const c = await make();
         const b = await newerRp(c);
         const before = await counts();
-        const upd = (await w.q("select updated_at from fork_mirror where id=$1", [c.mirrorId]))[0].updated_at;
+        const snap = async () => (await w.q("select (select md5(string_agg(x::text, '|' order by x.id)) from fork_mirror x) m, (select md5(string_agg(x::text, '|' order by x.id)) from fork_mirror_revision x) r")).map((r) => `${r.m}/${r.r}`)[0];
+        const rows = await snap();
+        w.advance(5000); // a write would stamp a different `updated_at`
         const auditBefore = Number((await w.q("select count(*)::int n from fork_audit_event where action='fork.mirror.refresh_preview'"))[0].n);
         for (const rp of [null, b.rp, b.rp]) await okPreview(c, rp);
         expect(await counts()).toEqual(before);
-        expect((await w.q("select updated_at from fork_mirror where id=$1", [c.mirrorId]))[0].updated_at).toEqual(upd);
+        expect(await snap()).toBe(rows); // every column of the mirror and its revisions, byte for byte
         expect(Number((await w.q("select count(*)::int n from fork_audit_event where action='fork.mirror.refresh_preview'"))[0].n)).toBe(auditBefore); // successes are not audited
     });
 });
