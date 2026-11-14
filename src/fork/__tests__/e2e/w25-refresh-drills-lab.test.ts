@@ -454,7 +454,7 @@ describe.skipIf(!LAB)(`W25 refresh failure-injection drills [${DRILL}] on an emu
         it("D1a raw non-archive bytes instead of the encrypted database archive: the new revision fails and is wiped; the active revision keeps serving", async () => {
             const w = await variantRp(world, {dbDump: Buffer.from("x")});
             objects.set(`/${w.rp}/db_db`, {body: Buffer.from("this is not an encrypted portabase archive"), hits: 0});
-            const {pv} = await failedRefresh("D1a", w, ["archive_invalid", "db_restore_failed", "execution_error", "stage_failed"]);
+            const {pv} = await failedRefresh("D1a", w, ["checksum_mismatch", "archive_invalid", "db_restore_failed", "execution_error", "stage_failed"]);
             expect(pv.ok && pv.preview.selected?.outcome, "the dialog cannot detect a bad dump: the pipeline does").toBe("ready");
             RUN.push("D1a PASS");
         }, 900_000);

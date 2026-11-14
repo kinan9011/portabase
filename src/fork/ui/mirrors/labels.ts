@@ -420,6 +420,11 @@ export const GATE_TEXT: Record<Gate, string> = {
 };
 
 const GENERIC_REASON = "The mirror stopped. Check the runner and try again.";
+/** W25 (drill D1): the runner's own stage codes reach the revision row verbatim; the two a bad backup produces get an honest sentence instead of the generic one */
+const AGENT_REASON_TEXT: Record<string, string> = {
+    checksum_mismatch: "The backup file does not match its recorded checksum. It may be damaged; pick another backup.",
+    archive_invalid: "The backup file is not a valid Portabase archive. Pick another backup.",
+};
 export const REASON_TEXT: Record<MirrorReasonCode, string> = {
     plan_blocked: "The restore plan is blocked.",
     stop_incomplete: "Some containers could not be stopped and may still be running.",
@@ -471,7 +476,7 @@ export const REASON_TEXT: Record<MirrorReasonCode, string> = {
     smoke_failed_internal: "The app did not answer its health check.",
     mirror_disabled: "Mirrors are switched off on the runner.",
 };
-export const reasonText = (code: string | null): string => (code !== null && Object.hasOwn(REASON_TEXT, code) ? REASON_TEXT[code as MirrorReasonCode] : GENERIC_REASON);
+export const reasonText = (code: string | null): string => (code !== null && Object.hasOwn(REASON_TEXT, code) ? REASON_TEXT[code as MirrorReasonCode] : code !== null && Object.hasOwn(AGENT_REASON_TEXT, code) ? AGENT_REASON_TEXT[code]! : GENERIC_REASON);
 
 // ---- Logs tab: fixed sentences for timeline events and journal rows (the loader never returns free text) -----------------------------------
 const STATE_WORD: Record<string, string> = {
