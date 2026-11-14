@@ -318,6 +318,8 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         expect(inbox(["sh", "-c", `test ! -e ${wsOf(project)} && echo gone`])).toBe("gone");
     };
 
+    /** values read from the runner while the revisions existed (the seed bytes, the rotated database password): L9 proves none of them reached a dashboard row */
+    const RUNNER_SECRETS: string[] = [];
     const NAME = `rf-${NONCE.slice(0, 6)}`;
     let M: {mirrorId: string; name: string}; let r1: {revisionId: string; hostPort: number; project: string}; let worldB: W17; let routePort = 0;
     const revs: Record<string, string> = {};
@@ -379,6 +381,9 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         const [p1, p2] = [rpwOf(r1.revisionId), rpwOf(r2id)];
         expect(p1 !== undefined && p1 === p2, "the rotated database password is identical across revisions").toBe(true);
         expect(p1).not.toBe(PROD_PW);
+        const sh1 = seedHex(r1.project);
+        expect(sh1).toMatch(/^[0-9a-f]{64}$/);
+        RUNNER_SECRETS.push(sh1, Buffer.from(sh1, "hex").toString("base64"), p1!);
         keep("l2-refresh.txt", `r1=${r1.revisionId} r2=${r2id} route=${routePort} polls ok=${probeR1.s.ok} failed=${probeR1.s.failed.length}\n${JSON.stringify({networks: Object.keys(ins.NetworkSettings.Networks), bindings, user: ins.Config.User, ro: ins.HostConfig.ReadonlyRootfs, capdrop: ins.HostConfig.CapDrop})}`);
         RUN.push(`L2 PASS refresh A→B: ${probeR1.s.ok} polls of r1 during the build, 0 failed; route ${routePort} → greeting B, uploads=2; forwarder on ${r2project}_pbm_access only, loopback only, user 65534, ro rootfs, cap drop ALL; seed + db password identical; lab-address probe refused`);
     }, 1_200_000);
@@ -519,6 +524,8 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         expect(hay.length).toBeGreaterThan(1000);
         for (const s of secrets.filter((x) => x !== NONCE && x !== "/srv/portabase-mirrors")) expect(hay.includes(s), `a row carries a secret (${s.slice(0, 8)}…)`).toBe(false);
         expect(hay.includes(SECRET_QS)).toBe(false);
+        expect(RUNNER_SECRETS.length, "L2 must have captured the runner-side secrets").toBeGreaterThanOrEqual(3);
+        for (const x of RUNNER_SECRETS) expect(hay.includes(x), "a row carries a runner-side secret (seed / rotated password)").toBe(false);
         // seed + rotated password were read from the box while the revisions still existed (L2/L3): re-derive from a fresh mirror would be a second lab; the seed canary uses the box's remaining objects
         const leftoverSeeds = inbox(["sh", "-c", `ls ${MIRROR_ROOT}/*/.portabase/mirror/seed 2>/dev/null || true`]).split("\n").filter(Boolean);
         for (const f of leftoverSeeds) { const hex = inbox(["sh", "-c", `od -An -tx1 -v ${f} | tr -d ' \\n'`]); expect(hay.includes(hex) || hay.includes(Buffer.from(hex, "hex").toString("base64"))).toBe(false); }
