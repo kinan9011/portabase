@@ -31,12 +31,19 @@ export const forkMirror = pgTable("fork_mirror", {
     policy: jsonb("policy").notNull(),
     status: text("status").notNull().default("creating"),
     activeRevisionId: uuid("active_revision_id").references((): AnyPgColumn => forkMirrorRevision.id, {onDelete: "set null"}),
+    /** W24 (ADR-017): stable loopback port of the runner-local route forwarder; `route_revision_id` = the revision the runner last confirmed it points to. */
+    routePort: integer("route_port"),
+    routeRevisionId: uuid("route_revision_id").references((): AnyPgColumn => forkMirrorRevision.id, {onDelete: "set null"}),
+    /** W24: the revision a running refresh builds / a running rollback targets (NULL while no such op runs). */
+    opRevisionId: uuid("op_revision_id").references((): AnyPgColumn => forkMirrorRevision.id, {onDelete: "set null"}),
     createdBy: text("created_by").notNull(),
     createdAt: ts("created_at").notNull(),
     updatedAt: ts("updated_at").notNull(),
     deletedAt: ts("deleted_at"),
 }, (t) => [
     uniqueIndex("fork_mirror_org_name_uq").on(t.organizationId, t.name).where(sql`deleted_at IS NULL`),
+    uniqueIndex("fork_mirror_route_port_runner_uq").on(t.runnerAgentId, t.routePort).where(sql`route_port IS NOT NULL AND deleted_at IS NULL`),
+    check("fork_mirror_route_port_ck", sql`${t.routePort} IS NULL OR ${t.routePort} BETWEEN ${sql.raw(String(PORT_RANGE.min))} AND ${sql.raw(String(PORT_RANGE.max))}`),
     index("fork_mirror_stack_idx").on(t.stackId, t.createdAt),
     check("fork_mirror_name_ck", sql`${t.name} ~ '^[a-z0-9][a-z0-9-]{0,39}$'`),
     check("fork_mirror_status_ck", inList("status", MIRROR_STATUSES)),
@@ -74,6 +81,8 @@ export const forkMirrorRevision = pgTable("fork_mirror_revision", {
     deadlineAt: ts("deadline_at").notNull(),
     readiedAt: ts("readied_at"),
     activatedAt: ts("activated_at"),
+    /** W24 retention: set when a kept READY revision is superseded / over-age; it is then wiped (verified) like a failed one. */
+    retiredAt: ts("retired_at"),
     finishedAt: ts("finished_at"),
     durationSeconds: integer("duration_seconds"),
     cancelRequestedAt: ts("cancel_requested_at"),
@@ -85,6 +94,8 @@ export const forkMirrorRevision = pgTable("fork_mirror_revision", {
     updatedAt: ts("updated_at").notNull(),
 }, (t) => [
     unique("fork_mirror_revision_seq_uq").on(t.mirrorId, t.seq),
+    // W24 per-mirror backstop: a refresh never builds a second revision of the same mirror at once (the status CAS is the primary lock)
+    uniqueIndex("fork_mirror_revision_one_active_mirror_uq").on(t.mirrorId).where(sql`state IN (${sql.raw(activeList)})`),
     uniqueIndex("fork_mirror_revision_one_active_runner_uq").on(t.runnerAgentId).where(sql`state IN (${sql.raw(activeList)}) AND runner_agent_id IS NOT NULL`),
     // the loopback port stays reserved while the copy may still exist on the runner (no verified / not-needed wipe yet)
     uniqueIndex("fork_mirror_revision_port_runner_uq").on(t.runnerAgentId, t.hostPort).where(sql`runner_agent_id IS NOT NULL AND coalesce(wipe_state, '') NOT IN ('verified','not_needed')`),
