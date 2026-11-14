@@ -270,7 +270,8 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
 
     // ---- lab helpers ----------------------------------------------------------------------------------------------------------------------------------------------------------------
     const wget = (port: number) => spawnSync("docker", ["exec", BOX, "sh", "-c", `wget -qO- -T 6 http://127.0.0.1:${port} 2>&1`], {encoding: "utf8"});
-    const page = (port: number) => { const r = wget(port); return r.status === 0 ? r.stdout : null; };
+    /** the demo page; `tries` > 1 retries a transient / truncated answer (the page is produced by `nc -e` per request) until it carries both the greeting and the uploads count */
+    const page = (port: number, tries = 1) => { for (let i = 0; i < tries; i++) { const r = wget(port); if (r.status === 0 && (tries === 1 || r.stdout.includes("uploads="))) return r.stdout; if (i < tries - 1) spawnSync("sleep", ["1"]); } return null; };
     const mirrorRow = async (id: string) => (await q("select * from fork_mirror where id=$1", [id]))[0]!;
     const ctrsAll = (rev: string) => inbox(["docker", "ps", "-aq", "--filter", `label=com.portabase.fork.restore_id=${rev}`]).split("\n").filter(Boolean);
     const ctrStates = (project: string) => inbox(["docker", "ps", "-a", "--filter", `label=com.docker.compose.project=${project}`, "--format", "{{.Names}}={{.State}}"]).split("\n").filter(Boolean);
@@ -326,7 +327,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         const row = await drive(r.revisionId, {ms: 300_000});
         expect(row.state, `reason=${row.reason} step=${row.failed_step}`).toBe("ready");
         M = {mirrorId: r.mirrorId, name: NAME}; r1 = {revisionId: r.revisionId, hostPort: r.hostPort, project: await projectOfRev(r.revisionId)}; revs.r1 = r.revisionId;
-        const p = page(r1.hostPort);
+        const p = page(r1.hostPort, 6);
         expect(greeting(p), String(p)).toBe("hello-from-the-forklab-demo-stack");
         expect(uploads(p)).toBe(1);
         expect((await mirrorRow(M.mirrorId)).route_port, "no route before the first switch").toBeNull();
@@ -352,7 +353,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         expect([routePort, r1.hostPort, r2port].filter((x, i, a) => a.indexOf(x) === i)).toHaveLength(3); // the stable route port is neither revision's port
         const acc = await getMirrorAccess(mdeps(), {mirrorId: M.mirrorId});
         expect(acc).toMatchObject({ok: true, access: {hostPort: routePort}});
-        const pB = page(routePort);
+        const pB = page(routePort, 6);
         expect(greeting(pB), String(pB)).toBe("hello-from-rp-b");
         expect(uploads(pB)).toBe(2);
         expect(page(r1.hostPort), "r1 is stopped").toBeNull();
@@ -391,7 +392,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         expect(mir.active_revision_id).toBe(r1.revisionId);
         expect(mir.route_revision_id).toBe(r1.revisionId);
         expect(mir.route_port).toBe(routePort);
-        const p = page(routePort);
+        const p = page(routePort, 6);
         expect(greeting(p), String(p)).toBe("hello-from-the-forklab-demo-stack");
         await tickUntil("r2 wiped", async () => ["verified", "failed"].includes((await revRow(r2id)).wipe_state));
         const r2 = await revRow(r2id);
@@ -419,7 +420,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         expect(mir.active_revision_id).toBe(r1.revisionId);
         expect(mir.route_revision_id).toBe(r1.revisionId);
         expect(probe3.s.failed, "the route answered during the failed refresh").toEqual([]);
-        expect(greeting(page(routePort))).toBe("hello-from-the-forklab-demo-stack");
+        expect(greeting(page(routePort, 6))).toBe("hello-from-the-forklab-demo-stack");
         gone(await projectOfRev(r3id), r3id);
         keep("l4-bad-dump.txt", `r3 state=${row.state} reason=${row.reason} step=${row.failed_step} wipe=${row.wipe_state}; polls ok=${probe3.s.ok}`);
         RUN.push(`L4 PASS bad dump: r3 failed (${row.reason}) wipe ${row.wipe_state}; mirror ready on r1, route unchanged, ${probe3.s.ok} polls ok / 0 failed`);
@@ -438,7 +439,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         expect((await q("select count(*)::int as n from fork_mirror_task where revision_id=$1 and step='stage'", [r4id]))[0]!.n).toBe(0);
         expect(mir.status).toBe("ready");
         expect(mir.active_revision_id).toBe(r1.revisionId);
-        expect(greeting(page(routePort))).toBe("hello-from-the-forklab-demo-stack");
+        expect(greeting(page(routePort, 6))).toBe("hello-from-the-forklab-demo-stack");
         RUN.push(`L5 PASS insufficient disk: r4 failed insufficient_disk at probe, no stage task, wipe ${row.wipe_state}; route answers greeting A`);
     }, 600_000);
 
@@ -455,7 +456,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         expect(row.state, `reason=${row.reason}`).toBe("ready");
         await activeIs(M.mirrorId, mir, r5id);
         expect(mir.route_revision_id).toBe(r5id);
-        expect(greeting(page(routePort))).toBe("hello-from-rp-e");
+        expect(greeting(page(routePort, 6))).toBe("hello-from-rp-e");
         const r1row = await revRow(r1.revisionId);
         expect(r1row.state, "r1 is retained (stopped) for rollback").toBe("ready");
         expect(ctrStates(r1.project).every((x) => x.endsWith("=exited"))).toBe(true);
@@ -480,7 +481,7 @@ describe.skipIf(!LAB)("W24 refresh lab: refresh / rollback / retention / route s
         const kept = await q("select id from fork_mirror_revision where mirror_id=$1 and state='ready' and retired_at is null and coalesce(wipe_state,'') not in ('verified','not_needed') order by seq", [M.mirrorId]);
         expect(kept.map((x) => x.id).sort()).toEqual([revs.r5!, r6id].sort());
         expect(inbox(["docker", "ps", "-q", "--filter", "name=w24-decoy"]), "the decoy of another owner must survive").not.toBe("");
-        expect(greeting(page(routePort))).toBe("hello-from-rp-f");
+        expect(greeting(page(routePort, 6))).toBe("hello-from-rp-f");
         RUN.push(`L7 PASS retention: kept = {r6 active, r5}; r1 retired + wipe verified + nothing left; decoy survived`);
     }, 900_000);
 
