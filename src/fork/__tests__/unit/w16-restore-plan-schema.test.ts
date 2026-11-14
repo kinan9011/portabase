@@ -48,7 +48,9 @@ describe("restore plan schemas", () => {
     it("vocabulary lists equal the SQL CHECK lists of migration 0011", () => {
         const sql = readFileSync(path.join(process.cwd(), "src/fork/db/migrations/0011_restore_plan.sql"), "utf8");
         const list = (col: string) => [...(sql.match(new RegExp(`"${col}" IN \\(([^)]*)\\)`))?.[1].matchAll(/'([^']+)'/g) ?? [])].map((m) => m[1]);
-        expect(list("purpose")).toEqual([...RESTORE_PURPOSES]);
+        // W22a: the purpose CHECK was widened by migration 0018 (the `mirror` purpose, plan v2)
+        const sql18 = readFileSync(path.join(process.cwd(), "src/fork/db/migrations/0018_mirror.sql"), "utf8");
+        expect([...(sql18.match(/"fork_restore_plan_purpose_ck" CHECK \("purpose" IN \(([^)]*)\)/)?.[1].matchAll(/'([^']+)'/g) ?? [])].map((m) => m[1])).toEqual([...RESTORE_PURPOSES]);
         expect(list("mode")).toEqual([...RESTORE_MODES]);
         expect(list("outcome")).toEqual([...PLAN_OUTCOMES]);
         expect(APPROVAL_KINDS).toEqual(["production_target", "destructive_replace"]);

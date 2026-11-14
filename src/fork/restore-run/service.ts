@@ -93,6 +93,7 @@ export async function startRestoreRun(d: RestoreRunDeps, raw: unknown, o: {trigg
     const loaded = await loadFreshPlan({db: d.db, now: d.now, principal: p}, planId, planHash);
     if (!loaded.ok) return refuse((loaded.code === "forbidden" || loaded.code === "not_found" || loaded.code === "stale" || loaded.code === "expired" || loaded.code === "hash_mismatch" || loaded.code === "plan_tampered" ? loaded.code : "stale"), g.organizationId);
     const {row, plan} = loaded;
+    if (plan.purpose === "mirror") return refuse("mode_unsupported", g.organizationId); // W22a: a mirror plan is only ever run by the mirror orchestrator
     if (plan.outcome !== "ready") return refuse("plan_blocked", g.organizationId);
     const approved = approvalsOf(row);
     if (!plan.approvals_required.every((a) => approved.includes(a.kind))) return refuse("approval_missing", g.organizationId);

@@ -12,6 +12,7 @@ import {safeAbsPath} from "@/fork/inventory/labels";
 import {SelectionSchema} from "@/fork/materialize/types";
 import {RP_STATUSES} from "@/fork/recovery/status";
 import denyRules from "@/fork/policy/compose-deny.json";
+import {assertRunnerTarget} from "@/fork/runner/service";
 import {agentAclAllows, readAgent} from "@/fork/upstream/agents";
 import {PlanInputV1, type MappingsV1} from "./schema";
 import {PLAN_VERSION, PLANNER_RULESET, type RestoreMode, type RestorePurpose} from "./vocab";
@@ -123,10 +124,11 @@ export async function loadPlanInput(db: ForkDb, req: LoadRequest, o: {principal:
             inventory_version: rp.inventoryVersion, inventory_hash: rp.inventoryHash, consistency_level: rp.consistencyLevel,
         },
         artifacts, inventory, inventory_content_hash: inventory ? contentHash(inventory) : null,
-        stack: {id: stack.id, compose_project: stack.composeProject, environment_id: stack.environmentId, contains_personal_data: stack.containsPersonalData, test_restore_opt_in: stack.testRestoreOptInAt !== null},
+        stack: {id: stack.id, compose_project: stack.composeProject, environment_id: stack.environmentId, contains_personal_data: stack.containsPersonalData, test_restore_opt_in: stack.testRestoreOptInAt !== null, mirror_opt_in: stack.mirrorOptInAt !== null},
         selection: {sqlite, manual_paths: manual},
         target: {
             agent_id: agentRow.id, agent_name: agentRow.name, archived: agentRow.archived,
+            runner_eligible: req.purpose === "mirror" ? (await assertRunnerTarget(db, agentRow.id)).ok : false,
             enrollment: enr ? {enabled: enr.enabled, revoked: enr.revokedAt !== null, capabilities: enr.capabilities} : null,
             environments: envs.map((e) => ({
                 id: e.id, name: e.name, host_role: e.hostRole, allowed_path_roots: e.allowedPathRoots,

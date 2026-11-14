@@ -9,6 +9,7 @@ import {registerMaterializeDriftJob} from "@/fork/materialize/job";
 import {registerNotificationsJob} from "@/fork/notifications/job";
 import {registerRestoreRunsJob} from "@/fork/restore-run/job";
 import {registerTestRestoreJob} from "@/fork/test-restore/job";
+import {registerMirrorJob} from "@/fork/mirror/job";
 import {registerStackRunsJob} from "@/fork/runs/job";
 import {registerKitWatchJob} from "@/fork/kit/watch";
 import {registerVerifyJob} from "@/fork/verify/job";
@@ -35,6 +36,7 @@ export async function initFork(): Promise<ForkModeResult> {
         registerStackRunsJob();
         registerRestoreRunsJob();
         registerTestRestoreJob();
+        registerMirrorJob();
         registerNotificationsJob();
         registerVerifyJob();
         registerKitWatchJob();

@@ -51,7 +51,7 @@ describe("createRestorePlan", () => {
         expect(x.expiresAt.getTime() - x.createdAt.getTime()).toBe(24 * 3_600_000);
         expect(x.planHash).toBe(r.planHash);
         expect(hashPlan(RestorePlanV1.parse(x.plan))).toBe(r.planHash);
-        expect(x).toMatchObject({purpose: "restore", mode: "new_stack", planVersion: 1, outcome: "ready", rpSequence: 1, createdBy: admin, organizationId: org});
+        expect(x).toMatchObject({purpose: "restore", mode: "new_stack", planVersion: 2, outcome: "ready", rpSequence: 1, createdBy: admin, organizationId: org});
         expect(x.approvals).toEqual([]);
         expect(x.targetAgentName).toBe(w.agentName);
     });
@@ -261,7 +261,7 @@ describe("freshness / expiry (injected clock)", () => {
         expect(await f()).toBe(false);
         await q("update fork_recovery_point set verified_at=$2 where id=$1", [w.rp, verifiedAt]);
         // plan version bump
-        await q("update fork_restore_plan set plan_version = 2 where id=$1", [r.planId]);
+        await q("update fork_restore_plan set plan_version = 1 where id=$1", [r.planId]);
         expect(await fresh(w, r.planId, r.planHash, 60_000)).toMatchObject({ok: false, code: "stale"});
     });
     it("a deleted RP / agent (SET NULL) makes the plan stale (not_found)", async () => {

@@ -62,6 +62,15 @@ const intRangeExplicit = (min: number, max: number, dflt: number) =>
         return t !== "" && Number.isInteger(n) && n >= min && n <= max ? n : dflt;
     });
 
+/** W22a: the absolute root every mirror workspace lives under (OD-W22a-6). Canonical, at least two segments, not a system path; anything else falls back to the default (fail closed). */
+export const DEFAULT_MIRROR_ROOT = "/srv/portabase-mirrors";
+const SYSTEM_TOP = new Set(["etc", "usr", "bin", "sbin", "lib", "lib32", "lib64", "proc", "sys", "dev", "boot", "run", "root", "home", "tmp"]);
+const mirrorRoot = z.string().optional().transform((v) => {
+    const t = v?.trim() ?? "";
+    const ok = /^\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)+$/.test(t) && !t.split("/").some((s) => s === "." || s === "..") && !SYSTEM_TOP.has(t.split("/")[1] as string);
+    return ok ? t : DEFAULT_MIRROR_ROOT;
+});
+
 const schema = z.object({
     FORK_STACKS_ENABLED: flag,
     FORK_ARCANE_ENABLED: flag,
@@ -129,6 +138,10 @@ const schema = z.object({
     FORK_RESTORE_TICK_SECONDS: intRangeExplicit(0, 300, 10),
     /** W-TR: scheduler + verified-wipe tick (seconds; `0` = this process never ticks: LIVE LAB ONLY) and the default decay age of the test-restore facet (days). */
     FORK_TEST_RESTORE_TICK_SECONDS: intRangeExplicit(0, 300, 60),
+    /** W22a: mirror root on the runner (must equal the agent's `FORK_MIRROR_ROOT`), hard cap of one mirror creation (hours, 1..24) and the orchestrator tick period (seconds, 0..300; `0` = never ticks: LIVE LAB ONLY). */
+    FORK_MIRROR_ROOT: mirrorRoot,
+    FORK_MIRROR_MAX_HOURS: intRange(1, 24, 4),
+    FORK_MIRROR_TICK_SECONDS: intRangeExplicit(0, 300, 10),
     FORK_TEST_RESTORE_STALE_DAYS: intRange(1, 90, 14),
 });
 
@@ -172,6 +185,9 @@ export function forkEnv(source: Record<string, string | undefined> = process.env
         FORK_RESTORE_RUN_MAX_HOURS: source.FORK_RESTORE_RUN_MAX_HOURS,
         FORK_RESTORE_TICK_SECONDS: source.FORK_RESTORE_TICK_SECONDS,
         FORK_TEST_RESTORE_TICK_SECONDS: source.FORK_TEST_RESTORE_TICK_SECONDS,
+        FORK_MIRROR_ROOT: source.FORK_MIRROR_ROOT,
+        FORK_MIRROR_MAX_HOURS: source.FORK_MIRROR_MAX_HOURS,
+        FORK_MIRROR_TICK_SECONDS: source.FORK_MIRROR_TICK_SECONDS,
         FORK_TEST_RESTORE_STALE_DAYS: source.FORK_TEST_RESTORE_STALE_DAYS,
     });
 }

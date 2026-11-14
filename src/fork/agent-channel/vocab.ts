@@ -29,16 +29,22 @@ export const TEST_RESTORE_CAPABILITY = "test-restore.v1";
 export const TEST_RESTORE_TASK_TYPES = ["restore_verify"] as const;
 /**
  * W21 (ADR-008): the mirror RUNNER role. `runner.v1` is reported only by an agent started with `FORK_HOST_ROLE=runner`; a runner reports none of the restore / compose / quiesce capabilities.
- * `runner_probe` (egress isolation probe) is targeted, never public, never maint: only `src/fork/runner/enqueue.ts` builds it. W22a appends the `mirror_*` types here.
+ * `runner_probe` (egress isolation probe) is targeted, never public, never maint: only `src/fork/runner/enqueue.ts` builds it. W22a adds the `mirror_*` types below.
  */
 export const RUNNER_CAPABILITY = "runner.v1";
 export const RUNNER_TASK_TYPES = ["runner_probe"] as const;
-export const TASK_TYPES = ["noop", "pin_add", "pin_revoke", "rotate_credential", ...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES, ...RUNNER_TASK_TYPES] as const;
+/**
+ * W22a (ADR-008 §12, plan-W22a §3.3): the nine mirror types a RUNNER executes (capability `mirror.v1`, reported only by a runner started with `FORK_MIRROR_ROOT`).
+ * Targeted, never public, never maint: only `src/fork/mirror/enqueue.ts` builds their payload. They need BOTH `runner.v1` and `mirror.v1`.
+ */
+export const MIRROR_CAPABILITY = "mirror.v1";
+export const MIRROR_TASK_TYPES = ["mirror_probe", "mirror_stage", "mirror_apply", "mirror_render", "mirror_finalize", "mirror_db", "mirror_up", "mirror_check", "mirror_wipe"] as const;
+export const TASK_TYPES = ["noop", "pin_add", "pin_revoke", "rotate_credential", ...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES, ...RUNNER_TASK_TYPES, ...MIRROR_TASK_TYPES] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 export const PUBLIC_TASK_TYPES = ["noop"] as const;
 export const MAINT_TASK_TYPES = ["pin_add", "pin_revoke", "rotate_credential"] as const;
 /** Types whose envelope must name the executing agent in `target_agent_id` (ADR-007 D8b, DD2). The agent enforces the same list. */
-export const TARGETED_TASK_TYPES: readonly TaskType[] = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES, ...RUNNER_TASK_TYPES];
+export const TARGETED_TASK_TYPES: readonly TaskType[] = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES, ...RUNNER_TASK_TYPES, ...MIRROR_TASK_TYPES];
 export const isTargetedType = (t: string): boolean => (TARGETED_TASK_TYPES as readonly string[]).includes(t);
 export const TASK_REQUIRES: Readonly<Record<TaskType, readonly string[]>> = {
     noop: ["noop.v1"], pin_add: [MAINT_CAPABILITY], pin_revoke: [MAINT_CAPABILITY], rotate_credential: [MAINT_CAPABILITY],
@@ -47,6 +53,9 @@ export const TASK_REQUIRES: Readonly<Record<TaskType, readonly string[]>> = {
     quiesce: [QUIESCE_CAPABILITY], quiesce_start: [QUIESCE_CAPABILITY],
     restore_verify: [RESTORE_CAPABILITY, TEST_RESTORE_CAPABILITY],
     runner_probe: [RUNNER_CAPABILITY],
+    mirror_probe: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_stage: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_apply: [RUNNER_CAPABILITY, MIRROR_CAPABILITY],
+    mirror_render: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_finalize: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_db: [RUNNER_CAPABILITY, MIRROR_CAPABILITY],
+    mirror_up: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_check: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_wipe: [RUNNER_CAPABILITY, MIRROR_CAPABILITY],
 };
 /** Pinned dashboard keys per agent (agent enforces the same bound), PEM size bound, kid grammar (first 12 hex of SHA-256(SPKI DER)). */
 export const MAX_PINS = 8;
@@ -54,7 +63,7 @@ export const PIN_PEM_MAX = 4096;
 export const KID_RE = /^[0-9a-f]{12}$/;
 
 /** Capabilities a fork agent may report (ADR-007 D6). Unknown strings that match the grammar are stored but never satisfy a `requires`. */
-export const KNOWN_CAPABILITIES = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "compose.render.v1", "restore.target.v1", "quiesce.v1", "sweep.v1", "test-restore.v1", "runner.v1"] as const;
+export const KNOWN_CAPABILITIES = ["channel.v1", "noop.v1", "plaintext-hash.v1", "channel-maint.v1", "compose.render.v1", "restore.target.v1", "quiesce.v1", "sweep.v1", "test-restore.v1", "runner.v1", "mirror.v1"] as const;
 export const CAPABILITY_RE = /^[a-z][a-z0-9-]{0,31}(\.[a-z][a-z0-9-]{0,31})*\.v[0-9]{1,2}$/;
 export const MAX_CAPABILITIES = 32;
 

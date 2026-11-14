@@ -25,6 +25,7 @@ export const workspaceOf = (plan: RestorePlanV1): string => {
 
 export function buildHeader(i: BuildInput): z.infer<typeof RestoreHeader> {
     const {plan} = i;
+    if (plan.purpose === "mirror" || plan.target.host_role === "runner") throw new BuildError("mode_unsupported"); // W22a: a mirror plan is built by `mirror/build.ts` only
     if (plan.mode === "existing_stack") throw new BuildError("mode_unsupported"); // OD-W17-5: in-place destructive restore is deferred
     return {v: 1, restore_id: i.restoreId, plan_id: i.planId, plan_hash: i.planHash, stack_id: plan.rp.stack_id, rp_id: plan.rp.id, purpose: plan.purpose, mode: plan.mode,
         host_role: plan.target.host_role, approvals: [...new Set(i.approvals)].sort(), workspace: workspaceOf(plan), project: plan.target.project};
@@ -47,14 +48,14 @@ export function artifactIndexes(i: BuildInput): number[] {
     return [...out].sort((x, y) => x - y);
 }
 
-export function buildStagePayload(i: BuildInput, a: {manifest: {jsonB64: string; sigB64: string; sha256: string; minSequence?: number}; urls: ReadonlyMap<number, string>}): z.infer<typeof StagePayload> {
-    const header = buildHeader(i);
+/** The stage body (manifest, artifact downloads, extraction paths) shared by the restore and the mirror stage payloads (W22a: pure extraction, behaviour unchanged). */
+export function stageBody(i: BuildInput, workspace: string, a: {manifest: {jsonB64: string; sigB64: string; sha256: string; minSequence?: number}; urls: ReadonlyMap<number, string>}): Pick<z.infer<typeof StagePayload>, "manifest" | "artifacts" | "paths"> {
     const paths: {index: number; dest: string}[] = [];
     for (const act of live(i.plan)) {
         // path-destination data actions extract into `dest`; stage_only artifacts and PostgreSQL dumps are only staged (W17-ii restores the dump)
         if (act.destination.kind !== "path" || act.kind === "stage_only" || (act.kind === "restore_db_dump" && act.source.dbms === "postgresql")) continue;
         const dest = act.destination.path;
-        if (!dest || !isUnder(dest, header.workspace)) throw new BuildError("mode_unsupported");
+        if (!dest || !isUnder(dest, workspace)) throw new BuildError("mode_unsupported");
         paths.push({index: indexFor(i, act), dest});
     }
     const artifacts = artifactIndexes(i).map((index) => {
@@ -62,11 +63,16 @@ export function buildStagePayload(i: BuildInput, a: {manifest: {jsonB64: string;
         if (!url) throw new BuildError("artifact_unavailable");
         return {index, source: "archive" as const, url};
     });
-    return {...header, manifest: {json_b64: a.manifest.jsonB64, sig_b64: a.manifest.sigB64, sha256: a.manifest.sha256, ...(a.manifest.minSequence !== undefined ? {min_sequence: a.manifest.minSequence} : {})}, artifacts, paths};
+    return {manifest: {json_b64: a.manifest.jsonB64, sig_b64: a.manifest.sigB64, sha256: a.manifest.sha256, ...(a.manifest.minSequence !== undefined ? {min_sequence: a.manifest.minSequence} : {})}, artifacts, paths};
 }
 
-export function buildApplyPayload(i: BuildInput, manifestSha256: string): z.infer<typeof ApplyPayload> {
+export function buildStagePayload(i: BuildInput, a: {manifest: {jsonB64: string; sigB64: string; sha256: string; minSequence?: number}; urls: ReadonlyMap<number, string>}): z.infer<typeof StagePayload> {
     const header = buildHeader(i);
+    return {...header, ...stageBody(i, header.workspace, a)};
+}
+
+/** The apply body (volumes, sqlite files, networks, unpack) shared by the restore and the mirror apply payloads (W22a: pure extraction). */
+export function applyBody(i: BuildInput, project: string, manifestSha256: string): Omit<z.infer<typeof ApplyPayload>, keyof z.infer<typeof RestoreHeader>> {
     const volumes: z.infer<typeof ApplyPayload>["volumes"] = [];
     const sqlite: z.infer<typeof ApplyPayload>["sqlite"] = [];
     const unpack: z.infer<typeof ApplyPayload>["unpack"] = [];
@@ -74,7 +80,7 @@ export function buildApplyPayload(i: BuildInput, manifestSha256: string): z.infe
         const d = act.destination;
         if (act.kind === "restore_volume" && d.kind === "volume") {
             if (!d.name) throw new BuildError("mode_unsupported");
-            const prefix = `${header.project}_`;
+            const prefix = `${project}_`;
             volumes.push({index: indexFor(i, act), name: d.name, compose_volume: d.name.startsWith(prefix) && d.name.length > prefix.length ? d.name.slice(prefix.length) : d.name});
         } else if (act.kind === "restore_sqlite_file" && d.kind === "volume") {
             if (!d.name || !d.relative_path) throw new BuildError("mode_unsupported");
@@ -90,7 +96,12 @@ export function buildApplyPayload(i: BuildInput, manifestSha256: string): z.infe
     });
     // sqlite files may only land in a volume this same restore created (the agent re-checks ownership)
     for (const s of sqlite) if (!volumes.some((v) => v.name === s.volume)) throw new BuildError("mode_unsupported");
-    return {...header, manifest_sha256: manifestSha256, volumes, sqlite, networks, unpack};
+    return {manifest_sha256: manifestSha256, volumes, sqlite, networks, unpack};
+}
+
+export function buildApplyPayload(i: BuildInput, manifestSha256: string): z.infer<typeof ApplyPayload> {
+    const header = buildHeader(i);
+    return {...header, ...applyBody(i, header.project, manifestSha256)};
 }
 
 /** W-TR (ADR-007 A16, plan D-4): one engine integrity check of a TEST plan's artifact. */

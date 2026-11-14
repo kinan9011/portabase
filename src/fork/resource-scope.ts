@@ -3,6 +3,7 @@ import {z} from "zod";
 import {actorIn, forkCan, ForkForbiddenError, ForkNotFoundError, type ForkPrincipal, type ForkResourceKind} from "@/fork/acl";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkArcaneConnection, forkArcaneEnvironment} from "@/fork/db/schema/arcane";
+import {forkMirror} from "@/fork/db/schema/mirror";
 import {forkRecoveryPoint, forkRecoveryPointArtifact} from "@/fork/db/schema/recovery";
 import {forkRestorePlan} from "@/fork/db/schema/restore";
 import {forkRestoreRun} from "@/fork/db/schema/restore-run";
@@ -56,6 +57,10 @@ async function owningOrg(db: ForkDb, kind: ForkResourceKind, id: string): Promis
         }
         case "restore_run": {
             const [r] = await db.select({o: forkRestoreRun.organizationId}).from(forkRestoreRun).where(eq(forkRestoreRun.id, id));
+            return r?.o ?? null;
+        }
+        case "mirror": {
+            const [r] = await db.select({o: forkMirror.organizationId}).from(forkMirror).where(eq(forkMirror.id, id));
             return r?.o ?? null;
         }
         case "recovery_point_artifact": {

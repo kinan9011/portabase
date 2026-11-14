@@ -26,7 +26,9 @@ beforeAll(async () => {
             values ($1,$2,$3,1,'host','restore','new_stack',1,'{}',$4,$4,'blocked','u', now(), now() + interval '1 day') returning id`, [org, stack, rp, "b".repeat(64)])).rows[0].id;
         const restoreRun = (await q(`insert into fork_restore_run (id, organization_id, stack_id, plan_id, plan_hash, rp_sequence, target_agent_name, purpose, mode, confirmation, started_by, created_at, deadline_at, updated_at)
             values (gen_random_uuid(),$1,$2,$3,$4,1,'host','restore','new_stack','not_required','u', now(), now() + interval '1 day', now()) returning id`, [org, stack, plan, "b".repeat(64)])).rows[0].id;
-        ids[k] = {connection: conn, environment: env, stack, stack_inventory: inv, recovery_point: rp, recovery_point_artifact: art, stack_run: run, restore_plan: plan, restore_run: restoreRun};
+        const mirror = (await q(`insert into fork_mirror (organization_id, stack_id, runner_agent_name, name, policy, created_by, created_at, updated_at)
+            values ($1,$2,'runner',$3,'{}','u', now(), now()) returning id`, [org, stack, `m-${k.toLowerCase()}`])).rows[0].id;
+        ids[k] = {mirror, connection: conn, environment: env, stack, stack_inventory: inv, recovery_point: rp, recovery_point_artifact: art, stack_run: run, restore_plan: plan, restore_run: restoreRun};
     }
 });
 afterAll(async () => { await w.drop(); });

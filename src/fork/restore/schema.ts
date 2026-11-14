@@ -5,8 +5,8 @@ import {StackInventoryV1} from "@/fork/inventory/schema";
 import {SOURCE_ROLES} from "@/fork/materialize/vocab";
 import {ARTIFACT_PRESENCE, RP_STATUSES} from "@/fork/recovery/status";
 import {
-    ACTION_KINDS, ACTION_OPS, APPROVAL_KINDS, CHECKERS, DENY_RULE_IDS, PHASES, PLAN_OUTCOMES, PLAN_VERSION, PLANNER_RULESET, PRECONDITION_STATES,
-    PRECONDITIONS, REASONS, RESTORE_MODES, RESTORE_PURPOSES, RISKS, SECRET_CLASSES,
+    ACTION_KINDS, ACTION_OPS, APPROVAL_KINDS, CHECKERS, DENY_RULE_IDS, PHASES, PLAN_HOST_ROLES, PLAN_OUTCOMES, PLAN_VERSION, PLANNER_RULESET, PRECONDITION_STATES,
+    PRECONDITIONS, REASONS, RESTORE_MODES, RESTORE_PURPOSES, RESTORE_TASK_PURPOSES, RISKS, SECRET_CLASSES,
 } from "./vocab";
 
 /**
@@ -38,7 +38,7 @@ export type MappingsV1 = z.infer<typeof MappingsV1>;
 
 export const EMPTY_MAPPINGS: MappingsV1 = {target_project: null, restore_root: null, volumes: null, select: null, sqlite: null};
 
-export const CreatePlanRequest = z.strictObject({rpId: uuid, targetAgentId: uuid, purpose: z.enum(RESTORE_PURPOSES), mode: z.enum(RESTORE_MODES), mappings: MappingsV1});
+export const CreatePlanRequest = z.strictObject({rpId: uuid, targetAgentId: uuid, purpose: z.enum(RESTORE_TASK_PURPOSES), mode: z.enum(RESTORE_MODES), mappings: MappingsV1});
 export type CreatePlanRequest = z.infer<typeof CreatePlanRequest>;
 export const ApproveRequest = z.strictObject({planId: uuid, planHash: hex64, kind: z.enum(APPROVAL_KINDS)});
 export const PlanIdRequest = z.strictObject({planId: uuid});
@@ -85,11 +85,13 @@ export const PlanInputV1 = z.strictObject({
     inventory: StackInventoryV1.nullable(),
     /** `contentHash(inventory)` computed by the loader (null when there is no inventory). */
     inventory_content_hash: hex64.nullable(),
-    stack: z.strictObject({id: uuid, compose_project: z.string().regex(PROJECT_NAME), environment_id: uuid.nullable(), contains_personal_data: z.boolean().nullable(), test_restore_opt_in: z.boolean()}),
+    stack: z.strictObject({id: uuid, compose_project: z.string().regex(PROJECT_NAME), environment_id: uuid.nullable(), contains_personal_data: z.boolean().nullable(), test_restore_opt_in: z.boolean(), mirror_opt_in: z.boolean()}),
     /** Non-secret subset of `fork_stack_policy.selection`: sqlite file paths (agent-side absolute) and manual source paths. */
     selection: z.strictObject({sqlite: z.record(z.string().regex(SERVICE_NAME), absPath), manual_paths: z.array(absPath).max(50)}),
     target: z.strictObject({
         agent_id: uuid, agent_name: z.string().min(1).max(256), archived: z.boolean(),
+        /** purpose `mirror` only (W22a): `assertRunnerTarget` ok (designated runner + enrolment + runner.v1, no environment, no DB). Always false otherwise. */
+        runner_eligible: z.boolean(),
         enrollment: z.strictObject({enabled: z.boolean(), revoked: z.boolean(), capabilities: z.array(z.string().max(64)).max(32)}).nullable(),
         environments: z.array(z.strictObject({id: uuid, name: z.string().max(256), host_role: z.enum(HOST_ROLES), allowed_path_roots: z.array(absPath).max(64), facts_fresh: z.boolean()})).max(64),
         same_environment: z.boolean(),
@@ -128,6 +130,7 @@ export const Action = z.strictObject({
 });
 export type Action = z.infer<typeof Action>;
 
+/** Plan v2 (W22a): the type names keep their `V1` suffix to avoid churn; the version is `PLAN_VERSION`. */
 export const RestorePlanV1 = z.strictObject({
     plan_version: z.literal(PLAN_VERSION),
     ruleset: z.literal(PLANNER_RULESET),
@@ -139,7 +142,7 @@ export const RestorePlanV1 = z.strictObject({
     source: z.strictObject({compose_project: z.string().max(128), environment_id: uuid.nullable()}),
     target: z.strictObject({
         agent_id: uuid, agent_name: z.string().max(256), environment_ids: z.array(uuid).max(64),
-        host_role: z.enum(HOST_ROLES), host_role_source: z.enum(["environment", "default"]),
+        host_role: z.enum(PLAN_HOST_ROLES), host_role_source: z.enum(["environment", "default"]),
         same_environment: z.boolean(), project: z.string().regex(PROJECT_NAME), restore_root: z.string().max(1024).nullable(),
     }),
     actions: z.array(Action).max(2000),

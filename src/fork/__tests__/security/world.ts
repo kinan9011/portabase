@@ -13,7 +13,7 @@ export type SecUser = {id: string; role: string; banned: boolean; orgRole: strin
 export type SecWorld = {
     t: W04Db; pool: Pool; db: W04Db["db"]; orgA: string; orgB: string;
     users: Record<Exclude<Role, "anon">, SecUser> & {foreignOwner: SecUser};
-    ids: {connection: string; environment: string; stack: string; stackRun: string; rp: string; rpArtifact: string; restorePlan: string; restoreRun: string; agent: string; planHash: string; source: string};
+    ids: {connection: string; environment: string; stack: string; stackRun: string; rp: string; rpArtifact: string; restorePlan: string; restoreRun: string; agent: string; planHash: string; source: string; mirror: string; mirrorRevision: string};
     drop: () => Promise<void>;
     /** template name (set on the seeded template only) */
     name: string;
@@ -42,6 +42,9 @@ export async function seedSecWorld(): Promise<SecWorld> {
         values ($1,$2,$3,1,'host','restore','new_stack',1,'{}',$4,$4,'blocked','u', now(), now() + interval '1 day') returning id`, [orgA, base.stack, base.rp, planHash])).rows[0].id as string;
     const restoreRun = (await pool.query(`insert into fork_restore_run (id, organization_id, stack_id, plan_id, plan_hash, rp_sequence, target_agent_name, purpose, mode, confirmation, started_by, created_at, deadline_at, updated_at)
         values (gen_random_uuid(),$1,$2,$3,$4,1,'host','restore','new_stack','not_required','u', now(), now() + interval '1 day', now()) returning id`, [orgA, base.stack, restorePlan, planHash])).rows[0].id as string;
+    const mirror = (await pool.query(`insert into fork_mirror (organization_id, stack_id, runner_agent_name, name, policy, status, created_by, created_at, updated_at) values ($1,$2,'runner','sec-mirror','{}','failed','u',now(),now()) returning id`, [orgA, base.stack])).rows[0].id as string;
+    const mirrorRevision = (await pool.query(`insert into fork_mirror_revision (mirror_id, organization_id, stack_id, seq, rp_sequence, plan_hash, project, workspace, host_port, state, reason, finished_at, wipe_state, started_by, created_at, deadline_at, updated_at)
+        values ($1,$2,$3,1,1,$4,'pbm-sec-r1','/srv/portabase-mirrors/pbm-sec-r1',41000,'failed','x_y',now(),'failed','u',now(),now(),now()) returning id`, [mirror, orgA, base.stack, planHash])).rows[0].id as string;
     const users = {} as SecWorld["users"];
     for (const [k, s] of Object.entries(SPEC)) {
         const id = randomUUID();
@@ -50,7 +53,7 @@ export async function seedSecWorld(): Promise<SecWorld> {
         (users as Record<string, SecUser>)[k] = {id, role: s.role, banned: s.banned ?? false, orgRole: s.orgRole};
     }
     return {t, pool, db: t.db, orgA, orgB, users, name: t.name, drop: () => t.drop(),
-        ids: {connection: keyed, environment: base.srcEnv, stack: base.stack, stackRun, rp: base.rp, rpArtifact, restorePlan, restoreRun, agent: base.agent, planHash, source: base.sources.db}};
+        ids: {connection: keyed, environment: base.srcEnv, stack: base.stack, stackRun, rp: base.rp, rpArtifact, restorePlan, restoreRun, agent: base.agent, planHash, source: base.sources.db, mirror, mirrorRevision}};
 }
 
 const adminUrl = () => process.env.FORK_TEST_DATABASE_URL!;

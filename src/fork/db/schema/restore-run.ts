@@ -8,7 +8,7 @@ import {forkRecoveryPoint} from "@/fork/db/schema/recovery";
 import {forkRestorePlan} from "@/fork/db/schema/restore";
 import {forkStack} from "@/fork/db/schema/stack";
 import {JOURNAL_STEPS, RESTORE_RUN_STATES, VERIFICATIONS} from "@/fork/restore-run/vocab";
-import {RESTORE_PURPOSES} from "@/fork/restore/vocab";
+import {RESTORE_RUN_PURPOSES} from "@/fork/restore/vocab";
 
 const ts = (name: string) => timestamp(name, {withTimezone: true});
 
@@ -64,7 +64,7 @@ export const forkRestoreRun = pgTable("fork_restore_run", {
     uniqueIndex("fork_restore_run_one_active_target_uq").on(t.targetAgentId).where(sql`state IN ('running','awaiting_approval') AND target_agent_id IS NOT NULL`),
     index("fork_restore_run_stack_created_idx").on(t.stackId, t.createdAt),
     check("fork_restore_run_state_ck", inList("state", RESTORE_RUN_STATES)),
-    check("fork_restore_run_purpose_ck", inList("purpose", RESTORE_PURPOSES)),
+    check("fork_restore_run_purpose_ck", inList("purpose", RESTORE_RUN_PURPOSES)),
     check("fork_restore_run_mode_ck", sql`${t.mode} IN ('new_stack','selective')`),
     check("fork_restore_run_verification_ck", nullOrInList("verification", VERIFICATIONS)),
     check("fork_restore_run_trigger_ck", sql`${t.trigger} IN ('manual','schedule')`),

@@ -40,6 +40,14 @@ export const ACTION_MATRIX: Record<`${string}#${string}`, ActionRow> = {
     "agent-channel.action.ts#rotateAgentCredentialAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, ...pw})),
     "agent-channel.action.ts#revokeAgentEnrollmentAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id})),
     "agent-channel.action.ts#setAgentChannelEnabledAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, enabled: true})),
+    // ---- test mirrors (W22a, ADR-008/009): resource-scoped mirrors.manage / mirrors.view (org admin+ / member+); the opt-in also needs host_role.manage (system admin who is also an org admin), behind FORK_MIRRORS_ENABLED
+    "mirror.action.ts#setStackMirrorOptInAction": row("mirrors.manage", ["superOwner"], "stack", "stack", true, (_w, id) => ({stackId: id, enabled: true})),
+    "mirror.action.ts#previewMirrorPlanAction": row("mirrors.manage", X, "stack", "stack", false, (w, id) => ({stackId: id, rpId: w.ids.rp, runnerAgentId: w.ids.agent}), READ("read-only preview, writes nothing")),
+    "mirror.action.ts#createMirrorAction": row("mirrors.manage", X, "stack", "stack", true, (w, id) => ({stackId: id, rpId: w.ids.rp, runnerAgentId: w.ids.agent, name: "sec-new", policy: {v: 1, access: {service: "web", target: 8080}, http_path: null, env: {}}, keepConfirmations: {}, acknowledgePrivacy: true})),
+    "mirror.action.ts#cancelMirrorRevisionAction": row("mirrors.manage", X, "mirror", "mirrorRevision", true, (_w, id) => ({revisionId: id})),
+    "mirror.action.ts#retryMirrorWipeAction": row("mirrors.manage", X, "mirror", "mirrorRevision", true, (_w, id) => ({revisionId: id})),
+    "mirror.action.ts#getMirrorViewAction": row("mirrors.view", V, "mirror", "mirror", false, (_w, id) => ({mirrorId: id}), READ("read-only view, writes nothing")),
+    "mirror.action.ts#getMirrorAccessAction": row("mirrors.view", V, "mirror", "mirror", false, (_w, id) => ({mirrorId: id}), READ("read-only; one audit row per read")),
     // ---- mirror runner (W21, ADR-008): system admin only (agents.channel.manage + host_role.manage), behind FORK_MIRRORS_ENABLED
     "runner.action.ts#designateRunnerAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id, ...pw})),
     "runner.action.ts#undesignateRunnerAction": row("agents.channel.manage", A, "system", "agent", true, (_w, id) => ({agentId: id})),

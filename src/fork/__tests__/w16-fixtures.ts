@@ -22,7 +22,7 @@ export function art(n: number, key: string | null, role: "compose" | "env" | "bi
 /** Valid baseline: verified RP, compose + volume + pg dump artifacts, `cleanInventory()`, enrolled target with both W17 capabilities, one production environment, empty facts. */
 export function planInput(mut?: (i: PlanInputV1) => void, inv: StackInventoryV1 | null = cleanInventory()): PlanInputV1 {
     const i: PlanInputV1 = {
-        planner: {version: 1, ruleset: "w16.1", deny_rules_sha256: DENY_SHA},
+        planner: {version: 2, ruleset: "w16.2", deny_rules_sha256: DENY_SHA},
         purpose: "restore", mode: "new_stack", mappings: {...EMPTY_MAPPINGS},
         rp: {id: u(1), stack_id: u(2), stack_name: "app", sequence: 3, rp_status: "verified", purged: false, manifest_sha256: H("a"), manifest_sig_kid: "0123456789ab",
             verified_at: "2026-11-07T01:00:00Z", inventory_version: 1, inventory_hash: inv ? contentHash(inv) : null, consistency_level: "mixed"},
@@ -32,10 +32,10 @@ export function planInput(mut?: (i: PlanInputV1) => void, inv: StackInventoryV1 
             art(13, "db:db", "db", "postgresql", {dump_format: "pg_custom"}),
         ],
         inventory: inv, inventory_content_hash: inv ? contentHash(inv) : null,
-        stack: {id: u(2), compose_project: "app", environment_id: u(50), contains_personal_data: false, test_restore_opt_in: false},
+        stack: {id: u(2), compose_project: "app", environment_id: u(50), contains_personal_data: false, test_restore_opt_in: false, mirror_opt_in: false},
         selection: {sqlite: {}, manual_paths: []},
         target: {
-            agent_id: u(60), agent_name: "restore-host", archived: false,
+            agent_id: u(60), agent_name: "restore-host", archived: false, runner_eligible: false,
             enrollment: {enabled: true, revoked: false, capabilities: ["channel.v1", "noop.v1", "restore.target.v1", "compose.render.v1"]},
             environments: [{id: u(70), name: "target-env", host_role: "production", allowed_path_roots: [], facts_fresh: true}],
             same_environment: false, facts: {...EMPTY_FACTS},

@@ -102,9 +102,9 @@ describe("plan hash (D-W16-2)", () => {
         expect(JSON.stringify(b.plan.actions)).toBe(JSON.stringify(a.plan.actions));
         expect(b.planHash).not.toBe(a.planHash);
     });
-    it("plan_version bump discipline: the plan carries version 1 and the ruleset", () => {
+    it("plan_version bump discipline: the plan carries version 2 and the ruleset", () => {
         const {plan} = planRestore(planInput());
-        expect(plan.plan_version).toBe(1);
-        expect(plan.ruleset).toBe("w16.1");
+        expect(plan.plan_version).toBe(2);
+        expect(plan.ruleset).toBe("w16.2");
     });
 });

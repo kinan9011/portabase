@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {RESTORE_TASK_PURPOSES} from "@/fork/restore/vocab";
 
 /**
  * Strict payload schemas of the W17-i restore tasks (plan-W17 §4.0). The agent has a Rust mirror (`deny_unknown_fields`); the cross-language vectors
@@ -21,7 +22,7 @@ const index = z.number().int().min(0).max(1999);
 export const RestoreHeader = z.strictObject({
     v: z.literal(1),
     restore_id: uuid, plan_id: uuid, plan_hash: hex64, stack_id: uuid, rp_id: uuid,
-    purpose: z.enum(["restore", "test_restore"]),
+    purpose: z.enum(RESTORE_TASK_PURPOSES),
     mode: z.enum(["new_stack", "selective"]),
     host_role: z.enum(["production", "test"]),
     approvals: z.array(z.enum(["production_target", "destructive_replace"])).max(2),
