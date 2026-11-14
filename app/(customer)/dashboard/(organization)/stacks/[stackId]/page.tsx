@@ -19,6 +19,8 @@ import {previewQuiesce} from "@/fork/quiesce/service";
 import {StackDetailsClient} from "@/fork/ui/stacks/stack-details.client";
 import {parseRp, parseTab} from "@/fork/ui/stacks/tabs";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
+import {mirrorEntry} from "@/fork/ui/mirrors/entry";
+import {loadMirrorEntryFacts} from "@/fork/mirror/wizard-view";
 
 // Stack Details (W08 + W09 + W13): header + Overview + Resources + Configuration + Backups + Schedule + Activity. Resource-scoped authorisation (SEC-12) BEFORE anything is read.
 export const dynamic = "force-dynamic";
@@ -56,12 +58,16 @@ export default async function StackDetailsPage(props: {params: Promise<{stackId:
     const quiesce = forkEnv().FORK_QUIESCE_ENABLED && detail.policy ? await previewQuiesce({db, principal}, {stackId}).then((r) => (r.ok ? r.dto : null), () => null) : null;
     // W-TR-f: the test-restore panel's strict view (members get `admin: null`); a load error hides the panel, never the page
     const testRestore = await getTestRestoreView({db, principal, keys: fileKeyProvider, serverUrl: getServerUrl}, {stackId}).then((r) => (r.ok ? r.view : null), () => null);
+    // W22b: "Create test mirror" is a link only when every precondition holds; the facts are read only when the cheap gates (flag, role, lock) pass
+    const mirrorOn = forkEnv().FORK_MIRRORS_ENABLED && forkCan(actor, "mirrors.manage") && locked === null;
+    const facts = mirrorOn ? await loadMirrorEntryFacts(db, principal, organizationId, stackId).catch(() => ({verifiedCount: 0, runnerCount: 0})) : {verifiedCount: 0, runnerCount: 0};
+    const mirror = mirrorEntry({enabled: forkEnv().FORK_MIRRORS_ENABLED, canManage: forkCan(actor, "mirrors.manage"), locked: locked !== null, ...facts, stackId});
     return (
         <Page>
             <PageContent>
                 <StatusAnnouncer>
                     {locked && <p role="note" data-testid="locked-note" className="mb-4 rounded-lg border p-3 text-sm">{STACKS_EMPTY.locked}</p>}
-                    <StackDetailsClient detail={detail} initialTab={parseTab(search.tab)} canConfigure={forkCan(actor, "stacks.backup.manage")} configLocked={locked !== null} canRun={forkCan(actor, "backup.run")} canRestore={forkCan(actor, "restore.plan")} quiesce={quiesce} testRestore={testRestore}/>
+                    <StackDetailsClient detail={detail} initialTab={parseTab(search.tab)} canConfigure={forkCan(actor, "stacks.backup.manage")} configLocked={locked !== null} canRun={forkCan(actor, "backup.run")} canRestore={forkCan(actor, "restore.plan")} quiesce={quiesce} testRestore={testRestore} mirror={mirror}/>
                 </StatusAnnouncer>
             </PageContent>
         </Page>

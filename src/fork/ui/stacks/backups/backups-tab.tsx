@@ -8,6 +8,7 @@ import {ScrollRegion} from "@/fork/ui/stacks/scroll-region";
 import {StateNotice} from "@/fork/ui/stacks/stack-empty-states";
 import {RpStatusBadge} from "@/fork/ui/stacks/stack-status-badges";
 import {RunNowButton} from "@/fork/ui/stacks/run-controls.client";
+import type {MirrorEntry} from "@/fork/ui/mirrors/entry";
 
 const B = BACKUPS;
 const href = (stackId: string, seq: number | null) => `${stackHref(stackId, "backups")}${seq === null ? "" : `&rp=${seq}`}`;
@@ -76,7 +77,7 @@ function Detail({stackId, row, artifacts, tz}: {stackId: string; row: BackupRow;
  * Backups tab (W13): the recovery points with their honest status ("Backed up · verifying" until the W14 verify job passes), the selected point's artifacts
  * and integrity facts, and the actions: Back up now (real, `backup.run`), Verify / Restore / Mirror visibly disabled with the reason as text.
  */
-export function BackupsTab({stackId, view, runReason, canRestore = false, restoreReason = null}: {stackId: string; view: BackupsView | null; runReason: string | null; canRestore?: boolean; restoreReason?: string | null}) {
+export function BackupsTab({stackId, view, runReason, canRestore = false, restoreReason = null, mirror}: {stackId: string; view: BackupsView | null; runReason: string | null; canRestore?: boolean; restoreReason?: string | null; mirror?: MirrorEntry}) {
     // W18b: Restore is a LINK into the wizard for `restore.plan` holders; a verified selected point starts at the machine step, otherwise at the backup step. Never a fake action.
     const sel = view?.detail?.row;
     const restoreHref = `/dashboard/recovery/new?stack=${stackId}${sel && sel.status === "verified" ? `&point=${sel.sequence}&step=machine` : ""}`;
@@ -88,7 +89,9 @@ export function BackupsTab({stackId, view, runReason, canRestore = false, restor
             {canRestore
                 ? <Link href={restoreHref} data-testid="backups-restore" className="border-input bg-background hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium">{B.restore.label}</Link>
                 : <ReasonButton type="button" variant="outline" reason={restoreWhy ?? B.restore.reason} data-testid="backups-restore">{B.restore.label}</ReasonButton>}
-            <ReasonButton type="button" variant="outline" reason={B.mirror.reason} data-testid="backups-mirror">{B.mirror.label}</ReasonButton>
+            {mirror && "href" in mirror
+                ? <Link href={`${mirror.href}${sel && sel.status === "verified" ? `&point=${sel.sequence}&step=runner` : ""}`} data-testid="backups-mirror" className="border-input bg-background hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium">{B.mirror.label}</Link> /* W22b */
+                : <ReasonButton type="button" variant="outline" reason={mirror?.reason ?? B.mirror.reason} data-testid="backups-mirror">{B.mirror.label}</ReasonButton>}
         </div>
     );
     if (!view) return <StateNotice testId="backups-error" tone="warning" title="Recovery points are not available" body="They could not be loaded for this stack."/>;

@@ -26,9 +26,10 @@ import {SyncPoller} from "@/fork/ui/stacks/sync-poller";
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge} from "@/fork/ui/tone-badge";
 import {FOCUS_RING_AA} from "@/fork/ui/a11y/focus";
+import type {MirrorEntry} from "@/fork/ui/mirrors/entry";
 
 const D = STACK_DETAILS;
-function Actions({canConfigure, configLocked, stackId, runReason, canRestore}: {canConfigure: boolean; configLocked: boolean; stackId: string; runReason: string | null; canRestore: boolean}) {
+function Actions({canConfigure, configLocked, stackId, runReason, canRestore, mirror}: {canConfigure: boolean; configLocked: boolean; stackId: string; runReason: string | null; canRestore: boolean; mirror?: MirrorEntry}) {
     // Configure is a real link for an administrator while configuration is open (W11); every other action is visibly disabled with its reason (§8.2 rule 10).
     return (
         <div className="flex flex-wrap items-start gap-3" data-testid="actions">
@@ -39,7 +40,9 @@ function Actions({canConfigure, configLocked, stackId, runReason, canRestore}: {
             {canRestore && !configLocked
                 ? <Link href={`/dashboard/recovery/new?stack=${stackId}`} data-testid="restore-link" className="border-input bg-background hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium">{D.actions.restore.label}</Link> /* W18b: the wizard (DD-1) */
                 : <ReasonButton type="button" variant="outline" reason={canRestore ? R_LOCKED : R_ROLE}>{D.actions.restore.label}</ReasonButton>}
-            <ReasonButton type="button" variant="outline" reason={D.actions.mirror.reason}>{D.actions.mirror.label}</ReasonButton>
+            {mirror && "href" in mirror
+                ? <Link href={mirror.href} data-testid="mirror-link" className="border-input bg-background hover:bg-accent inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium">{D.actions.mirror.label}</Link> /* W22b: the Create-mirror wizard */
+                : <ReasonButton type="button" variant="outline" reason={mirror?.reason ?? D.actions.mirror.reason} data-testid="mirror-reason">{D.actions.mirror.label}</ReasonButton>}
         </div>
     );
 }
@@ -127,7 +130,7 @@ function Overview({v, p, c, onOpenConfiguration}: {v: InventoryView; p: Protecti
     );
 }
 
-export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false, canRestore = false, quiesce = null, testRestore = null}: {detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean; canRestore?: boolean; quiesce?: QuiesceViewDto | null; testRestore?: TestRestoreView | null}) {
+export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false, canRestore = false, quiesce = null, testRestore = null, mirror}: {mirror?: MirrorEntry; detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean; canRestore?: boolean; quiesce?: QuiesceViewDto | null; testRestore?: TestRestoreView | null}) {
     const [tab, setTab] = React.useState<StackTab>(initialTab);
     // a real navigation (e.g. "Open in Backups" from Activity) changes the server-parsed tab: follow it; polling refreshes keep the same value and change nothing
     React.useEffect(() => { setTab(initialTab); }, [initialTab]);
@@ -160,7 +163,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                             <div className="flex gap-1.5"><dt>{D.lastSync}:</dt><dd className="text-foreground">{fmtUtc(detail.lastSyncAt, ENVIRONMENT_COPY.notSynced)}</dd></div>
                         </dl>
                     </div>
-                    <Actions canConfigure={canConfigure} configLocked={configLocked} stackId={detail.id} runReason={runReason} canRestore={canRestore}/>
+                    <Actions canConfigure={canConfigure} configLocked={configLocked} stackId={detail.id} runReason={runReason} canRestore={canRestore} mirror={mirror}/>
                 </div>
                 {protection && <LastGoodBackupLine p={protection}/>}
                 <div className="flex flex-wrap items-start gap-4"><RuntimeBadge state={detail.runtime} describe/>{protection ? <PrimaryStateBadge state={protection.primary} describe/> : <ProtectionBadge state={detail.protection} describe/>}{stale && <StaleBadge/>}</div>
@@ -189,7 +192,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                     <TabsContent className={FOCUS_RING_AA} value="overview">{protection && configuration && <Overview v={view} p={protection} c={configuration} onOpenConfiguration={() => onTab("configuration")}/>}</TabsContent>
                     <TabsContent className={FOCUS_RING_AA} value="resources"><ResourcesTabs view={view}/></TabsContent>
                     <TabsContent className={FOCUS_RING_AA} value="configuration">{configuration && <ConfigTab c={configuration}/>}</TabsContent>
-                    <TabsContent className={FOCUS_RING_AA} value="backups"><BackupsTab stackId={detail.id} view={detail.backups} runReason={runReason} canRestore={canRestore && !configLocked} restoreReason={canRestore ? R_LOCKED : R_ROLE}/></TabsContent>
+                    <TabsContent className={FOCUS_RING_AA} value="backups"><BackupsTab stackId={detail.id} view={detail.backups} runReason={runReason} canRestore={canRestore && !configLocked} restoreReason={canRestore ? R_LOCKED : R_ROLE} mirror={mirror}/></TabsContent>
                     <TabsContent className={FOCUS_RING_AA} value="schedule"><ScheduleTab policy={detail.policy} stackId={detail.id} canConfigure={canConfigure && !configLocked} isAdmin={canConfigure} configLocked={configLocked} configureHref={`${STACKS_HREF}/${detail.id}/configure`} runs={detail.runs} canRun={canRun} quiesce={quiesce} testRestore={testRestore}/></TabsContent>
                     <TabsContent className={FOCUS_RING_AA} value="activity"><ActivityTab stackId={detail.id} view={detail.activity} limits={detail.runs?.limits ?? {waitMinutes: 10, stallMinutes: 30}}/></TabsContent>
                 </Tabs>
