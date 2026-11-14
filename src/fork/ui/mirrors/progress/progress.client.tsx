@@ -8,6 +8,7 @@ import {ACTIVE_REVISION_STATES, GATES, WIPE_REVISION_STATES} from "@/fork/mirror
 import type {MirrorView} from "@/fork/mirror/view";
 import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
 import {BANNER, GATE_TEXT, MIRRORS, reasonText, refusalText, stepText} from "@/fork/ui/mirrors/labels";
+import {groupSteps} from "@/fork/ui/mirrors/model";
 import {settled} from "@/fork/ui/mirrors/wizard/model";
 import {useAnnounce} from "@/fork/ui/status-announcer";
 import type {Tone} from "@/fork/ui/tone";
@@ -23,6 +24,8 @@ const isWipeState = (s: string) => (WIPE_REVISION_STATES as readonly string[]).i
 /** Headline + tone by state. READY says "isolated and health-checked" and nothing stronger (D43: start-tested is not restore-tested). */
 export function headline(view: MirrorView): {text: string; tone: Tone} {
     const r = view.revisions[0];
+    if (view.mirror.status === "deleting") return {text: MIRRORS.lifecycle.deletingLine, tone: "active"}; // W23
+    if (view.mirror.status === "deleted") return {text: MIRRORS.detail.deleted, tone: "neutral"};
     if (!r) return {text: P.creating, tone: "active"};
     switch (r.state) {
         case "ready": return {text: P.ready(view.mirror.runnerName), tone: "success"};
@@ -36,15 +39,16 @@ export function headline(view: MirrorView): {text: string; tone: Tone} {
     }
 }
 const stepTone = (s: string): Tone => (s === "done" ? "success" : s === "failed" ? "danger" : s === "running" ? "active" : "neutral");
-const wipeLine = (r: Rev): string | null => {
-    if (!isWipeState(r.state)) return null;
+const wipeLine = (r: Rev, deleting: boolean): string | null => {
+    if (!isWipeState(r.state) && !(deleting && r.state === "ready")) return null;
     return r.wipeState === "verified" ? P.wipe.verified : r.wipeState === "not_needed" ? P.wipe.not_needed : r.wipeState === "failed" ? P.wipe.failed : P.wipe.running;
 };
 
-export type ProgressProps = {initial: MirrorView; canManage: boolean; locked: boolean};
+/** `embedded` (W23 detail page): the page supplies the `<h1 id="mirror-h">` and the privacy banner; `extra` renders under the headline from the CURRENT (polled) view: facet, alerts, lifecycle buttons. */
+export type ProgressProps = {initial: MirrorView; canManage: boolean; locked: boolean; embedded?: boolean; extra?: (view: MirrorView, ctx: {poll: () => Promise<void>}) => React.ReactNode};
 type Access = {runnerName: string; hostPort: number; service: string; target: number; tunnelHint: string};
 
-export function MirrorProgress({initial, canManage, locked}: ProgressProps) {
+export function MirrorProgress({initial, canManage, locked, embedded = false, extra}: ProgressProps) {
     const announce = useAnnounce();
     const [view, setView] = React.useState(initial);
     const [pollFailed, setPollFailed] = React.useState(false);
@@ -109,28 +113,31 @@ export function MirrorProgress({initial, canManage, locked}: ProgressProps) {
     };
     const copy = async () => { try { await navigator.clipboard.writeText(access?.tunnelHint ?? ""); announce(P.accessCopied); } catch { announce(P.actionFailed); } };
 
-    const wipe = rev ? wipeLine(rev) : null;
-    const ready = rev?.state === "ready";
+    const deleting = view.mirror.status === "deleting";
+    const deleted = view.mirror.status === "deleted";
+    const wipe = rev ? wipeLine(rev, deleting) : null;
+    const ready = rev?.state === "ready" && !deleting && !deleted;
     return (
         <section aria-labelledby="mirror-h" className="max-w-3xl space-y-6">
             <div>
-                <h1 id="mirror-h" tabIndex={-1} className="mb-2 text-2xl font-bold break-words outline-none">{P.title} · {view.mirror.name}</h1>
-                <p className="mb-2"><ToneBadge tone={head.tone} busy={active}>{ready ? "Ready" : rev?.state === "cancelled" ? "Cancelled" : rev && !isActive(rev.state) ? (rev.state === "blocked" ? "Blocked" : "Failed") : "Creating"}</ToneBadge></p>
+                {!embedded && <h1 id="mirror-h" tabIndex={-1} className="mb-2 text-2xl font-bold break-words outline-none">{P.title} · {view.mirror.name}</h1>}
+                <p className="mb-2"><ToneBadge tone={head.tone} busy={active}>{deleted ? "Deleted" : deleting ? "Deleting" : ready ? "Ready" : rev?.state === "cancelled" ? "Cancelled" : rev && !isActive(rev.state) ? (rev.state === "blocked" ? "Blocked" : "Failed") : "Creating"}</ToneBadge></p>
                 <p data-testid="mirror-headline" className="text-base break-words">{head.text}</p>
                 {ready && <p data-testid="ready-note" className="text-muted-foreground mt-1 text-sm">{P.readyNote}</p>}
                 {rev && <p className="text-muted-foreground mt-2 text-sm">Backup #{rev.rpSequence} · {view.mirror.runnerName}</p>}
                 {pollFailed && <p role="note" data-testid="poll-error" className="mt-2 text-sm">{P.pollError}</p>}
             </div>
-            <p role="note" data-testid="privacy-banner" className="rounded-lg border-2 p-3 text-sm font-medium">{BANNER(view.mirror.runnerName)}</p>
+            {!embedded && <p role="note" data-testid="privacy-banner" className="rounded-lg border-2 p-3 text-sm font-medium">{BANNER(view.mirror.runnerName)}</p>}
+            {extra?.(view, {poll})}
             {alertText && <div role="alert" data-testid="mirror-alert" className="rounded-md border p-3 text-sm">{alertText}</div>}
 
             {rev && (
                 <>
                     <section aria-labelledby="steps-h"><h2 id="steps-h" className="mb-2 text-lg font-semibold">{P.steps}</h2>
                         <ol className="divide-y rounded-lg border" data-testid="mirror-steps">
-                            {rev.steps.map((s) => (
-                                <li key={s.name} data-testid="mirror-step" data-status={s.status} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
-                                    <span className="min-w-0 flex-1 font-medium">{stepText(s.name)}</span>
+                            {groupSteps(rev.steps, stepText).map((s) => (
+                                <li key={s.text} data-testid="mirror-step" data-status={s.status} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
+                                    <span className="min-w-0 flex-1 font-medium">{s.text}</span>
                                     <ToneBadge tone={stepTone(s.status)} busy={s.status === "running"}>{P.step.status[s.status] ?? s.status}</ToneBadge>
                                 </li>
                             ))}
@@ -172,7 +179,7 @@ export function MirrorProgress({initial, canManage, locked}: ProgressProps) {
                             onConfirm={() => void act(() => cancelMirrorRevisionAction({revisionId: rev.id}), P.cancelRequested).then(() => setCancelAsked(true))}/>
                     </>
                 )}
-                {rev && isWipeState(rev.state) && rev.wipeState === "failed" && (canManage
+                {rev && (isWipeState(rev.state) || (deleting && rev.state === "ready")) && rev.wipeState === "failed" && (canManage
                     ? <Button type="button" variant="outline" disabled={busy || locked} onClick={() => void act(() => retryMirrorWipeAction({revisionId: rev.id}), P.retryDone)} data-testid="mirror-retry-wipe">{P.retry}</Button>
                     : <p data-testid="wipe-admin" className="text-sm">{P.wipeAdmin}</p>)}
                 {ready && <Button type="button" variant="outline" disabled={busy} onClick={() => void showAccess()} data-testid="mirror-access">{P.access}</Button>}

@@ -219,7 +219,7 @@ export const MIRRORS = {
         evidence: "Isolation evidence", evidenceNote: "The five safety checks of the active revision.", notReached: "not reached",
         runnerNow: "Runner isolation now",
         runnerState: {isolated: (when: string) => `Isolated (checked ${when})`, not_isolated: "Not isolated", unknown: "Unknown (no recent check)"},
-        env: "Settings changed from the safe default", envNone: "No setting was changed from the safe default.",
+        env: "Settings changed from the safe default", envTable: "Table of changed settings", envNone: "No setting was changed from the safe default.",
         envCounts: (changed: number, kept: number) => `${changed} setting${changed === 1 ? "" : "s"} changed from the safe default; ${kept} production value${kept === 1 ? "" : "s"} kept.`,
         envKept: "production value kept",
         footer: "Settings not listed use the safe default (test credentials, side effects switched off).",
