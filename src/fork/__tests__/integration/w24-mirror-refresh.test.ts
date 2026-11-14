@@ -5,7 +5,7 @@ import {startTestedFact} from "@/fork/mirror/facet";
 import {revisionOf, taskDeps} from "@/fork/mirror/steps";
 import {loadPlanRow} from "@/fork/restore/service";
 import {advanceMirrorRetention} from "@/fork/mirror/lifecycle";
-import {createMirror, deleteMirror, getMirrorAccess, getMirrorView, refreshMirror, rollbackMirror, startMirror, stopMirror} from "@/fork/mirror/service";
+import {createMirror, deleteMirror, getMirrorAccess, getMirrorView, refreshMirror, rollbackMirror, stopMirror} from "@/fork/mirror/service";
 import {tickAllMirrors} from "@/fork/mirror/tick";
 import {RULES_SHA256} from "@/fork/policy/rules";
 import {REVISION_MAX_AGE_DAYS} from "@/fork/mirror/vocab";

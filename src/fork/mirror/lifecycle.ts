@@ -1,4 +1,4 @@
-import {and, asc, desc, eq, gte, inArray, isNull, lt, sql} from "drizzle-orm";
+import {and, asc, desc, eq, gte, inArray, isNull, sql} from "drizzle-orm";
 import {actorIn, forkCan, type ForkPrincipal} from "@/fork/acl";
 import {cancelQueuedTask, expireQueuedTask} from "@/fork/agent-channel/tasks";
 import {recordAudit} from "@/fork/audit";
