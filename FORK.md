@@ -139,6 +139,32 @@ A **run** backs a stack up as a group: the dashboard-held schedule (D14, `fork_s
 - **Kits:** since W28 the recovery kit and the bare-host guide pin the CLI at tag `fork/w27a-done` (rule file v2 + the F-01 realpath gate). Kits issued before W28 keep naming the older `fork/w14b-done` (rule file v1, weaker) until the owner re-issues them; `fork/w14b-done` is never moved.
 - **Tests:** `pnpm test:fork compose-policy` (needs `jq` and `python3-yaml`); lab check `FORK_LAB_COMPOSE=1 pnpm test:fork:unit compose-policy-engine` renders `dev/fork-lab/demo-stack` locally (reads files, starts nothing); `bash scripts/fork/recover/tests/run.sh compose` for the CLI fixtures.
 
+## Mirror compiler (W20, R3 — library only)
+- **Input → output:** `src/fork/compose-compiler/` takes the *policy view* of a rendered compose project (the value-free JSON the target agent already uploads) and returns a value-free, hash-bound `MirrorSpecV1` (full structural skeleton of the mirror project + one action per environment key) and a redacted, readable diff (`renderMirrorDiff`: keys, names, ports and counts, never values). The dashboard never sees a value.
+- **No overrides in mirror mode:** every W20a engine hard refusal and every finding (privileged, host namespaces, devices, `docker.sock`, binds outside the workspace, unknown directives) is a refusal. There is no `ALLOW <service>` for mirrors. Unknown keys fail closed.
+- **Isolation by construction:** no published port except one loopback port (`127.0.0.1:<host_port>`, private access); every mirror network is `internal: true` (plus one `pbm_access` network for the access service); no external network, volume or secret; no host path outside the workspace; one Compose project `pbm-<name>`.
+- **Env / secret policy** (by key name, defence in depth): secret-looking keys and passwords inside URL values are replaced by a runner-derived mirror-only value; SMTP / webhook / payment / object-store / `DOCKER_HOST` endpoints point at `disabled.invalid`. **Honest limit:** the heuristics can be wrong; the isolation control is the runner egress firewall (W21). A wrong guess makes the mirror fail its health gate, never run unsafely. `options.env` is the per-app override hook (`keep_exact` is audited and listed in `kept_production_secrets`).
+- **Not shipped yet:** the runner-side apply (`applyMirrorSpec` is the TypeScript reference + `compose-mirror-vectors.json`; the Rust port and the `docker compose config` validation are follow-up W20-f1), the runner (W21), the mirror model and UI (W22a/W22b). Nothing starts a mirror today.
+
+| directive | mirror result |
+|---|---|
+| `name` | set to the mirror project `pbm-<name>` |
+| `x-*` | removed (inert) |
+| `networks` (top level) | each network replaced by `{name: <project>_<key>, internal: true}`; external / driver / ipam / labels dropped; `pbm_access` added only for private access |
+| `volumes` (top level) | each volume renamed `<project>_<key>`; external replaced by an empty project volume; custom driver or `driver_opts` (except tmpfs) refused |
+| `secrets`, `configs` (top level) | external refused; `name` dropped; `file` must be under the workspace |
+| `ports` | removed; with private access exactly one `127.0.0.1:<host_port>` entry |
+| `container_name` | removed; becomes a network alias |
+| `network_mode` | `none` / `service:<svc>` kept; `bridge` / `default` reset to an isolated default network; `host` and others refused |
+| `networks` (service) | only `aliases` kept; static IP / MAC dropped |
+| `environment` | one action per key: `keep`, `rotate`, `disable`, `drop` (override: `keep_exact`) |
+| `labels` | proxy / updater / scheduler / compose / fork-owner keys dropped, others kept |
+| `dns`, `dns_opt`, `dns_search`, `extra_hosts`, `links`, `external_links`, `mac_address`, `logging`, `profiles`, `develop` | removed (diff shows counts only) |
+| `devices`, `env_file`, `privileged`, `use_api_socket`, `build`, `provider`, `extends` | refused |
+| `image` | required; kept unchanged (an unpinned image gets an informational line) |
+| `annotations`, `attach`, `blkio_config`, `cap_add`, `cap_drop`, `command`, `configs`, `cpu_count`, `cpu_percent`, `cpu_period`, `cpu_quota`, `cpu_shares`, `cpus`, `cpuset`, `depends_on`, `deploy`, `domainname`, `entrypoint`, `expose`, `group_add`, `healthcheck`, `hostname`, `init`, `ipc`, `mem_limit`, `mem_reservation`, `mem_swappiness`, `memswap_limit`, `pid`, `pids_limit`, `platform`, `pull_policy`, `read_only`, `restart`, `scale`, `secrets`, `security_opt`, `shm_size`, `stdin_open`, `stop_grace_period`, `stop_signal`, `sysctls`, `tmpfs`, `tty`, `ulimits`, `user`, `volumes`, `working_dir` | kept as is (already checked by the W20a engine; blanked values are copied from the runner's own render) |
+- **Tests:** `pnpm test:fork compose-compiler`; env-gated local lab check `FORK_LAB_COMPOSE=1 pnpm test:fork:unit compose-compiler-lab` (renders the lab demo stack with `docker compose config`, starts no container).
+
 ## Restore orchestrator (W18a, backend only)
 - **What it is:** `src/fork/restore-run/**` executes ONE hash-bound W16 plan on the TARGET agent through the W17 task types, on the W12 step engine. Server actions only (`src/fork/actions/restore-run.action.ts`: start, approve policy, cancel, cleanup, view, list); **no UI and no API route yet** (wizard = W18b). Tables: `fork_restore_run` (state + W12 `steps`) and `fork_restore_run_task` (step journal, written in the enqueue transaction), migration `0014_restore_run`.
 - **Steps (derived from the plan):** `verify_manifest` (dashboard; signed manifest vs trust anchors and the plan's bound hash, BEFORE any task) → `probe` → `stage` → `apply` → [`render` (+ policy gate) → `restore_db` → `compose_up` → `check_services`]. The bracket only exists for plans with a `compose_up` action. One agent task per step, enqueued only after the previous step finished.
@@ -190,7 +216,9 @@ Lessons (sync #2, W28): (1) the P02 hook conflicts again when upstream adds a li
 Production data reaches a test host only for a data-only test restore to a host an admin marked as test, and is wiped afterwards.
 - **What it does:** per stack, on a schedule held by the dashboard (`fork_test_restore_schedule`, default disabled), the latest `verified` recovery point is restored data-only into `<restore root>/<project>-test-restore/scratch` on an agent whose environments are ALL `host_role = test`: signed manifest → checksums → `gzip -t` + plaintext hash/size (agent `restore_stage`) → engine integrity check in a no-network helper container (`restore_verify`: sqlite `PRAGMA integrity_check`, PostgreSQL `pg_restore -f /dev/null`) → **verified wipe** (cleanup, then an independent probe must report the workspace `absent`). The app is never started; "App start-tested" is never set (R3).
 - **Facet:** "Data verified by test restore · N d ago" needs a succeeded, `data_verified` run AND a verified wipe; it turns "Out of date" after the per-stack decay age (default 14 d, env `FORK_TEST_RESTORE_STALE_DAYS`) and raises `stack.test_restore_stale`. A failed run never refreshes it. A failed wipe blocks further test restores of the stack until a verified wipe ("Wipe now").
+- **App start-tested (R3, ADR-016)** is a different, later facet: it needs a mirror revision that reached READY on a runner; a test restore never sets it.
 - **Personal data (D44):** a stack not declared `contains_personal_data = false` needs the explicit per-stack opt-in (`setStackPrivacy`); undeclared counts as personal data.
+- **R3 (test mirrors, ADR-009):** a mirror holds a copy of production data only on a host an admin marked as `runner`; it never leaves that host and needs an explicit per-stack opt-in when the stack contains personal data.
 - **Agent:** capability `test-restore.v1` (image needs `sqlite3` + `pg_restore`); ADR-007 A16. DBMS without a checker (MySQL/MariaDB/Mongo/MSSQL) are counted "not engine-checked", never hidden.
 - **Lab:** `FORK_LAB=1 FORK_TEST_DATABASE_URL=… W17_AGENT_IMAGE=portabase-agent-fork:wtr-lab WTR_EVIDENCE_DIR=… pnpm exec vitest run --project e2e wtr-test-restore-lab` (after `pnpm build`). The dashboard child runs with `FORK_TEST_RESTORE_TICK_SECONDS=0`; the test process drives the scheduler / run / wipe ticks.
 - **Not yet:** the Schedule-tab panel (W-TR-f1, #159); configure via the server actions in `src/fork/actions/test-restore.action.ts` until then.
