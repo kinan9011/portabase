@@ -26,7 +26,7 @@ import {BuildError, artifactIndexes} from "@/fork/restore-tasks/build";
 import {resolveManifest} from "@/fork/restore-tasks/enqueue";
 import {artifactDownloadUrl} from "@/fork/upstream/storage-read";
 import {assertRunnerTarget} from "@/fork/runner/service";
-import {buildMirrorApply, buildMirrorCheck, buildMirrorDb, buildMirrorFinalize, buildMirrorProbe, buildMirrorRender, buildMirrorStage, buildMirrorStop, buildMirrorUp, buildMirrorWipe, type MirrorBuildInput} from "./build";
+import {type RouteArgs, buildMirrorApply, buildMirrorCheck, buildMirrorDb, buildMirrorFinalize, buildMirrorProbe, buildMirrorRender, buildMirrorRoute, buildMirrorStage, buildMirrorStop, buildMirrorUp, buildMirrorWipe, type MirrorBuildInput} from "./build";
 import type {MirrorPolicyV1} from "./policy";
 import {MIRROR_JOURNAL_STEPS, STEP_TASK_TYPE, type MirrorJournalStep} from "./vocab";
 
@@ -47,6 +47,8 @@ export type EnqueueRevision = {id: string; mirrorId: string; organizationId: str
 export type EnqueueArgs = {
     revision: EnqueueRevision; plan: RestorePlanV1; step: Exclude<MirrorJournalStep, "isolation">; attempt: number;
     manifest?: {json: string; sigB64: string}; spec?: MirrorSpecV1; specSha256?: string; finalSha256?: string; policy?: MirrorPolicyV1;
+    /** W24: `route` step only (`remove` is a safety step). `seedFrom`: finalize of a refresh revision (active revision's id + workspace). */
+    route?: RouteArgs; seedFrom?: {revisionId: string; workspace: string};
 };
 
 /** Safety steps (reduce exposure of a production-data copy): no principal re-check and no config lock (OD-W23-2); runner eligibility + payload checks still run. */
@@ -56,7 +58,7 @@ export async function enqueueMirrorTask(d: MirrorTaskDeps, a: EnqueueArgs): Prom
     const {revision: rev, plan, step} = a;
     const type = STEP_TASK_TYPE[step] as TaskType;
     const now = chNow(d);
-    const wipe = SAFETY_STEPS.includes(step);
+    const wipe = SAFETY_STEPS.includes(step) || (step === "route" && a.route?.action === "remove");
     const audit = (result: "success" | "denied", details: Record<string, unknown>, db: ForkDb = d.db) =>
         recordAudit(db, {organizationId: rev.organizationId, actorUserId: rev.startedBy, action: result === "success" ? "fork.mirror_task.enqueue" : "fork.mirror_task.denied", resourceType: "mirror", resourceId: rev.mirrorId, result,
             details: {revisionId: rev.id, type, step, attempt: a.attempt, ...details}, now});
@@ -90,7 +92,10 @@ export async function enqueueMirrorTask(d: MirrorTaskDeps, a: EnqueueArgs): Prom
         const bi: MirrorBuildInput = {revisionId: rev.id, planId: rev.planId, planHash: rev.planHash, plan, indexOf: new Map()};
         let body: unknown;
         if (step === "probe" || step === "wipe_check") body = buildMirrorProbe(rev.workspace);
-        else if (step === "up" || step === "check" || step === "wipe" || step === "stop") {
+        else if (step === "route") {
+            if (!a.route) return deny("invalid_input", {detail: "route"});
+            body = buildMirrorRoute(bi, a.route);
+        } else if (step === "up" || step === "check" || step === "wipe" || step === "stop") {
             if (step === "wipe") body = buildMirrorWipe(bi);
             else if (step === "stop") body = buildMirrorStop(bi);
             else if (!a.finalSha256) return deny("invalid_input", {detail: "final_sha"});
@@ -116,7 +121,8 @@ export async function enqueueMirrorTask(d: MirrorTaskDeps, a: EnqueueArgs): Prom
             else if (step === "render") body = buildMirrorRender(withIndex, rm.sha256);
             else if (step === "finalize") {
                 if (!a.spec || !a.specSha256 || !a.policy) return deny("invalid_input", {detail: "spec"});
-                body = buildMirrorFinalize(withIndex, rm.sha256, a.spec, a.specSha256, a.policy.limits);
+                if (a.seedFrom && !a.seedFrom.workspace.startsWith(`${root}/`)) return deny("invalid_input", {detail: "seed_from"});
+                body = buildMirrorFinalize(withIndex, rm.sha256, a.spec, a.specSha256, a.policy.limits, a.seedFrom);
             } else if (step === "restore_db") {
                 if (!a.spec || !a.finalSha256) return deny("invalid_input", {detail: "spec"});
                 body = buildMirrorDb(withIndex, rm.sha256, a.finalSha256, a.spec);

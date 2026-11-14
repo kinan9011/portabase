@@ -22,10 +22,10 @@ const rev = (o: Partial<MirrorView["revisions"][number]> = {}): MirrorView["revi
     id: "r1", seq: 1, state: "ready", reason: null, failedStep: null, steps: MIRROR_STEPS.map((name) => ({name, status: "done"})),
     gates: {expected_data: okGate, db_health: okGate, app_smoke: okGate, isolation: okGate, side_effects: okGate}, refusals: [],
     services: [{service: "web", state: "running", health: "none"}, {service: "db", state: "running", health: "healthy"}], hostPort: 41000, rpSequence: 3,
-    readiedAt: new Date(now.getTime() - 3 * 3600e3).toISOString(), wipeState: null, deadlineAt: now.toISOString(), createdAt: new Date(now.getTime() - 3 * 3600e3 - 60_000).toISOString(), ...o,
+    readiedAt: new Date(now.getTime() - 3 * 3600e3).toISOString(), activatedAt: null, retiredAt: null, wipeState: null, deadlineAt: now.toISOString(), createdAt: new Date(now.getTime() - 3 * 3600e3 - 60_000).toISOString(), ...o,
 });
 const view = (status = "ready", revisions = [rev()], active: string | null = "r1"): MirrorView => ({
-    mirror: {id: MID, name: "shop-3", status, runnerName: "lab-runner", stackId: SID, activeRevisionId: active, createdAt: now.toISOString()}, revisions, privacy: {containsPersonalData: true, optIn: true},
+    mirror: {id: MID, name: "shop-3", status, runnerName: "lab-runner", stackId: SID, activeRevisionId: active, opRevisionId: null, retentionDue: false, createdAt: now.toISOString()}, revisions, privacy: {containsPersonalData: true, optIn: true},
 });
 const extras = (o: Partial<MirrorDetailExtras> = {}): MirrorDetailExtras => ({
     stack: {id: SID, name: "Shop"}, rpDates: {"3": "2026-11-01T10:00:00.000Z"},

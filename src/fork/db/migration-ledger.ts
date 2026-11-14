@@ -32,6 +32,7 @@ export const MIGRATION_LEDGER: readonly LedgerEntry[] = [
     {tag: "0017_runner", wave: "W21", note: "fork_runner: agent-level runner designation (DD-1), admin probe targets, last probe binding (task id, resolved targets, config sha)"},
     {tag: "0018_mirror", wave: "W22a", note: "mirror model: fork_mirror / revision / event / task journal, stack mirror opt-in, plan purpose mirror"},
     {tag: "0019_mirror_lifecycle", wave: "W23", note: "mirror status stopping|stopped|starting and journal step stop (CHECK lists only)"},
+    {tag: "0020_mirror_refresh", wave: "W24", note: "mirror refresh/rollback: route_port, route_revision_id, op_revision_id, revision retired_at, status rolling_back, event kinds activated|retired|rolled_back, journal step route, per-mirror active-revision unique index"},
     // R2: append here; one entry per generated migration, in order.
 ];
 

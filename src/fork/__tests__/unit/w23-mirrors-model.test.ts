@@ -112,10 +112,10 @@ describe("startTestedLabel (ADR-016 decay, DD-8) — clock is the real clock", (
 
 const rev = (o: Partial<MirrorView["revisions"][number]>): MirrorView["revisions"][number] => ({
     id: "r", seq: 1, state: "ready", reason: null, failedStep: null, steps: [], gates: {expected_data: null, db_health: null, app_smoke: null, isolation: null, side_effects: null}, refusals: [], services: [],
-    hostPort: 41000, rpSequence: 1, readiedAt: null, wipeState: null, deadlineAt: new Date().toISOString(), createdAt: new Date().toISOString(), ...o,
+    hostPort: 41000, rpSequence: 1, readiedAt: null, activatedAt: null, retiredAt: null, wipeState: null, deadlineAt: new Date().toISOString(), createdAt: new Date().toISOString(), ...o,
 });
 const view = (status: string, revisions: MirrorView["revisions"], activeRevisionId: string | null): MirrorView => ({
-    mirror: {id: "m", name: "demo", status, runnerName: "box", stackId: "s", activeRevisionId, createdAt: new Date().toISOString()}, revisions, privacy: {containsPersonalData: true, optIn: true},
+    mirror: {id: "m", name: "demo", status, runnerName: "box", stackId: "s", activeRevisionId, opRevisionId: null, retentionDue: false, createdAt: new Date().toISOString()}, revisions, privacy: {containsPersonalData: true, optIn: true},
 });
 
 describe("failedNewerRevision", () => {

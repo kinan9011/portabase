@@ -34,11 +34,11 @@ export const TEST_RESTORE_TASK_TYPES = ["restore_verify"] as const;
 export const RUNNER_CAPABILITY = "runner.v1";
 export const RUNNER_TASK_TYPES = ["runner_probe"] as const;
 /**
- * W22a (ADR-008 §12, plan-W22a §3.3): the mirror types a RUNNER executes (nine in W22a, `mirror_stop` added by W23) (capability `mirror.v1`, reported only by a runner started with `FORK_MIRROR_ROOT`).
+ * W22a (ADR-008 §12, plan-W22a §3.3): the mirror types a RUNNER executes (nine in W22a, `mirror_stop` added by W23, `mirror_route` by W24) (capability `mirror.v1`, reported only by a runner started with `FORK_MIRROR_ROOT`).
  * Targeted, never public, never maint: only `src/fork/mirror/enqueue.ts` builds their payload. They need BOTH `runner.v1` and `mirror.v1`.
  */
 export const MIRROR_CAPABILITY = "mirror.v1";
-export const MIRROR_TASK_TYPES = ["mirror_probe", "mirror_stage", "mirror_apply", "mirror_render", "mirror_finalize", "mirror_db", "mirror_up", "mirror_check", "mirror_wipe", "mirror_stop"] as const;
+export const MIRROR_TASK_TYPES = ["mirror_probe", "mirror_stage", "mirror_apply", "mirror_render", "mirror_finalize", "mirror_db", "mirror_up", "mirror_check", "mirror_wipe", "mirror_stop", "mirror_route"] as const;
 export const TASK_TYPES = ["noop", "pin_add", "pin_revoke", "rotate_credential", ...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES, ...RUNNER_TASK_TYPES, ...MIRROR_TASK_TYPES] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
 export const PUBLIC_TASK_TYPES = ["noop"] as const;
@@ -55,7 +55,7 @@ export const TASK_REQUIRES: Readonly<Record<TaskType, readonly string[]>> = {
     runner_probe: [RUNNER_CAPABILITY],
     mirror_probe: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_stage: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_apply: [RUNNER_CAPABILITY, MIRROR_CAPABILITY],
     mirror_render: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_finalize: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_db: [RUNNER_CAPABILITY, MIRROR_CAPABILITY],
-    mirror_up: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_check: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_wipe: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_stop: [RUNNER_CAPABILITY, MIRROR_CAPABILITY],
+    mirror_up: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_check: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_wipe: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_stop: [RUNNER_CAPABILITY, MIRROR_CAPABILITY], mirror_route: [RUNNER_CAPABILITY, MIRROR_CAPABILITY],
 };
 /** Pinned dashboard keys per agent (agent enforces the same bound), PEM size bound, kid grammar (first 12 hex of SHA-256(SPKI DER)). */
 export const MAX_PINS = 8;

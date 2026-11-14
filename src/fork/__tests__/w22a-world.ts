@@ -137,7 +137,7 @@ export async function mirrorWorld() {
 
     const defaults = (type: string, p: Doc, ru: Runner): Reply => {
         switch (type) {
-            case "mirror_probe": return {result: {roots: [{path: "/srv/portabase-mirrors", shared: true, free_bytes: 1e12}], workspace_state: "absent", arch: "x86_64", compose_version: "5.4.0", rules_sha256: RULES_SHA256}};
+            case "mirror_probe": return {result: {roots: [{path: "/srv/portabase-mirrors", shared: true, free_bytes: 1e12}], workspace_state: "absent", arch: "x86_64", compose_version: "5.4.0", rules_sha256: RULES_SHA256, mem_available_bytes: 64 * 1024 ** 3}};
             case "mirror_stage": return {result: {staged: [], extracted: [], manifest_sequence: seqOf(p), kid: key.kid}};
             case "mirror_apply": return {result: {volumes: []}};
             case "mirror_db": return {result: {v: 1, dbs: (p.dbs as {index: number; service: string}[]).map((d) => ({...d, status: "restored"})), resets: (p.resets as {service: string}[]).map((r) => ({service: r.service, status: "done"}))}};
@@ -145,6 +145,7 @@ export async function mirrorWorld() {
             case "mirror_check": return {result: {v: 1, services: [{service: "db", state: "running", health: "healthy"}, {service: "web", state: "running", health: "none"}], smoke: {status: "ok", http_status: 200}}};
             case "mirror_wipe": return {result: {v: 1, containers: 2, networks: 2, volumes: 2, workspace_removed: true, remaining: 0}};
             case "mirror_stop": return {result: {v: 1, stopped: 2, services: [{service: "db", state: "exited"}, {service: "web", state: "exited"}], remaining: 0}};
+            case "mirror_route": return {result: p.action === "remove" ? {v: 1, removed: {container: 1, dir: true}, remaining: 0} : {v: 1, route_port: p.route_port, switched: true, smoke: {status: "ok", http_status: 200}}};
             case "runner_probe": return {result: {}}; // filled by probeResult below
             default: return {};
         }

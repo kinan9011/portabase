@@ -79,7 +79,7 @@ describe("W22a mirror task contract: builders → strict schemas", () => {
 
 describe("W22a mirror task contract: vocabulary", () => {
     it("every mirror type requires runner.v1 AND mirror.v1, is targeted, never public or maint, and has a payload schema", () => {
-        expect(MIRROR_TASK_TYPES).toHaveLength(10);
+        expect(MIRROR_TASK_TYPES).toHaveLength(11); // W22a: 9, W23: mirror_stop, W24: mirror_route
         for (const t of MIRROR_TASK_TYPES) {
             expect(TASK_REQUIRES[t], t).toEqual([RUNNER_CAPABILITY, MIRROR_CAPABILITY]);
             expect(TARGETED_TASK_TYPES).toContain(t);

@@ -6,8 +6,9 @@
 import {checkMirrorView, type MirrorAccess, type MirrorSpecV1} from "@/fork/compose-compiler/compile";
 import type {RestorePlanV1} from "@/fork/restore/schema";
 import {isPolicyView} from "@/fork/restore-tasks/view";
-import {MirrorCheckResult, MirrorDbResult} from "./payload-schema";
-import {MIRROR_STEPS, type MirrorStep, PORT_RANGE} from "./vocab";
+import {MirrorCheckResult, MirrorDbResult, MirrorRouteSwitchResult} from "./payload-schema";
+import {neededBytes} from "@/fork/restore-run/derive";
+import {CAPACITY_DISK_FACTOR, MIRROR_STEPS, type MirrorStep, PORT_RANGE} from "./vocab";
 
 export type Check = {ok: true} | {ok: false; code: string};
 const OK: Check = {ok: true};
@@ -91,4 +92,41 @@ export function allocatePort(used: readonly number[], range: {min: number; max: 
     const taken = new Set(used);
     for (let p = range.min; p <= range.max; p++) if (!taken.has(p)) return p;
     return null;
+}
+
+/**
+ * W24 capacity preflight (ADR-017 §capacity), run on the `mirror_probe` result AFTER the shared `checkProbe` (restore semantics untouched): the free disk of the plan's root must cover the plan's plaintext
+ * need with 10 % headroom; a REFRESH (a second revision beside a running one) additionally needs `mem_available_bytes >= memNeed` and fails CLOSED when the runner did not report a fact
+ * (`capacity_unknown`). A first creation keeps the old behaviour (an unreported free disk passes) except for the headroom.
+ */
+export function checkMirrorCapacity(result: unknown, plan: RestorePlanV1, o: {refresh: boolean; memNeed: number}): Check {
+    const r = (result && typeof result === "object" ? result : {}) as {roots?: unknown; mem_available_bytes?: unknown};
+    const root = plan.target.restore_root;
+    let free: number | null = null;
+    if (root && Array.isArray(r.roots)) {
+        for (const x of r.roots as {path?: unknown; free_bytes?: unknown}[]) {
+            if (typeof x?.path !== "string") continue;
+            if (root === x.path || root.startsWith(`${x.path.replace(/\/+$/, "")}/`)) { free = typeof x.free_bytes === "number" && Number.isFinite(x.free_bytes) ? x.free_bytes : null; break; }
+        }
+    }
+    const mem = typeof r.mem_available_bytes === "number" && Number.isFinite(r.mem_available_bytes) && r.mem_available_bytes >= 0 ? r.mem_available_bytes : null;
+    if (o.refresh && (free === null || mem === null)) return bad("capacity_unknown");
+    if (free !== null && free < Math.ceil(neededBytes(plan) * CAPACITY_DISK_FACTOR)) return bad("insufficient_disk");
+    if (o.refresh && mem !== null && mem < o.memNeed) return bad("insufficient_memory");
+    return OK;
+}
+
+/**
+ * W24 `mirror_route {switch}` result: the route points to the asked revision (`switched`), on the stable port the dashboard allocated, and the app answered THROUGH the forwarder
+ * (a 5xx or no answer is `route_smoke_failed`; an unreported smoke is never believed).
+ */
+export function checkRouteSwitch(result: unknown, routePort: number | null, policy: {http_path: string | null}): Check {
+    const r = MirrorRouteSwitchResult.safeParse(result);
+    if (!r.success || routePort === null || r.data.route_port !== routePort) return bad("route_failed");
+    if (r.data.smoke.status !== "ok") return bad("route_failed");
+    if (policy.http_path !== null) {
+        const s = r.data.smoke.http_status;
+        if (s === null || s < 100 || s > 499) return bad("route_failed");
+    }
+    return OK;
 }

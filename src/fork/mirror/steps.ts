@@ -19,7 +19,7 @@ import {latestRender} from "@/fork/restore-tasks/render";
 import {adminTargetCount, runnerIsolation, startRunnerProbe, assertRunnerTarget} from "@/fork/runner/service";
 import {done, fail, wait, type Handlers, type StepOutcome, type StepRecord} from "@/fork/runs/engine";
 import {RP_STATUSES} from "@/fork/recovery/status";
-import {checkDbStep, checkFinalView, checkHealth, checkKept, checkSmoke, type Check} from "./derive";
+import {checkDbStep, checkFinalView, checkMirrorCapacity, checkHealth, checkKept, checkSmoke, type Check} from "./derive";
 import {enabledOf, nowOf, type MirrorDeps} from "./deps";
 import {addEvent} from "./events";
 import {enqueueMirrorTask, TRANSIENT_ENQUEUE_CODES, type EnqueueArgs, type MirrorTaskDeps} from "./enqueue";
@@ -150,6 +150,20 @@ async function ownRender(ctx: RevCtx, type: "mirror_render" | "mirror_finalize",
     return row && row.taskId === taskId ? row : null;
 }
 
+/** The ACTIVE revision's id + workspace (the test-credential seed of a refresh revision is copied from there on the runner). */
+async function activeSeedFrom(c: RevCtx): Promise<{revisionId: string; workspace: string} | undefined> {
+    if (!c.mirror.activeRevisionId) return undefined;
+    const [a] = await c.d.db.select({id: forkMirrorRevision.id, workspace: forkMirrorRevision.workspace}).from(forkMirrorRevision).where(eq(forkMirrorRevision.id, c.mirror.activeRevisionId));
+    return a ? {revisionId: a.id, workspace: a.workspace} : undefined;
+}
+
+/** Services of the mirror's ACTIVE revision (≥ 1): the new revision is assumed to need as many as the running one (RAM preflight, OD-W24-5). */
+async function activeServiceCount(c: RevCtx): Promise<number> {
+    if (!c.mirror.activeRevisionId) return 1;
+    const [a] = await c.d.db.select({services: forkMirrorRevision.services}).from(forkMirrorRevision).where(eq(forkMirrorRevision.id, c.mirror.activeRevisionId));
+    return Math.max(1, Array.isArray(a?.services) ? a.services.length : 1);
+}
+
 export function handlers(ctx0: RevCtx): Handlers<MirrorStep, RevCtx> {
     const on = (h: (c: RevCtx) => Promise<StepOutcome>) => async (c: RevCtx): Promise<StepOutcome> => (enabledOf(c.d) ? h(c) : wait()); // flag off ⇒ no forward step (the deadline + the wipe still run)
     void ctx0;
@@ -163,7 +177,13 @@ export function handlers(ctx0: RevCtx): Handlers<MirrorStep, RevCtx> {
             const r = await resolveManifest({...c.d, principal: c.principal} as never, c.plan, m);
             return "code" in r ? fail(r.code) : done();
         }),
-        probe: on((c) => taskStep(c, {step: "probe", manifest: false, args: () => ({}), check: (result) => checkProbe(result, c.plan, RULES_SHA256)})),
+        probe: on((c) => taskStep(c, {step: "probe", manifest: false, args: () => ({}), check: async (result) => {
+            const p = checkProbe(result, c.plan, RULES_SHA256);
+            if (!p.ok) return p;
+            // W24 capacity preflight: nothing of the production copy is on the runner yet (this step precedes `stage`). Refresh = seq > 1.
+            const refresh = c.rev.seq > 1;
+            return checkMirrorCapacity(result, c.plan, {refresh, memNeed: refresh ? c.policy.limits.mem_bytes * (await activeServiceCount(c)) : 0});
+        }})),
         stage: on((c) => taskStep(c, {step: "stage", manifest: true, args: () => ({}), check: (result) => checkStage(result, c.plan)})),
         apply: on((c) => taskStep(c, {step: "apply", manifest: true, args: () => ({})})),
         render: on((c) => taskStep(c, {
@@ -196,9 +216,12 @@ export function handlers(ctx0: RevCtx): Handlers<MirrorStep, RevCtx> {
                 details: {revisionId: c.rev.id, specSha256: r.spec_sha256, kept: r.spec.kept_production_secrets.length, resets: r.spec.credential_resets.length, diffLines: r.diff.length}});
             return done();
         }),
-        finalize: on((c) => taskStep(c, {
+        finalize: on(async (c) => {
+            const seedFrom = c.rev.seq > 1 ? await activeSeedFrom(c) : undefined;
+            return taskStep(c, {
             step: "finalize", manifest: true,
-            args: () => ({spec: specOf(c.rev) ?? undefined, specSha256: c.rev.specSha256 ?? undefined, policy: c.policy}),
+            // W24 (DD-8): a refresh revision reuses the ACTIVE revision's test-credential seed (copied on the runner, never uploaded)
+            args: () => ({spec: specOf(c.rev) ?? undefined, specSha256: c.rev.specSha256 ?? undefined, policy: c.policy, ...(seedFrom ? {seedFrom} : {})}),
             check: async (result, last) => {
                 const res = MirrorFinalizeResult.safeParse(result);
                 const fin = await ownRender(c, "mirror_finalize", last.taskId);
@@ -213,7 +236,8 @@ export function handlers(ctx0: RevCtx): Handlers<MirrorStep, RevCtx> {
                 await setGate(c, "side_effects", true);
                 return {ok: true};
             },
-        })),
+            });
+        }),
         restore_db: on(async (c) => {
             const spec = specOf(c.rev);
             if (!spec) return fail("internal_error");

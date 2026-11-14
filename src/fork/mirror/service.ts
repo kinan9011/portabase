@@ -1,10 +1,10 @@
 import {randomUUID} from "node:crypto";
-import {and, eq, inArray, isNull, sql} from "drizzle-orm";
+import {and, eq, gte, inArray, isNotNull, isNull, sql} from "drizzle-orm";
 import {z} from "zod";
 import {actorIn, ForkForbiddenError, ForkNotFoundError, forkCan, type ForkPrincipal, type ForkResourceKind} from "@/fork/acl";
 import {recordAudit} from "@/fork/audit";
 import type {ForkDb} from "@/fork/db/handle";
-import {forkMirror, forkMirrorRevision} from "@/fork/db/schema/mirror";
+import {forkMirror, forkMirrorEvent, forkMirrorRevision} from "@/fork/db/schema/mirror";
 import {forkRecoveryPoint} from "@/fork/db/schema/recovery";
 import {forkRestorePlan} from "@/fork/db/schema/restore";
 import {forkStack} from "@/fork/db/schema/stack";
@@ -26,7 +26,7 @@ import {addEvent} from "./events";
 import {transition} from "./machine";
 import {MirrorPolicyInput, resolvePolicy} from "./policy";
 import {toMirrorView, type MirrorView} from "./view";
-import {nextMirrorStatus} from "./lifecycle";
+import {nextMirrorStatus, opOf} from "./lifecycle";
 import {isWipeEligible} from "./wipe";
 import {ACTIVE_REVISION_STATES, keepConfirmPhrase, PORT_RANGE, REFUSAL_MESSAGES, RUNNER_PRECHECK_MAX_AGE_MS, type RevisionState} from "./vocab";
 
@@ -36,7 +36,7 @@ import {ACTIVE_REVISION_STATES, keepConfirmPhrase, PORT_RANGE, REFUSAL_MESSAGES,
  */
 export type MirrorRefusalCode = "forbidden" | "not_found" | "invalid_input" | "locked" | "rate_limited" | "mirrors_disabled" | "privacy_ack_required" | "confirmation_mismatch" | "runner_ineligible"
     | "runner_not_isolated" | "runner_busy" | "name_taken" | "port_unavailable" | "rp_not_verified" | "mirror_not_ready" | "plan_blocked" | "not_active" | "mirror_mode_invalid" | "mirror_target_not_runner"
-    | "personal_data_no_mirror_opt_in" | "not_failed" | "rp_purged" | "mirror_busy" | "mirror_state_invalid";
+    | "personal_data_no_mirror_opt_in" | "not_failed" | "rp_purged" | "mirror_busy" | "mirror_state_invalid" | "rp_not_newer" | "no_rollback_target";
 export type MirrorRefusal = {ok: false; code: MirrorRefusalCode; message: string; retryAfterSeconds?: number; blockers?: string[]};
 const refuse = (code: MirrorRefusalCode, extra: Partial<MirrorRefusal> = {}): MirrorRefusal => ({ok: false, code, message: REFUSAL_MESSAGES[code] ?? "Refused.", ...extra});
 const allowed = (d: MirrorDeps): Promise<boolean> => (d.configAllowed ? d.configAllowed() : assertForkConfigAllowed().then(() => true, () => false));
@@ -288,10 +288,20 @@ export async function deleteMirror(d: MirrorDeps, raw: unknown): Promise<{ok: tr
     if (!rl.ok) return deny("rate_limited", {retryAfterSeconds: rl.retryAfterSeconds});
     const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, input.data.mirrorId));
     if (!m) return refuse("not_found");
+    if (m.status === "deleting" && m.routePort !== null && !m.deletedAt) {
+        // W24: a route removal that FAILED for this delete request is re-requested by a new Delete click (a new op start; the failed row is then ignored)
+        const op = await opOf(d.db, m.id, "deleting");
+        const [failedEv] = op ? await d.db.select({id: forkMirrorEvent.id}).from(forkMirrorEvent).where(and(eq(forkMirrorEvent.mirrorId, m.id), eq(forkMirrorEvent.kind, "failed"), gte(forkMirrorEvent.at, op.at), sql`${forkMirrorEvent.details}->>'scope' = 'mirror'`)).limit(1) : [];
+        if (failedEv && input.data.confirmName === m.name) {
+            await addEvent(d.db, {mirrorId: m.id, revisionId: null, kind: "state_changed", at: now, fromState: "deleting", toState: "deleting", actor: {userId: p.userId}, details: {scope: "mirror", retry: true}});
+            await audit("success", {phase: "retry"}, orgId);
+        }
+        return {ok: true};
+    }
     if (m.status === "deleting" || m.status === "deleted" || m.deletedAt) return {ok: true}; // idempotent
     if (input.data.confirmName !== m.name) return deny("confirmation_mismatch");
     const revs = await d.db.select({id: forkMirrorRevision.id, state: forkMirrorRevision.state}).from(forkMirrorRevision).where(eq(forkMirrorRevision.mirrorId, m.id));
-    if (m.status === "creating" || m.status === "stopping" || m.status === "starting" || revs.some((r) => (ACTIVE_REVISION_STATES as readonly string[]).includes(r.state))) return deny("mirror_busy");
+    if (m.status === "creating" || m.status === "stopping" || m.status === "starting" || m.status === "refreshing" || m.status === "rolling_back" || revs.some((r) => (ACTIVE_REVISION_STATES as readonly string[]).includes(r.state))) return deny("mirror_busy");
     if (!(DELETABLE as readonly string[]).includes(m.status)) return deny("mirror_state_invalid");
     const done = await withForkLock(d.db, `mirror:${m.id}`, async (tx) => {
         const rows = await tx.update(forkMirror).set({status: "deleting", updatedAt: now}).where(and(eq(forkMirror.id, m.id), eq(forkMirror.status, m.status))).returning({id: forkMirror.id});
@@ -328,7 +338,7 @@ export async function stopMirror(d: MirrorDeps, raw: unknown): Promise<{ok: true
     const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, input.data.mirrorId));
     if (!m || m.deletedAt) return refuse("not_found");
     if (m.status === "stopping" || m.status === "stopped") return {ok: true}; // idempotent
-    if (m.status === "creating" || m.status === "starting" || m.status === "deleting") return deny("mirror_busy");
+    if (m.status === "creating" || m.status === "starting" || m.status === "deleting" || m.status === "refreshing" || m.status === "rolling_back") return deny("mirror_busy");
     if (!(STOPPABLE as readonly string[]).includes(m.status) || !m.activeRevisionId) return deny("mirror_state_invalid");
     const to = nextMirrorStatus(m.status as "ready" | "failed", "stop_requested");
     const done = await withForkLock(d.db, `mirror:${m.id}`, async (tx) => {
@@ -364,7 +374,7 @@ export async function startMirror(d: MirrorDeps, raw: unknown): Promise<{ok: tru
     const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, input.data.mirrorId));
     if (!m || m.deletedAt) return refuse("not_found");
     if (m.status === "starting") return {ok: true}; // idempotent
-    if (m.status === "creating" || m.status === "stopping" || m.status === "deleting") return deny("mirror_busy");
+    if (m.status === "creating" || m.status === "stopping" || m.status === "deleting" || m.status === "refreshing" || m.status === "rolling_back") return deny("mirror_busy");
     if (m.status !== "stopped" || !m.activeRevisionId) return deny("mirror_state_invalid");
     if (!m.runnerAgentId) return deny("runner_ineligible");
     const el = await assertRunnerTarget(d.db, m.runnerAgentId);
@@ -383,6 +393,169 @@ export async function startMirror(d: MirrorDeps, raw: unknown): Promise<{ok: tru
     return {ok: true};
 }
 
+// ---- refresh / rollback (W24, DD-1/2/9/10/11) ---------------------------------------------------------------------------------------------
+export const RefreshMirrorRequest = z.strictObject({mirrorId: z.uuid(), rpId: z.uuid(), confirmName: z.string().max(40), acknowledgePrivacy: z.boolean()});
+export const RollbackMirrorRequest = z.strictObject({mirrorId: z.uuid(), revisionId: z.uuid(), confirmName: z.string().max(40)});
+const OP_BUSY = ["creating", "stopping", "starting", "deleting"] as const;
+const isUniqueViolation = (e: unknown, name: string): boolean => {
+    const x = e as {constraint?: string; message?: string; cause?: {constraint?: string; message?: string}};
+    return x?.constraint === name || x?.cause?.constraint === name || (x?.message ?? "").includes(name) || (x?.cause?.message ?? "").includes(name);
+};
+class CasLost extends Error {}
+
+/** Ports in use on a runner: revision loopback ports whose copy may still exist + the stable route ports of live mirrors (one number space, no accidental overlap). */
+async function usedPorts(tx: ForkDb, runnerAgentId: string): Promise<number[]> {
+    const rev = await tx.select({port: forkMirrorRevision.hostPort}).from(forkMirrorRevision).where(and(eq(forkMirrorRevision.runnerAgentId, runnerAgentId), sql`coalesce(${forkMirrorRevision.wipeState}, '') NOT IN ('verified','not_needed')`));
+    const route = await tx.select({port: forkMirror.routePort}).from(forkMirror).where(and(eq(forkMirror.runnerAgentId, runnerAgentId), isNull(forkMirror.deletedAt), isNotNull(forkMirror.routePort)));
+    return [...rev.map((r) => r.port), ...route.map((r) => r.port as number)];
+}
+
+/**
+ * Refresh (plan v1.1 §8.4): build an INDEPENDENT new revision of a READY mirror from a strictly newer verified recovery point, with the full W22a pipeline, while the active revision keeps serving. The status CAS
+ * `ready → refreshing` is the per-mirror lock (a second click is idempotent); the stored policy is reused (never re-sent). The route switch + commit are done by the lifecycle tick only after the new
+ * revision passed every READY gate. A refused plan writes nothing (no revision row).
+ */
+export async function refreshMirror(d: MirrorDeps, raw: unknown): Promise<{ok: true; revisionId: string; already?: true} | MirrorRefusal> {
+    const input = RefreshMirrorRequest.safeParse(raw);
+    const p = d.principal;
+    if (!p) return refuse("forbidden");
+    const audit = auditor(d, "fork.mirror.refresh", "mirror", input.success ? input.data.mirrorId : null);
+    if (!input.success) { await audit("denied", {reason: "invalid_input"}); return refuse("invalid_input"); }
+    const req = input.data;
+    if (!(await allowed(d))) { await audit("denied", {reason: "locked"}); return refuse("locked"); }
+    const g = await gate(d, "mirrors.manage", "mirror", req.mirrorId, audit);
+    if (!g.ok) return g;
+    const orgId = g.organizationId;
+    const deny = async (code: MirrorRefusalCode, details: Record<string, unknown> = {}, extra: Partial<MirrorRefusal> = {}): Promise<MirrorRefusal> => { await audit("denied", {reason: code, ...details}, orgId); return refuse(code, extra); };
+    if (!enabledOf(d)) return deny("mirrors_disabled");
+    const now = nowOf(d);
+    const rl = (d.rate ?? checkRate)(`mirror-op:${p.userId}`, MIRROR_OP_RATE.limit, MIRROR_OP_RATE.windowMs, now.getTime());
+    if (!rl.ok) return deny("rate_limited", {}, {retryAfterSeconds: rl.retryAfterSeconds});
+    const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, req.mirrorId));
+    if (!m || m.deletedAt) return refuse("not_found");
+    if (m.status === "refreshing" && m.opRevisionId) return {ok: true, revisionId: m.opRevisionId, already: true}; // idempotent: one refresh at a time
+    if ((OP_BUSY as readonly string[]).includes(m.status) || m.status === "rolling_back" || m.status === "refreshing") return deny("mirror_busy");
+    if (m.status !== "ready" || !m.activeRevisionId || !m.runnerAgentId) return deny("mirror_state_invalid");
+    if (req.confirmName !== m.name) return deny("confirmation_mismatch");
+    const [activeRev] = await d.db.select().from(forkMirrorRevision).where(eq(forkMirrorRevision.id, m.activeRevisionId));
+    const [stack] = await d.db.select().from(forkStack).where(eq(forkStack.id, m.stackId));
+    const [rp] = await d.db.select().from(forkRecoveryPoint).where(eq(forkRecoveryPoint.id, req.rpId));
+    if (!activeRev || !stack || stack.organizationId !== orgId || !rp || rp.stackId !== m.stackId) return deny("not_found");
+    if (rp.purgedAt !== null) return deny("rp_purged");
+    if (rp.status !== RP_STATUSES[2]) return deny("rp_not_verified");
+    if (!(Number(rp.sequence) > Number(activeRev.rpSequence))) return deny("rp_not_newer"); // OD-W24-2: strictly newer only
+    if (stack.containsPersonalData !== false && !req.acknowledgePrivacy) return deny("privacy_ack_required");
+    const runnerId = m.runnerAgentId;
+    const el = await assertRunnerTarget(d.db, runnerId);
+    if (!el.ok) return deny("runner_ineligible", {detail: el.code});
+    const iso = await runnerIsolation(d.db, runnerId, {now, maxAgeMs: RUNNER_PRECHECK_MAX_AGE_MS, serverUrl: d.serverUrl()});
+    if (iso.state !== "isolated" || (await adminTargetCount(d.db, runnerId)) < 1) return deny("runner_not_isolated", {isolation: iso.state});
+
+    const [{seq: maxSeq}] = await d.db.select({seq: sql<number>`coalesce(max(${forkMirrorRevision.seq}), 0)::int`}).from(forkMirrorRevision).where(eq(forkMirrorRevision.mirrorId, m.id)) as [{seq: number}];
+    const seq = Number(maxSeq) + 1;
+    const project = `pbm-${m.name}-r${seq}`;
+    const root = forkEnv().FORK_MIRROR_ROOT;
+    const plan = await mirrorPlan(d, d.db, {rpId: req.rpId, runnerAgentId: runnerId, project, organizationId: orgId, now});
+    if (!plan.ok) return deny(plan.code, {rpId: req.rpId});
+    const {plan: pl, planHash, inputsDigest} = plan.result;
+    if (pl.outcome !== "ready") return deny("plan_blocked", {rpId: req.rpId}, {blockers: pl.blockers.slice(0, 20)}); // nothing is written for a refused refresh
+    const revisionId = randomUUID();
+    const workspace = `${root}/${project}`;
+
+    type Created = {ok: true; hostPort: number; routePort: number} | {ok: true; already: string} | {ok: false; code: MirrorRefusalCode};
+    let created: Created;
+    try {
+        created = await withForkLock(d.db, `runner:${runnerId}`, async (tx): Promise<Created> => {
+            // a concurrent refresh of THIS mirror that got the lock first: idempotent answer (same revision), nothing new is written
+            const [cur] = await tx.select({status: forkMirror.status, op: forkMirror.opRevisionId}).from(forkMirror).where(eq(forkMirror.id, m.id));
+            if (cur?.status === "refreshing" && cur.op) return {ok: true, already: cur.op};
+            const [busy] = await tx.select({n: sql<number>`count(*)::int`}).from(forkMirrorRevision).where(and(eq(forkMirrorRevision.runnerAgentId, runnerId), inArray(forkMirrorRevision.state, [...ACTIVE_REVISION_STATES])));
+            if (Number(busy?.n ?? 0) > 0) return {ok: false, code: "runner_busy"};
+            const used = await usedPorts(tx, runnerId);
+            const port = allocatePort(used, d.portRange ?? PORT_RANGE);
+            if (port === null) return {ok: false, code: "port_unavailable"};
+            const routePort = m.routePort ?? allocatePort([...used, port], d.portRange ?? PORT_RANGE);
+            if (routePort === null) return {ok: false, code: "port_unavailable"};
+            const expiresAt = new Date(now.getTime() + forkEnv().FORK_RESTORE_PLAN_TTL_HOURS * 3_600_000);
+            const [planRow] = await tx.insert(forkRestorePlan).values({
+                organizationId: orgId, stackId: m.stackId, rpId: req.rpId, rpSequence: pl.rp.sequence, targetAgentId: runnerId, targetAgentName: pl.target.agent_name, purpose: "mirror", mode: "new_stack",
+                planVersion: PLAN_VERSION, mappings: {target_project: project, restore_root: root, volumes: null, select: null, sqlite: null}, plan: pl, planHash, inputsDigest, outcome: pl.outcome, approvals: [], createdBy: p.userId, createdAt: now, expiresAt,
+            }).returning({id: forkRestorePlan.id});
+            // the per-mirror lock: only a READY mirror moves to `refreshing` (0 rows ⇒ somebody else got there first ⇒ the whole transaction rolls back, nothing is left behind).
+            // The revision row goes first: `op_revision_id` is a foreign key checked immediately.
+            const planning = transition("requested", "planning");
+            const next = transition(planning, "validating");
+            await tx.insert(forkMirrorRevision).values({
+                id: revisionId, mirrorId: m.id, organizationId: orgId, stackId: m.stackId, seq, rpId: req.rpId, rpSequence: pl.rp.sequence, planId: planRow.id, planHash, runnerAgentId: runnerId,
+                project, workspace, hostPort: port, startedBy: p.userId, createdAt: now, deadlineAt: new Date(now.getTime() + maxRunMsOf(d)), updatedAt: now, state: next, steps: initialSteps(deriveMirrorSteps(pl)),
+            });
+            const cas = await tx.update(forkMirror).set({status: nextMirrorStatus("ready", "refresh_requested"), opRevisionId: revisionId, routePort, updatedAt: now}).where(and(eq(forkMirror.id, m.id), eq(forkMirror.status, "ready"))).returning({id: forkMirror.id});
+            if (cas.length !== 1) throw new CasLost();
+            await addEvent(tx, {mirrorId: m.id, revisionId, kind: "requested", at: now, toState: "requested", actor: {userId: p.userId}});
+            await addEvent(tx, {mirrorId: m.id, revisionId, kind: "state_changed", at: now, fromState: "requested", toState: planning});
+            await addEvent(tx, {mirrorId: m.id, revisionId, kind: "state_changed", at: now, fromState: planning, toState: next});
+            await addEvent(tx, {mirrorId: m.id, revisionId: null, kind: "state_changed", at: now, fromState: "ready", toState: "refreshing", actor: {userId: p.userId}, details: {scope: "mirror", revisionId}});
+            await recordAudit(tx, {organizationId: orgId, actorUserId: p.userId, action: "fork.mirror.refresh", resourceType: "mirror", resourceId: m.id, result: "success", now,
+                details: {phase: "requested", revisionId, fromRevisionId: m.activeRevisionId, rpId: req.rpId, rpSequence: pl.rp.sequence, hostPort: port, routePort}});
+            return {ok: true, hostPort: port, routePort};
+        });
+    } catch (e) {
+        if (e instanceof CasLost || isUniqueViolation(e, "fork_mirror_revision_one_active_mirror_uq")) return deny("mirror_busy");
+        throw e;
+    }
+    if (!created.ok) return deny(created.code);
+    if ("already" in created) return {ok: true, revisionId: created.already, already: true};
+    return {ok: true, revisionId};
+}
+
+/**
+ * Rollback: re-activate the previous retained revision (an earlier READY, stopped, not retired one that was active before). The lifecycle tick re-gates it (own isolation probe, `mirror_up`,
+ * health + app smoke), switches the route back, commits, and the rolled-back revision is wiped (verified). The active revision keeps serving until the commit.
+ */
+export async function rollbackMirror(d: MirrorDeps, raw: unknown): Promise<{ok: true; already?: true} | MirrorRefusal> {
+    const input = RollbackMirrorRequest.safeParse(raw);
+    const p = d.principal;
+    if (!p) return refuse("forbidden");
+    const audit = auditor(d, "fork.mirror.rollback", "mirror", input.success ? input.data.mirrorId : null);
+    if (!input.success) { await audit("denied", {reason: "invalid_input"}); return refuse("invalid_input"); }
+    const req = input.data;
+    if (!(await allowed(d))) { await audit("denied", {reason: "locked"}); return refuse("locked"); }
+    const g = await gate(d, "mirrors.manage", "mirror", req.mirrorId, audit);
+    if (!g.ok) return g;
+    const orgId = g.organizationId;
+    const deny = async (code: MirrorRefusalCode, extra: Partial<MirrorRefusal> = {}): Promise<MirrorRefusal> => { await audit("denied", {reason: code}, orgId); return refuse(code, extra); };
+    if (!enabledOf(d)) return deny("mirrors_disabled");
+    const now = nowOf(d);
+    const rl = (d.rate ?? checkRate)(`mirror-op:${p.userId}`, MIRROR_OP_RATE.limit, MIRROR_OP_RATE.windowMs, now.getTime());
+    if (!rl.ok) return deny("rate_limited", {retryAfterSeconds: rl.retryAfterSeconds});
+    const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, req.mirrorId));
+    if (!m || m.deletedAt) return refuse("not_found");
+    if (m.status === "rolling_back") return {ok: true, already: true}; // idempotent
+    if ((OP_BUSY as readonly string[]).includes(m.status) || m.status === "refreshing") return deny("mirror_busy");
+    if (m.status !== "ready" || !m.activeRevisionId || !m.runnerAgentId) return deny("mirror_state_invalid");
+    if (req.confirmName !== m.name) return deny("confirmation_mismatch");
+    const [t] = await d.db.select().from(forkMirrorRevision).where(and(eq(forkMirrorRevision.id, req.revisionId), eq(forkMirrorRevision.mirrorId, m.id)));
+    if (!t || t.id === m.activeRevisionId || t.state !== "ready" || t.activatedAt === null || t.retiredAt !== null || t.wipeState !== null) return deny("no_rollback_target");
+    const runnerId = m.runnerAgentId;
+    const el = await assertRunnerTarget(d.db, runnerId);
+    if (!el.ok) return deny("runner_ineligible");
+    const iso = await runnerIsolation(d.db, runnerId, {now, maxAgeMs: RUNNER_PRECHECK_MAX_AGE_MS, serverUrl: d.serverUrl()});
+    if (iso.state !== "isolated" || (await adminTargetCount(d.db, runnerId)) < 1) return deny("runner_not_isolated");
+    // lock order: runner, then the mirror CAS (the route port is allocated under the runner lock when the mirror has none yet)
+    const done = await withForkLock(d.db, `runner:${runnerId}`, async (tx) => {
+        const routePort = m.routePort ?? allocatePort(await usedPorts(tx, runnerId), d.portRange ?? PORT_RANGE);
+        if (routePort === null) return "port" as const;
+        const rows = await tx.update(forkMirror).set({status: nextMirrorStatus("ready", "rollback_requested"), opRevisionId: t.id, routePort, updatedAt: now}).where(and(eq(forkMirror.id, m.id), eq(forkMirror.status, "ready"))).returning({id: forkMirror.id});
+        if (rows.length !== 1) return "lost" as const;
+        await addEvent(tx, {mirrorId: m.id, revisionId: null, kind: "state_changed", at: now, fromState: "ready", toState: "rolling_back", actor: {userId: p.userId}, details: {scope: "mirror", revisionId: t.id}});
+        await recordAudit(tx, {organizationId: orgId, actorUserId: p.userId, action: "fork.mirror.rollback", resourceType: "mirror", resourceId: m.id, result: "success", now, details: {phase: "requested", revisionId: t.id, fromRevisionId: m.activeRevisionId, routePort}});
+        return "ok" as const;
+    });
+    if (done === "port") return deny("port_unavailable");
+    if (done === "lost") return deny("mirror_busy");
+    return {ok: true};
+}
+
 // ---- read model + access ------------------------------------------------------------------------------------------------------------------
 export async function getMirrorView(d: MirrorDeps, raw: unknown): Promise<{ok: true; view: MirrorView} | MirrorRefusal> {
     const input = MirrorIdRequest.safeParse(raw);
@@ -395,7 +568,7 @@ export async function getMirrorView(d: MirrorDeps, raw: unknown): Promise<{ok: t
     if (!m) return refuse("not_found");
     const revs = await d.db.select().from(forkMirrorRevision).where(eq(forkMirrorRevision.mirrorId, m.id));
     const [stack] = await d.db.select({pd: forkStack.containsPersonalData, opt: forkStack.mirrorOptInAt}).from(forkStack).where(eq(forkStack.id, m.stackId));
-    return {ok: true, view: toMirrorView(m, revs, {containsPersonalData: stack?.pd ?? null, optIn: (stack?.opt ?? null) !== null})};
+    return {ok: true, view: toMirrorView(m, revs, {containsPersonalData: stack?.pd ?? null, optIn: (stack?.opt ?? null) !== null}, nowOf(d))};
 }
 
 /** Loopback + SSH tunnel info: only for a READY mirror, audited on every read (the port is the only way in; there is no proxy, ADR-009 §9). */
@@ -407,11 +580,15 @@ export async function getMirrorAccess(d: MirrorDeps, raw: unknown): Promise<{ok:
     const g = await gate(d, "mirrors.view", "mirror", input.data.mirrorId, audit);
     if (!g.ok) return g;
     const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, input.data.mirrorId));
-    if (!m || m.status !== "ready" || !m.activeRevisionId) { await audit("denied", {reason: "mirror_not_ready"}, g.organizationId); return refuse("mirror_not_ready"); }
+    // W24: the active revision keeps serving while a refresh / rollback runs
+    if (!m || !["ready", "refreshing", "rolling_back"].includes(m.status) || !m.activeRevisionId) { await audit("denied", {reason: "mirror_not_ready"}, g.organizationId); return refuse("mirror_not_ready"); }
     const [rev] = await d.db.select().from(forkMirrorRevision).where(eq(forkMirrorRevision.id, m.activeRevisionId));
     const pol = m.policy as {access?: {service?: string; target?: number}};
     if (!rev || rev.state !== ("ready" satisfies RevisionState) || !pol.access?.service || typeof pol.access.target !== "number") { await audit("denied", {reason: "mirror_not_ready"}, g.organizationId); return refuse("mirror_not_ready"); }
-    await audit("success", {revisionId: rev.id, hostPort: rev.hostPort}, g.organizationId);
-    return {ok: true, access: {runnerName: m.runnerAgentName, hostPort: rev.hostPort, service: pol.access.service, target: pol.access.target,
-        tunnelHint: `ssh -L ${rev.hostPort}:127.0.0.1:${rev.hostPort} <your-user>@<address of ${m.runnerAgentName}>, then open http://127.0.0.1:${rev.hostPort}/`}};
+    // W24 (DD-4): the stable route port, but ONLY while the runner confirmed the route points at the ACTIVE revision; otherwise the revision's own loopback port
+    const viaRoute = m.routePort !== null && m.routeRevisionId === m.activeRevisionId;
+    const port = viaRoute ? (m.routePort as number) : rev.hostPort;
+    await audit("success", {revisionId: rev.id, hostPort: port, via: viaRoute ? "route" : "revision"}, g.organizationId);
+    return {ok: true, access: {runnerName: m.runnerAgentName, hostPort: port, service: pol.access.service, target: pol.access.target,
+        tunnelHint: `ssh -L ${port}:127.0.0.1:${port} <your-user>@<address of ${m.runnerAgentName}>, then open http://127.0.0.1:${port}/`}};
 }

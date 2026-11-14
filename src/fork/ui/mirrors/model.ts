@@ -17,10 +17,10 @@ const DAY_MS = 86_400_000;
 /** Health at the LAST CHECK (there is no periodic re-check, OD-W23-10): never claims a live state. */
 export function mirrorHealth(status: string, services: readonly ServiceState[]): Health {
     switch (status) {
-        case "creating": case "starting": case "stopping": case "deleting": case "refreshing": return "pending";
+        case "creating": case "starting": case "stopping": case "deleting": return "pending";
         case "stopped": return "not_running";
         case "failed": case "cancelled": return "failed";
-        case "ready": {
+        case "ready": case "refreshing": case "rolling_back": { // W24: the ACTIVE revision keeps serving during a refresh / rollback, so its last check still describes the mirror
             if (services.length === 0) return "degraded";
             const ok = services.every((s) => s.state === "running" && (s.health === null || s.health === "none" || s.health === "healthy"));
             return ok ? "healthy" : "degraded";
@@ -34,7 +34,7 @@ export type ActionKey = "stop" | "start" | "delete" | "cancel" | "retryWipe";
 export type MirrorFacts = {status: string; hasActiveRevision: boolean; activeCreation: boolean; wipeFailed: boolean};
 export type CanFacts = {manage: boolean; locked: boolean; flagOn: boolean; stopStart: boolean};
 const L = MIRRORS.lifecycle;
-const BUSY = new Set(["stopping", "starting", "deleting", "refreshing"]);
+const BUSY = new Set(["stopping", "starting", "deleting", "refreshing", "rolling_back"]);
 
 /** DD-7. Members get nothing (read-only page). `hidden` = the action does not apply; `reason` = applies but is blocked now (visible reason, `aria-disabled`). */
 export function mirrorActions(m: MirrorFacts, can: CanFacts): Record<ActionKey, Action> {

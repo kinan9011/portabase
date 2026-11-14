@@ -62,6 +62,8 @@ const samples = {
     mirror_check: {...mheader(), final_sha256: HEX("e"), access: {service: "web", target: 80}, http_path: "/", wait_s: 120},
     mirror_wipe: {...mheader()},
     mirror_stop: {...mheader()},
+    // W24: private access route (switch / remove) of a mirror
+    mirror_route: {...mheader(), action: "switch", mirror_id: "88888888-8888-4888-8888-888888888888", route_port: 41500, service: "web", target: 80, http_path: "/"},
     runner_probe: {v: 1, probe_id: "99999999-9999-4999-8999-999999999999", targets_sha256: HEX("d"), timeout_ms: 1500, targets: [{id: "t01", kind: "tcp", host: "10.20.30.40", port: 25}, {id: "t02", kind: "dns_tcp", host: "10.20.30.53", port: 53}, {id: "t03", kind: "dns_name", host: "example.com"}]},
 } as const;
 const ALL_TYPES = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES] as const;
@@ -185,6 +187,23 @@ function mirrorPayloadCases(): PCase[] {
     bad("mirror_wipe", "wipe_host_role_production", {...s.mirror_wipe, host_role: "production"});
     bad("mirror_stop", "stop_unknown_key", {...s.mirror_stop, extra: true});
     bad("mirror_stop", "stop_host_role_production", {...s.mirror_stop, host_role: "production"});
+    // ---- W24 mirror_route + finalize seed_from ----
+    out.push({type: "mirror_route", name: "mirror_route_remove_ok", payload: {...s.mirror_route, action: "remove"}, schema_valid: true, agent: "ok"});
+    out.push({type: "mirror_route", name: "mirror_route_switch_no_http_path_ok", payload: {...s.mirror_route, http_path: null}, schema_valid: true, agent: "ok"});
+    bad("mirror_route", "route_port_out_of_range_low", {...s.mirror_route, route_port: 40999});
+    bad("mirror_route", "route_port_out_of_range_high", {...s.mirror_route, route_port: 42000});
+    bad("mirror_route", "route_unknown_field", {...s.mirror_route, extra: 1});
+    bad("mirror_route", "route_bad_action", {...s.mirror_route, action: "restart"});
+    bad("mirror_route", "route_mirror_id_not_uuid", {...s.mirror_route, mirror_id: "not-a-uuid"});
+    bad("mirror_route", "route_service_with_space", {...s.mirror_route, service: "a b"});
+    bad("mirror_route", "route_target_zero", {...s.mirror_route, target: 0});
+    bad("mirror_route", "route_http_path_traversal_chars", {...s.mirror_route, http_path: "/a b"});
+    bad("mirror_route", "route_host_role_production", {...s.mirror_route, host_role: "production"});
+    bad("mirror_route", "route_missing_action", drop(s.mirror_route, "action"));
+    out.push({type: "mirror_finalize", name: "finalize_seed_from_ok", payload: {...s.mirror_finalize, seed_from: {revision_id: "77777777-7777-4777-8777-777777777777", workspace: `${MIRROR_ROOT}/pbm-demo-r0`}}, schema_valid: true, agent: "ok"});
+    bad("mirror_finalize", "finalize_seed_from_unknown_field", {...s.mirror_finalize, seed_from: {revision_id: "77777777-7777-4777-8777-777777777777", workspace: `${MIRROR_ROOT}/pbm-demo-r0`, extra: 1}});
+    bad("mirror_finalize", "finalize_seed_from_relative_workspace", {...s.mirror_finalize, seed_from: {revision_id: "77777777-7777-4777-8777-777777777777", workspace: "pbm-demo-r0"}});
+    bad("mirror_finalize", "finalize_seed_from_bad_revision", {...s.mirror_finalize, seed_from: {revision_id: "x", workspace: `${MIRROR_ROOT}/pbm-demo-r0`}});
     return out;
 }
 
@@ -298,7 +317,7 @@ function buildVectors() {
     ];
 
     // ---- W22a mirror role gating (plan-W22a §3.3): mirror tasks need runner.v1 AND mirror.v1; restore tasks never run on a runner ----
-    for (const type of ["mirror_probe", "mirror_stage", "mirror_finalize", "mirror_wipe", "mirror_stop"] as const) cases.push({name: `${type}_on_non_runner`, expect: "role_forbidden", ...mk(type)});
+    for (const type of ["mirror_probe", "mirror_stage", "mirror_finalize", "mirror_wipe", "mirror_stop", "mirror_route"] as const) cases.push({name: `${type}_on_non_runner`, expect: "role_forbidden", ...mk(type)});
     const mirrorRunnerCases = [
         ...MIRROR_TASK_TYPES.map((type) => ({name: `${type}_ok`, expect: "ok", ...mk(type)})),
         {name: "mirror_stage_without_target", expect: "target_mismatch", ...mk("mirror_stage", {omitTarget: true})},

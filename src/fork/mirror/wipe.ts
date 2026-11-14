@@ -1,4 +1,4 @@
-import {and, asc, eq, inArray, isNull, or} from "drizzle-orm";
+import {and, asc, eq, inArray, isNotNull, isNull, or} from "drizzle-orm";
 import {recordAudit} from "@/fork/audit";
 import {forkMirror, forkMirrorRevision} from "@/fork/db/schema/mirror";
 import {acquireLease, releaseLease} from "@/fork/locks";
@@ -15,13 +15,13 @@ import {MAX_EXPIRED_REENQUEUES, WIPE_BUDGET_MS} from "./vocab";
  * containers of THIS revision id + this agent only; any leftover makes the task fail) and the wipe is only believed after an INDEPENDENT `mirror_probe` reports `workspace_state = absent` (the wipe
  * result alone is never trusted). Never touches the revision's `state` / `reason`. Needs no principal: removing a production-data copy is always allowed (flag off, config locked, starter demoted).
  */
-const WIPE_STATES = ["blocked", "failed", "cancelled"] as const;
+const WIPE_STATES = ["blocked", "failed", "cancelled", "rolled_back"] as const;
 /**
- * A terminal non-ready revision is always wiped. A READY revision (the running copy, W23) is wiped ONLY while its mirror is `deleting`: a live mirror's copy is never touched
- * (hard rule, tested + mutation M1).
+ * A terminal non-ready revision (incl. a rolled-back one, W24) is always wiped. A READY revision (a kept copy) is wiped ONLY while its mirror is `deleting` or after retention RETIRED it (W24,
+ * `retired_at`; never the active one, SQL guard in `retire`): a live mirror's serving copy is never touched (hard rule, tested + mutation M1).
  */
-export const isWipeEligible = (revState: string, mirrorStatus: string | null | undefined): boolean =>
-    (WIPE_STATES as readonly string[]).includes(revState) || (revState === "ready" && mirrorStatus === "deleting");
+export const isWipeEligible = (revState: string, mirrorStatus: string | null | undefined, retiredAt?: Date | null): boolean =>
+    (WIPE_STATES as readonly string[]).includes(revState) || (revState === "ready" && (mirrorStatus === "deleting" || (retiredAt !== undefined && retiredAt !== null)));
 export type WipeStep = "advanced" | "waiting" | "verified" | "not_needed" | "failed" | "gone" | "busy";
 const leaseName = (id: string) => `mirror-wipe:${id}`;
 const REASON_RE = /^[a-z_]{1,64}$/;
@@ -40,7 +40,7 @@ async function advanceLocked(d: MirrorDeps, revisionId: string, now: Date): Prom
     const [rev] = await d.db.select().from(forkMirrorRevision).where(eq(forkMirrorRevision.id, revisionId));
     if (!rev) return "gone";
     const [mir] = await d.db.select({status: forkMirror.status}).from(forkMirror).where(eq(forkMirror.id, rev.mirrorId));
-    if (!isWipeEligible(rev.state, mir?.status)) return "gone";
+    if (!isWipeEligible(rev.state, mir?.status, rev.retiredAt)) return "gone";
     if (rev.wipeState !== null && rev.wipeState !== "running") return "gone";
     const audit = (result: "success" | "failure", details: Record<string, unknown>) => recordAudit(d.db, {organizationId: rev.organizationId, actorKind: "system", action: "fork.mirror.wipe", resourceType: "mirror", resourceId: rev.mirrorId, result, now, details: {revisionId: rev.id, ...details}});
 
@@ -144,7 +144,8 @@ async function advanceLocked(d: MirrorDeps, revisionId: string, now: Date): Prom
 export async function advanceMirrorWipes(d: MirrorDeps): Promise<{advanced: number; verified: number; failed: number}> {
     const out = {advanced: 0, verified: 0, failed: 0};
     const ids = await d.db.select({id: forkMirrorRevision.id}).from(forkMirrorRevision).where(and(
-        inArray(forkMirrorRevision.state, [...WIPE_STATES]), or(isNull(forkMirrorRevision.wipeState), eq(forkMirrorRevision.wipeState, "running")),
+        or(inArray(forkMirrorRevision.state, [...WIPE_STATES]), and(eq(forkMirrorRevision.state, "ready"), isNotNull(forkMirrorRevision.retiredAt))),
+        or(isNull(forkMirrorRevision.wipeState), eq(forkMirrorRevision.wipeState, "running")),
     )).orderBy(asc(forkMirrorRevision.createdAt)).limit(100);
     for (const {id} of ids) {
         try {

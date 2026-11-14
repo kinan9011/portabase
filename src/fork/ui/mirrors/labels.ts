@@ -262,7 +262,7 @@ export const MIRRORS = {
 /** Mirror status words (exhaustive over the closed list: tsc forces a sentence for every new status). */
 export const STATUS_TEXT: Record<MirrorStatus, string> = {
     creating: "Creating", ready: "Ready", failed: "Needs attention", cancelled: "Cancelled", refreshing: "Refreshing", deleting: "Deleting", deleted: "Deleted",
-    stopping: "Stopping", stopped: "Stopped", starting: "Starting",
+    stopping: "Stopping", stopped: "Stopped", starting: "Starting", rolling_back: "Rolling back",
 };
 export const statusText = (s: string): string => (Object.hasOwn(STATUS_TEXT, s) ? STATUS_TEXT[s as MirrorStatus] : s);
 
@@ -327,6 +327,8 @@ export const MIRROR_REFUSAL_TEXT: Record<MirrorRefusalCode, string> = {
     rp_purged: "This backup was deleted.",
     mirror_busy: "Stop creating it first (Cancel), or wait for the running action to finish.",
     mirror_state_invalid: "This action is not possible in the mirror's current state.",
+    rp_not_newer: "Choose a recovery point newer than the one this mirror runs.",
+    no_rollback_target: "There is no earlier revision to roll back to.",
 };
 const GENERIC_REFUSAL = "The mirror could not be created. Try again or check the runner.";
 export const refusalText = (code: unknown): string => (typeof code === "string" && Object.hasOwn(MIRROR_REFUSAL_TEXT, code) ? MIRROR_REFUSAL_TEXT[code as MirrorRefusalCode] : GENERIC_REFUSAL);
@@ -360,6 +362,14 @@ const GENERIC_REASON = "The mirror stopped. Check the runner and try again.";
 export const REASON_TEXT: Record<MirrorReasonCode, string> = {
     plan_blocked: "The restore plan is blocked.",
     stop_incomplete: "Some containers could not be stopped and may still be running.",
+    insufficient_disk: "The runner does not have enough free disk space for this copy.",
+    insufficient_memory: "The runner does not have enough free memory to build a second revision.",
+    capacity_unknown: "The runner did not report its free disk space and memory.",
+    route_failed: "The private access route could not be switched.",
+    route_target_not_running: "The app to switch access to is not running.",
+    route_not_owned: "The access route on the runner is not owned by this mirror.",
+    route_incomplete: "The private access route could not be switched or removed completely.",
+    route_smoke_failed: "The app did not answer through the new access route.",
     compile_refused: "The app cannot be mirrored safely.",
     kept_secret_unconfirmed: "A kept production secret was not confirmed.",
     final_view_invalid: "The prepared app did not match what was planned.",
@@ -412,6 +422,7 @@ const EVENT_TEXT: Record<string, string> = {
     requested: "Creation requested", gate_passed: "A safety check passed", gate_failed: "A safety check failed", blocked: "Creation blocked", failed: "Creation failed",
     cancel_requested: "Cancel requested", cancelled: "Creation cancelled", ready: "Mirror ready", wipe_started: "Deleting the copy on the runner",
     wipe_verified: "The copy on the runner was deleted and checked", wipe_failed: "Deleting the copy on the runner failed",
+    activated: "Became the active revision", retired: "Retired (will be wiped)", rolled_back: "Rolled back",
 };
 export const eventTitle = (kind: string, toState: string | null, mirrorScope: boolean): string => {
     if (kind === "state_changed" && toState) return mirrorScope ? `Mirror status: ${statusText(toState)}` : (STATE_WORD[toState] ?? statusText(toState));
@@ -420,6 +431,6 @@ export const eventTitle = (kind: string, toState: string | null, mirrorScope: bo
 const TASK_STEP_TEXT: Record<string, string> = {
     probe: "Check the backup and the runner", stage: "Copy the backup to the runner", apply: "Restore files", render: "Prepare the safe version of the app", finalize: "Make the app safe to run",
     restore_db: "Restore the database", up: "Start the app", check: "Health checks", isolation: "Isolation check", wipe: "Delete the copy on the runner", wipe_check: "Check that the copy is gone",
-    stop: "Stop the app",
+    stop: "Stop the app", route: "Switch private access",
 };
 export const taskTitle = (step: string, attempt: number): string => `${Object.hasOwn(TASK_STEP_TEXT, step) ? (TASK_STEP_TEXT[step] as string) : step}${attempt > 1 ? ` (attempt ${attempt})` : ""}`;

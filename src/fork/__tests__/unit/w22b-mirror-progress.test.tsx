@@ -20,9 +20,9 @@ type RevOver = Partial<MirrorView["revisions"][number]>;
 const view = (o: RevOver = {}, status = "creating"): MirrorView => {
     const now = new Date().toISOString();
     return {
-        mirror: {id: MID, name: "shop-3", status, runnerName: "lab-runner", stackId: "0b7e1c1e-7f3a-4b6e-9a40-333333333333", activeRevisionId: null, createdAt: now}, privacy: {containsPersonalData: true, optIn: true},
+        mirror: {id: MID, name: "shop-3", status, runnerName: "lab-runner", stackId: "0b7e1c1e-7f3a-4b6e-9a40-333333333333", activeRevisionId: null, opRevisionId: null, retentionDue: false, createdAt: now}, privacy: {containsPersonalData: true, optIn: true},
         revisions: [{id: RID, seq: 1, state: "staging", reason: null, failedStep: null, steps: MIRROR_STEPS.slice(0, 4).map((name, i) => ({name, status: i < 1 ? "done" : i === 1 ? "running" : "pending"})),
-            gates: {expected_data: null, db_health: null, app_smoke: null, isolation: null, side_effects: null}, refusals: [], services: [], hostPort: 41000, rpSequence: 3, readiedAt: null, wipeState: null, deadlineAt: now, createdAt: now, ...o}],
+            gates: {expected_data: null, db_health: null, app_smoke: null, isolation: null, side_effects: null}, refusals: [], services: [], hostPort: 41000, rpSequence: 3, readiedAt: null, activatedAt: null, retiredAt: null, wipeState: null, deadlineAt: now, createdAt: now, ...o}],
     };
 };
 const ready = (): MirrorView => view({state: "ready", steps: MIRROR_STEPS.map((name) => ({name, status: "done"})), gates: {expected_data: okGate, db_health: okGate, app_smoke: okGate, isolation: okGate, side_effects: okGate},
