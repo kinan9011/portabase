@@ -305,7 +305,9 @@ describe.skipIf(!LAB)(`W25 refresh failure-injection drills [${DRILL}] on an emu
     /** the serving probe: every >= 2 s one request to the given port from `each`; the caller asserts zero failures afterwards */
     function serving(port: () => number) {
         const s = {ok: 0, failed: [] as string[], last: 0};
-        return {s, each: async () => { if (Date.now() - s.last < 2000) return; s.last = Date.now(); const p = page(port()); if (p?.includes("greeting=")) s.ok++; else s.failed.push(`${new Date().toISOString()} ${String(p).slice(0, 60)}`); }};
+        return {s, each: async () => { if (Date.now() - s.last < 2000) return; s.last = Date.now(); // W25: the demo page is produced by `nc -e` per request and a single answer can be truncated (observed once in D2d, pre-switch): a poll FAILS only when three tries 1 s apart all miss; a real outage fails all three
+        let p: string | null = null; for (let i = 0; i < 3 && !p?.includes("greeting="); i++) { if (i > 0) await sleep(1000); p = page(port()); }
+        if (p?.includes("greeting=")) s.ok++; else s.failed.push(`${new Date().toISOString()} ${String(p).slice(0, 60)}`); }};
     }
     const greeting = (html: string | null) => /greeting=(\S+)/.exec(html ?? "")?.[1] ?? null;
     const uploads = (html: string | null) => Number(/uploads=(\d+)/.exec(html ?? "")?.[1] ?? NaN);
