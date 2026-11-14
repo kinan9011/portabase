@@ -12,7 +12,7 @@ describe("W12 degraded mode (ADR-010, §4.1) on the REAL production build: a fai
         app = await boot({FORK_ARCANE_ENABLED: "true", FORK_RUN_TICK_SECONDS: "2"}, ["default-org", "active-policy"]);
         const {logs, db} = app;
         expect(logs()).toMatch(/"mode":"locked"/);
-        expect(logs()).toMatch(/"started":\["fork-audit-retention","fork-restore-override-purge","fork-materialize-drift","fork-stack-runs","fork-restore-runs","fork-test-restore","fork-notifications","fork-verify","fork-kit-watch"\]/);
+        expect(logs()).toMatch(/"started":\["fork-audit-retention","fork-restore-override-purge","fork-materialize-drift","fork-stack-runs","fork-restore-runs","fork-test-restore","fork-mirrors","fork-notifications","fork-verify","fork-kit-watch"\]/);
 
         // upstream created the default admin on boot: make an ACTIVE, due stack policy owned by that admin (the same rows `activateStackPolicy` writes)
         const org = (await db.pool.query("select id from organization where slug='default'")).rows[0].id as string;
