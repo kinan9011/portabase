@@ -83,6 +83,20 @@ describe("Backups tab (D43 honest labels)", () => {
         expect(screen.getByTestId("backups-error")).toBeTruthy();
     });
 
+    it("W22b: Mirror is a link into the wizard (with the selected verified point and the runner step), or a disabled button with the entry reason", () => {
+        const {unmount} = render(<BackupsTab stackId={SID} view={backups([])} runReason={null} mirror={{href: `/dashboard/mirrors/new?stack=${SID}`}}/>);
+        expect(screen.getByTestId("backups-mirror").getAttribute("href")).toBe(`/dashboard/mirrors/new?stack=${SID}`);
+        unmount();
+        const vr = rpRow({sequence: 4, status: "verified", verifiedAt: "2026-11-07T03:00:00.000Z"});
+        const sel = render(<BackupsTab stackId={SID} view={backups([vr], {row: vr as never, artifacts: []})} runReason={null} mirror={{href: `/dashboard/mirrors/new?stack=${SID}`}}/>);
+        expect(screen.getByTestId("backups-mirror").getAttribute("href")).toBe(`/dashboard/mirrors/new?stack=${SID}&point=4&step=runner`);
+        sel.unmount();
+        render(<BackupsTab stackId={SID} view={backups([])} runReason={null} mirror={{reason: "No test-mirror runner is set up. A system administrator designates one."}}/>);
+        const b = screen.getByTestId("backups-mirror");
+        expect(b.getAttribute("aria-disabled")).toBe("true");
+        expect(document.getElementById(b.getAttribute("aria-describedby")!)?.textContent).toContain("No test-mirror runner");
+    });
+
     it("actions: Back up now is real (the server's answer is shown), Verify / Restore / Mirror are aria-disabled WITH the reason as visible text", async () => {
         start.mockResolvedValue({data: {ok: true, runId: RUN}});
         const {container} = render(<StatusAnnouncer><BackupsTab stackId={SID} view={backups([])} runReason={null}/></StatusAnnouncer>);

@@ -7,6 +7,8 @@ import {okState} from "@/fork/__tests__/w09-fixtures";
 import {DEFAULT_PARAMS, parseStackListParams} from "@/fork/stacks/params";
 import {StackDetailSchema, StackListSchema, type StackDetail, type StackList} from "@/fork/stacks/dto";
 import {R_ROLE} from "@/fork/ui/recovery/labels";
+import {MIRRORS} from "@/fork/ui/mirrors/labels";
+import type {MirrorEntry} from "@/fork/ui/mirrors/entry";
 import {PRIMARY_STATE_LABELS, PROTECTION_LABELS, RUNS, RUNTIME_LABELS, STACK_DETAILS, STACKS_EMPTY, STACKS_PAGE, STALE_BANNER} from "@/fork/ui/labels";
 
 const refresh = vi.fn();
@@ -37,8 +39,8 @@ const detail = (o: Partial<StackDetail> & {inv?: Parameters<typeof richInventory
     const {inv: _i, ...rest} = o;
     return StackDetailSchema.parse({id: ID, name: "forklab-demo", composeProject: "forklab-demo", environmentName: "local", runtime: "running", protection: "unprotected", staleSince: null, lastSyncAt: "2026-11-07T01:05:00.000Z", syncing: false, inventory: okState(richInventory(o.inv), {version: 2}), ...rest});
 };
-const mountDetail = (d: StackDetail, o: {tab?: "overview" | "resources"; canConfigure?: boolean; canRestore?: boolean; configLocked?: boolean} = {}) =>
-    render(<StatusAnnouncer><StackDetailsClient detail={d} initialTab={o.tab ?? "overview"} canConfigure={o.canConfigure ?? true} canRestore={o.canRestore} configLocked={o.configLocked}/></StatusAnnouncer>);
+const mountDetail = (d: StackDetail, o: {tab?: "overview" | "resources"; canConfigure?: boolean; canRestore?: boolean; configLocked?: boolean; mirror?: MirrorEntry} = {}) =>
+    render(<StatusAnnouncer><StackDetailsClient detail={d} initialTab={o.tab ?? "overview"} canConfigure={o.canConfigure ?? true} canRestore={o.canRestore} configLocked={o.configLocked} mirror={o.mirror}/></StatusAnnouncer>);
 
 beforeEach(() => refresh.mockReset());
 afterEach(() => vi.useRealTimers());
@@ -197,6 +199,20 @@ describe("W08 details: header, actions with visible reasons, tabs", () => {
         mountDetail(detail(), {canConfigure: true, canRestore: true, configLocked: true});
         expect(screen.queryByTestId("restore-link")).toBeNull();
         expect(screen.getByRole("button", {name: STACK_DETAILS.actions.restore.label}).getAttribute("aria-disabled")).toBe("true");
+    });
+    it("W22b: Create test mirror is a link into the wizard when the entry holds, else a disabled button with the visible reason (never the old stub)", () => {
+        const {unmount} = mountDetail(detail(), {canConfigure: true, mirror: {href: `/dashboard/mirrors/new?stack=${ID}`}});
+        expect(screen.getByTestId("mirror-link").getAttribute("href")).toBe(`/dashboard/mirrors/new?stack=${ID}`);
+        unmount();
+        for (const reason of [MIRRORS.entry.role, MIRRORS.entry.locked, MIRRORS.entry.noVerified, MIRRORS.entry.noRunner, STACK_DETAILS.actions.mirror.reason]) {
+            const u = mountDetail(detail(), {canConfigure: true, mirror: {reason}});
+            expect(screen.queryByTestId("mirror-link")).toBeNull();
+            const b = screen.getByTestId("mirror-reason");
+            expect(b.getAttribute("aria-disabled")).toBe("true");
+            expect(document.getElementById(b.getAttribute("aria-describedby")!)?.textContent).toBe(reason);
+            expect(document.body.textContent).not.toContain("not part of this release");
+            u.unmount();
+        }
     });
     it("the not-yet-possible actions are aria-disabled, focusable, do nothing, and show a visible reason linked by aria-describedby", () => {
         mountDetail(detail(), {canConfigure: true});
