@@ -6,7 +6,7 @@ import type {z} from "zod";
 import type {MirrorSpecV1} from "@/fork/compose-compiler/compile";
 import type {RestorePlanV1} from "@/fork/restore/schema";
 import {applyBody, BuildError, buildComposeRef, stageBody, workspaceOf, type BuildInput} from "@/fork/restore-tasks/build";
-import type {MirrorApplyPayload, MirrorCheckPayload, MirrorDbPayload, MirrorFinalizePayload, MirrorHeader, MirrorLimits, MirrorProbePayload, MirrorRenderPayload, MirrorStagePayload, MirrorStopPayload, MirrorUpPayload, MirrorWipePayload} from "./payload-schema";
+import type {MirrorApplyPayload, MirrorCheckPayload, MirrorDbPayload, MirrorFinalizePayload, MirrorHeader, MirrorLimits, MirrorProbePayload, MirrorRenderPayload, MirrorRoutePayload, MirrorStagePayload, MirrorStopPayload, MirrorUpPayload, MirrorWipePayload} from "./payload-schema";
 import type {MirrorPolicyV1} from "./policy";
 
 export type MirrorBuildInput = {revisionId: string; planId: string; planHash: string; plan: RestorePlanV1; indexOf: ReadonlyMap<string, number>};
@@ -44,8 +44,9 @@ export function buildMirrorRender(i: MirrorBuildInput, manifestSha256: string): 
     return {...mirrorHeader(i), manifest_sha256: manifestSha256, compose: mirrorComposeRef(i)};
 }
 
-export function buildMirrorFinalize(i: MirrorBuildInput, manifestSha256: string, spec: MirrorSpecV1, specSha256: string, limits: MirrorLimits): z.infer<typeof MirrorFinalizePayload> {
-    return {...mirrorHeader(i), manifest_sha256: manifestSha256, compose: mirrorComposeRef(i), spec: spec as unknown as z.infer<typeof MirrorFinalizePayload>["spec"], spec_sha256: specSha256, limits};
+export function buildMirrorFinalize(i: MirrorBuildInput, manifestSha256: string, spec: MirrorSpecV1, specSha256: string, limits: MirrorLimits, seedFrom?: {revisionId: string; workspace: string}): z.infer<typeof MirrorFinalizePayload> {
+    return {...mirrorHeader(i), manifest_sha256: manifestSha256, compose: mirrorComposeRef(i), spec: spec as unknown as z.infer<typeof MirrorFinalizePayload>["spec"], spec_sha256: specSha256, limits,
+        ...(seedFrom ? {seed_from: {revision_id: seedFrom.revisionId, workspace: seedFrom.workspace}} : {})};
 }
 
 /** The database work of a mirror: PostgreSQL dumps to restore + the credential resets of the compiled spec. Empty ⇒ the `restore_db` step is a no-op (no task is sent). */
@@ -80,3 +81,7 @@ export function buildMirrorCheck(i: MirrorBuildInput, finalSha256: string, polic
 
 export const buildMirrorWipe = (i: MirrorBuildInput): z.infer<typeof MirrorWipePayload> => mirrorHeader(i);
 export const buildMirrorStop = (i: MirrorBuildInput): z.infer<typeof MirrorStopPayload> => mirrorHeader(i);
+
+export type RouteArgs = {action: "switch" | "remove"; mirrorId: string; routePort: number; service: string; target: number; httpPath: string | null};
+export const buildMirrorRoute = (i: MirrorBuildInput, r: RouteArgs): z.infer<typeof MirrorRoutePayload> =>
+    ({...mirrorHeader(i), action: r.action, mirror_id: r.mirrorId, route_port: r.routePort, service: r.service, target: r.target, http_path: r.httpPath});

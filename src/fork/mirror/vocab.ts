@@ -43,7 +43,8 @@ export const MIRROR_REASONS = ["plan_blocked", "compile_refused", "kept_secret_u
     "service_unhealthy", "smoke_failed", "expected_data_failed", "runner_not_isolated", "runner_ineligible", "probe_stale", "rp_not_verified", "reauth_failed",
     "run_timeout", "cancelled", "mirrors_disabled", "render_missing", "policy_refused", "manifest_unavailable", "agent_offline", "task_cancelled",
     "execution_error", "internal_error", "payload_too_large", "port_unavailable", "stage_mismatch", "plan_tampered", "hash_mismatch", "wipe_timeout",
-    "wipe_incomplete", "db_restore_failed", "stop_incomplete", "insufficient_disk", "insufficient_memory", "capacity_unknown", "route_failed"] as const;
+    "wipe_incomplete", "db_restore_failed", "stop_incomplete", "insufficient_disk", "insufficient_memory", "capacity_unknown", "route_failed",
+    "route_target_not_running", "route_not_owned", "route_incomplete", "route_smoke_failed"] as const;
 
 export const LIMIT_DEFAULTS = {mem_bytes: 1073741824, pids: 512, nano_cpus: 1_000_000_000} as const; // OD-W22a-4
 export const LIMIT_CAPS = {mem_bytes: 8589934592, pids: 4096, nano_cpus: 4_000_000_000} as const;
