@@ -44,6 +44,11 @@ describe("proxy page gate (P04, real 404 status)", () => {
             expect(forkPageHidden(p, "user", {FORK_STACKS_ENABLED: "true"}), p).toBe(false);
         }
         expect(forkPageHidden("/dashboard/recoveryx", "user", {})).toBe(false); // not ours
+        for (const p of ["/dashboard/mirrors", "/dashboard/mirrors/new", "/dashboard/mirrors/0b7e1c1e-7f3a-4b6e-9a40-111111111111"]) {
+            expect(forkPageHidden(p, "user", {}), p).toBe(true); // W22b: flags off ⇒ real 404
+            expect(forkPageHidden(p, "user", {FORK_MIRRORS_ENABLED: "true"}), p).toBe(false);
+        }
+        expect(forkPageHidden("/dashboard/mirrorsx", "user", {})).toBe(false);
     });
     it("never touches upstream pages", () => {
         for (const p of ["/dashboard/home", "/dashboard/agents", "/dashboard/integrationsx", "/dashboard"]) expect(forkPageHidden(p, "user", {})).toBe(false);

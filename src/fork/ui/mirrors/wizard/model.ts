@@ -1,6 +1,6 @@
 import type {MirrorView} from "@/fork/mirror/view";
 import {keepConfirmPhrase, TERMINAL_REVISION_STATES} from "@/fork/mirror/vocab";
-import type {EnvActionKey} from "@/fork/ui/mirrors/labels";
+import type {EnvActionKey, RunnerReasonKey} from "@/fork/ui/mirrors/labels";
 import {MIRRORS} from "@/fork/ui/mirrors/labels";
 
 /**
@@ -49,7 +49,7 @@ export function buildCreateInput(c: CreateChoices, services: readonly ServiceFac
     for (const s of services) {
         for (const e of s.env) {
             const a = actionOf(c.actions, s.name, e.key, e.recommended);
-            if (a === "keep_exact" || a !== e.recommended) (env[s.name] ??= {})[e.key] = a;
+            if (a === "keep_exact" || a !== e.recommended) { env[s.name] = {...env[s.name], [e.key]: a}; }
             if (a === "keep_exact") keepConfirmations[`${s.name}.${e.key}`] = c.typed[`${s.name}.${e.key}`] ?? "";
         }
     }
@@ -98,4 +98,19 @@ export function settled(view: MirrorView): boolean {
     if (r.state === "ready") return true;
     if (!(TERMINAL_REVISION_STATES as readonly string[]).includes(r.state)) return false;
     return r.wipeState === "verified" || r.wipeState === "not_needed" || r.wipeState === "failed";
+}
+
+export type RunnerUi = {id: string; name: string; status: "online" | "degraded" | "offline"; eligible: boolean; ineligible: string | null; isolation: "isolated" | "not_isolated" | "unknown"; isolationUnknown: string | null;
+    probedAt: string | null; reachableCount: number; targetCount: number; probePending: boolean; busy: boolean; mirrorsHeld: number; freePorts: number};
+
+/** Why a runner cannot be chosen now (first failing reason), or null when it is selectable: eligible, online, isolated, ≥ 1 probe target, not busy, a free port. */
+export function runnerBlock(r: RunnerUi): RunnerReasonKey | null {
+    if (!r.eligible) return (r.ineligible as RunnerReasonKey | null) ?? "not_a_runner";
+    if (r.status === "offline") return "offline";
+    if (r.isolation === "not_isolated") return "not_isolated";
+    if (r.isolation === "unknown") return "isolation_unknown";
+    if (r.targetCount === 0) return "no_targets";
+    if (r.busy) return "busy";
+    if (r.freePorts <= 0) return "no_ports";
+    return null;
 }
