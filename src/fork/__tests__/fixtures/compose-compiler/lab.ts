@@ -1,3 +1,4 @@
+import type {RawResult} from "@/fork/policy/raw";
 import {blankPolicyView} from "@/fork/restore-tasks/view";
 
 /** Lab-shaped rendered compose (modelled on the real `docker compose config --format json` of dev/fork-lab/demo-stack, Compose v5.4.0). Test data only. */
@@ -6,7 +7,7 @@ export const PROJECT = "pbm-lab";
 export const CANARY = "W20_CANARY_7f3a9c51d2e84b6a";
 export const PG_PW = `${CANARY}_pgpw`;
 export const IMG = "postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b";
-export const CLEAN_RAW = {refused: false, violations: [], reason: null} as const;
+export const CLEAN_RAW: RawResult = {refused: false, violations: [], reason: null};
 export const ACCESS = {service: "web", target: 8080, host_port: 18099} as const;
 
 export function labFull(): Record<string, unknown> {
