@@ -112,7 +112,7 @@ export function RefreshMirrorButton({view, action, onDone}: {view: MirrorView; a
                         <DialogTitle>{R.title(name)}</DialogTitle>
                         <DialogDescription>{R.intro(next, cur)}</DialogDescription>
                     </DialogHeader>
-                    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+                    <form method="post" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
                         <section aria-labelledby={pickId} className="space-y-2">
                             <h3 id={pickId} className="text-sm font-semibold">{R.pick}</h3>
                             {previewErr && <p role="alert" data-testid="refresh-preview-error" className="text-sm">{previewErr}</p>}

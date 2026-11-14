@@ -66,7 +66,7 @@ export function RollbackMirrorButton({view, rpDates, memBytes, action, onDone}: 
                         <DialogTitle>{B.title(name)}</DialogTitle>
                         <DialogDescription>{B.current(cur)}</DialogDescription>
                     </DialogHeader>
-                    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+                    <form method="post" className="space-y-4" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
                         <section aria-labelledby={pickId} className="space-y-2">
                             <h3 id={pickId} className="text-sm font-semibold">{B.pick}</h3>
                             {targets.length === 0 ? <p data-testid="rollback-none" className="text-sm">{B.none}</p> : (
