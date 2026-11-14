@@ -38,6 +38,17 @@ describe("B1 loadRestoreTargets", () => {
         expect(RestoreTarget.strict().safeParse(mine).success).toBe(true);
     });
 
+    it("#206 online status: `agents.last_contact` is timestamp WITHOUT time zone holding UTC wall time, read as UTC whatever the process time zone is", async () => {
+        const w = await seedWorld(pool, {org});
+        const tz = process.env.TZ;
+        process.env.TZ = "Pacific/Auckland"; // far from UTC: a raw local-time read would shift the agent by ~12-13 h
+        try {
+            await pool.query("update agents set last_contact = timezone('UTC', now()) where id=$1", [w.agent]);
+            expect((await loadRestoreTargets(t.db, owner(), org, {now: new Date()})).find((x) => x.id === w.agent)?.status).toBe("online");
+            await pool.query("update agents set last_contact = timezone('UTC', now()) - interval '2 hours' where id=$1", [w.agent]);
+            expect((await loadRestoreTargets(t.db, owner(), org, {now: new Date()})).find((x) => x.id === w.agent)?.status).toBe("offline");
+        } finally { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; }
+    });
     it("ACL: another org's agent is excluded; an org-less agent is visible to a system admin only; a member sees nothing", async () => {
         const other = await seedOrg(pool);
         const foreign = await seedAgent(pool, other, "foreign-agent");

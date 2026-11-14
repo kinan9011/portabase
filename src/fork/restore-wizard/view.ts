@@ -60,7 +60,7 @@ export async function loadRestoreTargets(db: ForkDb, principal: ForkPrincipal | 
     if (!principal) return [];
     // ponytail: one row per upstream agent, ACL per row; fine for the tens of agents of a single-operator install (D21).
     const rows = (await db.execute(sql`
-        select a.id, a.name, a.organization_id, a.last_contact, a.is_archived,
+        select a.id, a.name, a.organization_id, a.last_contact at time zone 'UTC' as last_contact, a.is_archived, -- timestamp WITHOUT time zone holding UTC wall time: read as UTC whatever the process TZ is (#206)
                exists (select 1 from organization_agents oa where oa.agent_id = a.id and oa.organization_id is distinct from a.organization_id) as foreign_org
           from agents a where a.deleted_at is null order by a.name, a.id`)).rows as AgentRow[];
     const allowed = rows.filter((r) => agentAclAllows(principal, {organizationId: r.organization_id, foreignOrg: r.foreign_org}, organizationId));

@@ -397,3 +397,25 @@ export const REASON_TEXT: Record<MirrorReasonCode, string> = {
     mirror_disabled: "Mirrors are switched off on the runner.",
 };
 export const reasonText = (code: string | null): string => (code !== null && Object.hasOwn(REASON_TEXT, code) ? REASON_TEXT[code as MirrorReasonCode] : GENERIC_REASON);
+
+// ---- Logs tab: fixed sentences for timeline events and journal rows (the loader never returns free text) -----------------------------------
+const STATE_WORD: Record<string, string> = {
+    requested: "Requested", planning: "Planning", validating: "Checking the backup and the runner", staging: "Copying the backup to the runner", restoring_files: "Restoring files",
+    transforming: "Making the app safe to run", restoring_db: "Restoring the database", starting: "Starting the app", healthchecking: "Running health checks", ready: "Ready",
+    blocked: "Blocked", failed: "Failed", cancelled: "Cancelled", rolled_back: "Rolled back",
+};
+const EVENT_TEXT: Record<string, string> = {
+    requested: "Creation requested", gate_passed: "A safety check passed", gate_failed: "A safety check failed", blocked: "Creation blocked", failed: "Creation failed",
+    cancel_requested: "Cancel requested", cancelled: "Creation cancelled", ready: "Mirror ready", wipe_started: "Deleting the copy on the runner",
+    wipe_verified: "The copy on the runner was deleted and checked", wipe_failed: "Deleting the copy on the runner failed",
+};
+export const eventTitle = (kind: string, toState: string | null, mirrorScope: boolean): string => {
+    if (kind === "state_changed" && toState) return mirrorScope ? `Mirror status: ${statusText(toState)}` : (STATE_WORD[toState] ?? statusText(toState));
+    return Object.hasOwn(EVENT_TEXT, kind) ? (EVENT_TEXT[kind] as string) : "Event";
+};
+const TASK_STEP_TEXT: Record<string, string> = {
+    probe: "Check the backup and the runner", stage: "Copy the backup to the runner", apply: "Restore files", render: "Prepare the safe version of the app", finalize: "Make the app safe to run",
+    restore_db: "Restore the database", up: "Start the app", check: "Health checks", isolation: "Isolation check", wipe: "Delete the copy on the runner", wipe_check: "Check that the copy is gone",
+    stop: "Stop the app",
+};
+export const taskTitle = (step: string, attempt: number): string => `${Object.hasOwn(TASK_STEP_TEXT, step) ? (TASK_STEP_TEXT[step] as string) : step}${attempt > 1 ? ` (attempt ${attempt})` : ""}`;
