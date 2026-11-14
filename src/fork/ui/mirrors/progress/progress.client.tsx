@@ -30,12 +30,12 @@ export function headline(view: MirrorView): {text: string; tone: Tone} {
         case "blocked": return {text: `${P.blocked}. ${reasonText(r.reason)}`, tone: "danger"};
         case "failed": case "rolled_back": return {text: `${P.failed}. ${reasonText(r.reason)}`, tone: "danger"};
         default: {
-            const cur = r.steps.find((s) => s.status !== "succeeded" && s.status !== "skipped");
+            const cur = r.steps.find((s) => s.status !== "done");
             return {text: cur ? `${P.creating}: ${stepText(cur.name)}` : P.creating, tone: "active"};
         }
     }
 }
-const stepTone = (s: string): Tone => (s === "succeeded" ? "success" : s === "failed" ? "danger" : s === "running" ? "active" : "neutral");
+const stepTone = (s: string): Tone => (s === "done" ? "success" : s === "failed" ? "danger" : s === "running" ? "active" : "neutral");
 const wipeLine = (r: Rev): string | null => {
     if (!isWipeState(r.state)) return null;
     return r.wipeState === "verified" ? P.wipe.verified : r.wipeState === "not_needed" ? P.wipe.not_needed : r.wipeState === "failed" ? P.wipe.failed : P.wipe.running;
@@ -115,7 +115,7 @@ export function MirrorProgress({initial, canManage, locked}: ProgressProps) {
         <section aria-labelledby="mirror-h" className="max-w-3xl space-y-6">
             <div>
                 <h1 id="mirror-h" tabIndex={-1} className="mb-2 text-2xl font-bold break-words outline-none">{P.title} · {view.mirror.name}</h1>
-                <p className="mb-2"><ToneBadge tone={head.tone} busy={active}>{ready ? "Ready" : active ? "Creating" : rev?.state === "cancelled" ? "Cancelled" : "Stopped"}</ToneBadge></p>
+                <p className="mb-2"><ToneBadge tone={head.tone} busy={active}>{ready ? "Ready" : rev?.state === "cancelled" ? "Cancelled" : rev && !isActive(rev.state) ? (rev.state === "blocked" ? "Blocked" : "Failed") : "Creating"}</ToneBadge></p>
                 <p data-testid="mirror-headline" className="text-base break-words">{head.text}</p>
                 {ready && <p data-testid="ready-note" className="text-muted-foreground mt-1 text-sm">{P.readyNote}</p>}
                 {rev && <p className="text-muted-foreground mt-2 text-sm">Backup #{rev.rpSequence} · {view.mirror.runnerName}</p>}
@@ -158,7 +158,7 @@ export function MirrorProgress({initial, canManage, locked}: ProgressProps) {
                     )}
                     {rev.refusals.length > 0 && (
                         <section aria-labelledby="ref-h" data-testid="mirror-refusals"><h2 id="ref-h" className="mb-2 text-lg font-semibold">{P.refusals}</h2>
-                            <ul className="list-disc space-y-1 pl-5 text-sm">{rev.refusals.map((r) => <li key={`${r.code}:${r.service}:${r.text}`}>{r.text}</li>)}</ul></section>
+                            <ul className="list-disc space-y-1 pl-5 text-sm">{[...new Set(rev.refusals.map((r) => r.text))].map((t) => <li key={t}>{t}</li>)}</ul></section>
                     )}
                     {wipe && <p data-testid="wipe-line" className="text-sm">{wipe}</p>}
                 </>

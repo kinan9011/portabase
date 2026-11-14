@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {axeViolations} from "@/fork/__tests__/axe";
 import {CreateMirrorRequest} from "@/fork/mirror/service";
@@ -159,6 +159,23 @@ describe("step 2: runner", () => {
         unmount();
         mount(base({step: "runner", pointSeq: 3, isSysAdmin: false, canProbe: false, runners: [runner({isolation: "unknown", isolationUnknown: "never_probed"})]}));
         expect(screen.queryByTestId("runner-check")).toBeNull();
+    });
+    it("after the check is requested the page refreshes every 5 s, and stops once the runner's isolation facts changed (regression: the loop used to clear itself right after the click)", async () => {
+        vi.useFakeTimers();
+        try {
+            h.probe.mockResolvedValue({data: {ok: true}});
+            const unknown = base({step: "runner", pointSeq: 3, isSysAdmin: true, canProbe: true, runners: [runner({isolation: "unknown", isolationUnknown: "stale"})]});
+            const {rerender} = mount(unknown);
+            await act(async () => { fireEvent.click(screen.getByTestId("runner-check")); await vi.advanceTimersByTimeAsync(0); });
+            expect(h.probe).toHaveBeenCalledTimes(1);
+            await act(async () => { await vi.advanceTimersByTimeAsync(5100); });
+            expect(h.refresh).toHaveBeenCalledTimes(1);
+            await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+            expect(h.refresh).toHaveBeenCalledTimes(2); // still the old data ⇒ keeps refreshing
+            rerender(<StatusAnnouncer><MirrorWizardSteps data={base({step: "runner", pointSeq: 3, isSysAdmin: true, canProbe: true, runners: [runner()]})}/></StatusAnnouncer>);
+            await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+            expect(h.refresh).toHaveBeenCalledTimes(2); // fresh facts ⇒ stopped
+        } finally { vi.useRealTimers(); }
     });
     it("a refused isolation check is reported", async () => {
         h.probe.mockResolvedValue({data: {ok: false, code: "forbidden"}});

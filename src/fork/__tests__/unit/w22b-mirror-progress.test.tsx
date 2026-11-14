@@ -20,11 +20,11 @@ const view = (o: RevOver = {}, status = "creating"): MirrorView => {
     const now = new Date().toISOString();
     return {
         mirror: {id: MID, name: "shop-3", status, runnerName: "lab-runner", stackId: "0b7e1c1e-7f3a-4b6e-9a40-333333333333", activeRevisionId: null, createdAt: now}, privacy: {containsPersonalData: true, optIn: true},
-        revisions: [{id: RID, seq: 1, state: "staging", reason: null, failedStep: null, steps: MIRROR_STEPS.slice(0, 4).map((name, i) => ({name, status: i < 1 ? "succeeded" : i === 1 ? "running" : "pending"})),
+        revisions: [{id: RID, seq: 1, state: "staging", reason: null, failedStep: null, steps: MIRROR_STEPS.slice(0, 4).map((name, i) => ({name, status: i < 1 ? "done" : i === 1 ? "running" : "pending"})),
             gates: {expected_data: null, db_health: null, app_smoke: null, isolation: null, side_effects: null}, refusals: [], services: [], hostPort: 41000, rpSequence: 3, readiedAt: null, wipeState: null, deadlineAt: now, createdAt: now, ...o}],
     };
 };
-const ready = (): MirrorView => view({state: "ready", steps: MIRROR_STEPS.map((name) => ({name, status: "succeeded"})), gates: {expected_data: okGate, db_health: okGate, app_smoke: okGate, isolation: okGate, side_effects: okGate},
+const ready = (): MirrorView => view({state: "ready", steps: MIRROR_STEPS.map((name) => ({name, status: "done"})), gates: {expected_data: okGate, db_health: okGate, app_smoke: okGate, isolation: okGate, side_effects: okGate},
     services: [{service: "web", state: "running", health: "none"}, {service: "db", state: "running", health: "healthy"}], readiedAt: new Date().toISOString()}, "ready");
 const blocked = (wipeState: string | null): MirrorView => view({state: "blocked", reason: "compile_refused", wipeState, refusals: [{code: "docker_sock", service: "web", text: 'Service "web" mounts the Docker socket.'}]}, "failed");
 const mount = (v: MirrorView, o: {canManage?: boolean; locked?: boolean} = {}) => render(<StatusAnnouncer><MirrorProgress initial={v} canManage={o.canManage ?? true} locked={o.locked ?? false}/></StatusAnnouncer>);
@@ -102,6 +102,7 @@ describe("honest states", () => {
         expect(gates.map((g) => g.getAttribute("data-gate"))).toEqual([...GATES]);
         for (const g of gates) expect(g.textContent).toContain(MIRRORS.progress.gate.ok);
         expect(screen.getAllByTestId("mirror-step").length).toBe(MIRROR_STEPS.length);
+        for (const st of screen.getAllByTestId("mirror-step")) expect(st.textContent).toContain("done"); // the engine vocabulary is pending|running|done|failed
         expect(within(screen.getByTestId("mirror-services")).getAllByRole("listitem").length).toBe(2);
         expect(container.querySelectorAll("[role=status]").length).toBe(1);
         expect(await axeViolations(container)).toEqual([]);

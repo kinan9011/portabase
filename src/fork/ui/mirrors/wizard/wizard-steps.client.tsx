@@ -141,6 +141,8 @@ function RunnerStep({data}: {data: WizardData}) {
     const rest = data.runners.filter((r) => runnerBlock(r) !== null);
     const [sel, setSel] = React.useState<string | null>(data.runnerId && ok.some((r) => r.id === data.runnerId) ? data.runnerId : null);
     const [probing, setProbing] = React.useState<string | null>(null);
+    const sig0 = React.useRef<{sig: string; seenPending: boolean}>({sig: "", seenPending: false});
+    const sigOf = (r: RunnerUi | undefined) => (r ? `${r.isolation}|${r.probedAt ?? ""}|${r.isolationUnknown ?? ""}` : "");
     const [err, setErr] = React.useState<string | null>(null);
     const pending = probing !== null || data.runners.some((r) => r.probePending);
 
@@ -151,10 +153,17 @@ function RunnerStep({data}: {data: WizardData}) {
         const t = setInterval(() => { if (Date.now() - t0 > PROBE_MAX_MS) { clearInterval(t); setProbing(null); return; } if (!document.hidden) router.refresh(); }, PROBE_REFRESH_MS);
         return () => clearInterval(t);
     }, [pending, router]);
-    React.useEffect(() => { if (probing && !data.runners.some((r) => r.id === probing && r.probePending)) setProbing(null); }, [data.runners, probing]);
+    // the check is over when a refresh shows the runner's isolation facts changed, or it was seen pending and is not any more (never right after the click: the server data is still the old one)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: reacts to fresh server data only
+    React.useEffect(() => {
+        if (!probing) return;
+        const r = data.runners.find((x) => x.id === probing);
+        if (r?.probePending) sig0.current.seenPending = true;
+        else if (sig0.current.seenPending || sigOf(r) !== sig0.current.sig) setProbing(null);
+    }, [data.runners, probing]);
 
     const check = async (id: string) => {
-        setErr(null); setProbing(id); announce(MIRRORS.runner.checking);
+        setErr(null); sig0.current = {sig: sigOf(data.runners.find((x) => x.id === id)), seenPending: false}; setProbing(id); announce(MIRRORS.runner.checking);
         try {
             const v = verdict(await requestRunnerProbeAction({agentId: id}));
             if (v.ok) announce(MIRRORS.runner.checkRequested);

@@ -131,6 +131,7 @@ export const PAGE_MATRIX: Record<string, PageRow> = {
     [`${PG}(organization)/recovery/new/page.tsx`]: {capability: "recovery.view", coveredBy: ["e2e/w18b-recovery-pages.test.ts"]},
     [`${PG}(organization)/recovery/plans/[planId]/page.tsx`]: {capability: "restore.plan", coveredBy: ["e2e/w18b-recovery-pages.test.ts"]},
     [`${PG}(organization)/recovery/runs/[runId]/page.tsx`]: {capability: "restore.plan", coveredBy: ["e2e/w18b-recovery-pages.test.ts"]},
+    [`${PG}(organization)/mirrors/page.tsx`]: {capability: "mode-only", coveredBy: ["e2e/w22b-mirror-pages.test.ts"]},
     [`${PG}(organization)/mirrors/new/page.tsx`]: {capability: "mirrors.manage", coveredBy: ["unit/w22b-mirror-wizard.test.tsx", "e2e/w22b-mirror-pages.test.ts"]},
     [`${PG}(organization)/mirrors/[mirrorId]/page.tsx`]: {capability: "mirrors.view", coveredBy: ["unit/w22b-mirror-progress.test.tsx", "e2e/w22b-mirror-pages.test.ts"]},
     [`${PG}(organization)/recovery/plans/page.tsx`]: {capability: "mode-only", coveredBy: ["unit/w27a-recovery-index.test.ts", "e2e/w18b-recovery-pages.test.ts"]},

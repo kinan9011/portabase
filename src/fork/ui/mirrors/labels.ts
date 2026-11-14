@@ -168,7 +168,7 @@ export const MIRRORS = {
         actionFailed: "That did not work. Try again.",
         pollError: "Could not refresh. Showing the last known state.",
         updated: "Updated",
-        step: {status: {pending: "waiting", running: "in progress", succeeded: "done", failed: "failed", skipped: "skipped", cancelled: "cancelled"} as Record<string, string>},
+        step: {status: {pending: "waiting", running: "in progress", done: "done", failed: "failed"} as Record<string, string>},
         gate: {ok: "passed", notReached: "not reached", failed: (code: string) => `failed (${code})`},
         gone: "This mirror could not be found.",
         unauthorized: {title: "No access", body: "Your role cannot open this mirror."},
