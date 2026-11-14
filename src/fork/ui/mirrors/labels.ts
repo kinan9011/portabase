@@ -234,7 +234,7 @@ export const MIRRORS = {
         title: "Revisions", cols: {rev: "Revision", rp: "Backup", created: "Created", outcome: "Outcome", duration: "Duration", wipe: "Copy on the runner"},
         active: "Active", empty: "No revisions.",
         ready: "Ready (isolated, health-checked)", cancelled: "Cancelled", inProgress: "In progress",
-        wipe: {verified: "Deleted and checked", not_needed: "Nothing was copied", failed: "Deleting failed", running: "Deleting…", kept: "Kept (this is the running copy)", none: "Kept"},
+        wipe: {verified: "Deleted and checked", not_needed: "Nothing was copied", failed: "Deleting failed", running: "Deleting…", kept: "Kept (this is the running copy)", keptSpare: "Kept, not running", none: "Kept"},
         note: "Each refresh builds a new revision; the active one keeps running until the new one passes its checks.",
         region: "Mirror revisions",
     },

@@ -21,7 +21,7 @@ export function HistoryTab({view, rpDates}: {view: MirrorView; rpDates: Record<s
                     <tbody>{view.revisions.map((r) => {
                         const isActive = r.id === view.mirror.activeRevisionId;
                         const outcome = r.state === "ready" ? H.ready : r.state === "cancelled" ? H.cancelled : isActiveRevision(r.state) ? H.inProgress : reasonText(r.reason);
-                        const wipe = r.state === "ready" ? (r.wipeState ? H.wipe[r.wipeState as keyof typeof H.wipe] ?? H.wipe.none : H.wipe.kept)
+                        const wipe = r.state === "ready" ? (r.wipeState ? H.wipe[r.wipeState as keyof typeof H.wipe] ?? H.wipe.none : isActive ? H.wipe.kept : H.wipe.keptSpare)
                             : r.wipeState ? H.wipe[r.wipeState as keyof typeof H.wipe] ?? "" : isActiveRevision(r.state) ? "" : H.wipe.running;
                         return (
                             <tr key={r.id} data-testid="history-row" data-active={isActive} className="border-b align-top last:border-0">

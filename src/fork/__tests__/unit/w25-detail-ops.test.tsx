@@ -65,6 +65,12 @@ describe("buttons and notes on Overview", () => {
         const t = screen.getAllByTestId("history-rollback-target");
         expect(t.length).toBe(1);
         expect(t[0]!.closest("tr")?.textContent).toContain("#1");
+        // W25 browser finding: only the ACTIVE copy is "the running copy"; a kept rollback target is stopped
+        const rows = screen.getAllByTestId("history-row");
+        for (const r of rows) {
+            if (r.getAttribute("data-active") === "true") expect(r.textContent).toContain("this is the running copy");
+            else if (r.textContent?.includes("Ready")) { expect(r.textContent).not.toContain("this is the running copy"); expect(r.textContent).toContain("Kept, not running"); }
+        }
     });
 });
 
