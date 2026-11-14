@@ -2,6 +2,7 @@ import {afterAll, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {cancelMirrorRevision, createMirror, getMirrorAccess, getMirrorView, previewMirrorPlan, retryMirrorWipe, setStackMirrorOptIn} from "@/fork/mirror/service";
 import {tickAllMirrors, tickMirrorRevision} from "@/fork/mirror/tick";
 import {startTestedFact} from "@/fork/mirror/facet";
+import {evaluateGates, type RevRow} from "@/fork/mirror/steps";
 import {undesignateRunner} from "@/fork/runner/service";
 import {startRestoreRun} from "@/fork/restore-run/service";
 import {createRestorePlan} from "@/fork/restore/service";
@@ -353,8 +354,41 @@ describe("case 8: a mirror plan can never become a restore", () => {
         const res = await startRestoreRun(w.deps(sys, stack) as never, {planId: row.id, planHash: row.plan_hash, confirm: "x"});
         expect(res).toMatchObject({ok: false});
         expect((res as {code: string}).code).not.toBe("plan_blocked");
-        expect(["mode_unsupported", "forbidden", "not_found"]).toContain((res as {code: string}).code);
+        expect(res).toMatchObject({ok: false, code: "mode_unsupported"});
         const bad = await createRestorePlan({db: w.t.db, principal: sys, configAllowed: async () => true, now: w.now}, {rpId: stack.rp, targetAgentId: stack.agent, purpose: "mirror", mode: "new_stack", mappings: {target_project: null, restore_root: "/srv/restore", volumes: null, select: null, sqlite: null}});
         expect(bad).toMatchObject({ok: false, code: "invalid_input"});
+    });
+});
+
+describe("the READY gates are re-checked inside the READY transaction (M1/M2)", () => {
+    it("each gate, the probe binding, the RP, the runner and the final view are required one by one", async () => {
+        const {stack, ru, d, r} = await create();
+        const c = ok(r);
+        const done = await w.drive(d, ru, c.revisionId);
+        expect(done.state).toBe("ready");
+        const ev = async () => evaluateGates(w.t.db, d, (await w.rev(c.revisionId)) as unknown as RevRow, w.now());
+        expect(await ev()).toEqual({ok: true});
+        const setGate = (g: string, okv: boolean) => w.q("update fork_mirror_revision set gates = jsonb_set(gates, $2, $3::jsonb) where id=$1", [c.revisionId, `{${g},ok}`, JSON.stringify(okv)]);
+        const expected: Record<string, string> = {expected_data: "expected_data_failed", db_health: "service_unhealthy", app_smoke: "smoke_failed", isolation: "runner_not_isolated", side_effects: "final_view_invalid"};
+        for (const [g, code] of Object.entries(expected)) { await setGate(g, false); expect(await ev(), g).toEqual({ok: false, code}); await setGate(g, true); }
+        await w.q("update fork_runner set last_probe_task_id=null where agent_id=$1", [ru.agentId]);
+        expect(await ev()).toEqual({ok: false, code: "probe_stale"});
+        await w.probeNow(ru); // an admin probe re-binds the runner to ANOTHER task: this revision's probe no longer counts
+        expect(await ev()).toEqual({ok: false, code: "probe_stale"});
+        await w.q("update fork_recovery_point set status='incomplete' where id=$1", [stack.rp]);
+        expect(await ev()).toEqual({ok: false, code: "expected_data_failed"});
+    });
+    it("a probe that finished BEFORE this revision's isolation step started is stale (M2)", async () => {
+        const {ru, d, r} = await create();
+        const c = ok(r);
+        await w.drive(d, ru, c.revisionId, {}, {stopAt: (x) => x.state === "healthchecking"});
+        // let the check step finish, then the isolation probe gets enqueued
+        for (let i = 0; i < 12; i++) { await tickAllMirrors(d); if ((await w.journal(c.revisionId)).some((j) => j.step === "isolation")) break; await w.runnerStep(ru, {}); }
+        expect((await w.journal(c.revisionId)).some((j) => j.step === "isolation")).toBe(true);
+        w.advance(-30_000); // the runner's clock is behind: its answer is time-stamped 30 s before the step started
+        await w.runnerStep(ru, {});
+        w.advance(30_000);
+        const end = await w.drive(d, ru, c.revisionId, {});
+        expect({state: end.state, reason: end.reason}).toEqual({state: "failed", reason: "probe_stale"});
     });
 });

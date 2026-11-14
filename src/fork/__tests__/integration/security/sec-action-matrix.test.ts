@@ -35,6 +35,7 @@ const LOAD: Record<string, () => Promise<unknown>> = {
     "arcane-environment.action.ts": () => import("@/fork/actions/arcane-environment.action"),
     "dashboard-db.action.ts": () => import("@/fork/actions/dashboard-db.action"),
     "kit.action.ts": () => import("@/fork/actions/kit.action"),
+    "mirror.action.ts": () => import("@/fork/actions/mirror.action"),
     "materialize.action.ts": () => import("@/fork/actions/materialize.action"),
     "restore-plan.action.ts": () => import("@/fork/actions/restore-plan.action"),
     "restore-run.action.ts": () => import("@/fork/actions/restore-run.action"),

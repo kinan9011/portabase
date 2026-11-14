@@ -224,6 +224,7 @@ async function revisionGate(d: MirrorDeps, raw: unknown, action: string, cap: st
     if (!d.principal) return {err: refuse("forbidden")};
     const audit = auditor(d, action, "mirror", null);
     if (!input.success) { await audit("denied", {reason: "invalid_input"}); return {err: refuse("invalid_input")}; }
+    if (!(await allowed(d))) { await audit("denied", {reason: "locked"}); return {err: refuse("locked")}; } // D21 (the tick still cancels, times out and wipes on its own)
     const [rev] = await d.db.select().from(forkMirrorRevision).where(eq(forkMirrorRevision.id, input.data.revisionId));
     // unknown revision and foreign revision are the same answer (the gate runs on the owning mirror; a missing mirror id is `not_found`)
     const g = await gate(d, cap, "mirror", rev?.mirrorId ?? "00000000-0000-4000-8000-000000000000", auditor(d, action, "mirror", rev?.mirrorId ?? null));
