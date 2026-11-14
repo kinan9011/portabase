@@ -1,4 +1,4 @@
-import {execFileSync, spawn, type ChildProcess} from "node:child_process";
+import {execFileSync, spawn, spawnSync, type ChildProcess} from "node:child_process";
 import {createPrivateKey, randomBytes, randomUUID, sign as rsaSign} from "node:crypto";
 import {chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import net from "node:net";
@@ -42,7 +42,8 @@ const sh = (cmd: string, args: string[], o: {env?: NodeJS.ProcessEnv; input?: st
 const docker = (args: string[]) => sh("docker", args);
 const inbox = (args: string[]) => docker(["exec", BOX, ...args]);
 const runner = (args: string[], env: Record<string, string> = {}, input?: string) => sh("bash", [RUNNER_SH, ...args], {env: {...process.env, W21_AGENT_IMAGE: AGENT_IMAGE, ...env}, input});
-const logs = (name: string) => { try { return execFileSync("docker", ["logs", name], {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024}); } catch (e) { return String(e); } };
+/** stdout AND stderr of a container (Postgres logs to stderr: reading stdout only would make every "no connection logged" assertion vacuous) */
+const logs = (name: string) => { const r = spawnSync("docker", ["logs", name], {encoding: "utf8", maxBuffer: 64 * 1024 * 1024}); return `${r.stdout ?? ""}${r.stderr ?? ""}`; };
 const freePort = (host: string) => new Promise<number>((res) => { const s = net.createServer().listen(0, host, () => { const p = (s.address() as net.AddressInfo).port; s.close(() => res(p)); }); });
 const stripAnsi = (s: string) => s.replaceAll(String.fromCharCode(27), "").replace(/\[[0-9;]*m/g, "");
 
@@ -127,9 +128,9 @@ describe.skipIf(!LAB)("W21 runner lab: egress isolation proven by the runner_pro
             {kind: "tcp", host: "172.31.244.25", port: 25, class: "smtp", label: "Prod SMTP"},
             {kind: "tcp", host: "172.31.244.80", port: 8080, class: "webhook", label: "Prod webhook"},
             {kind: "tcp", host: "172.31.244.54", port: 5432, class: "database", label: "Prod DB"},
-            {kind: "dns_tcp", host: "172.31.244.53", port: 53, class: "dns", label: "Prod resolver (TCP)"},
-            {kind: "tcp", host: GW, port: dashPort, class: "custom", label: "Dashboard (lab)"},
-            {kind: "tcp", host: "172.31.245.10", port: 2376, class: "custom", label: "Runner host dockerd (input chain)"},
+            {kind: "dns_tcp", host: "172.31.244.53", port: 53, class: "dns", label: "Prod resolver TCP"},
+            {kind: "tcp", host: GW, port: dashPort, class: "custom", label: "Dashboard lab"},
+            {kind: "tcp", host: "172.31.245.10", port: 2376, class: "custom", label: "Runner host dockerd - input chain"},
             {kind: "dns_name", host: `leak${NONCE}.w21.lab`, class: "dns", label: "Leak canary name"},
         ];
         // guard: no target ever points into the owner's pilot LAN
@@ -173,7 +174,7 @@ describe.skipIf(!LAB)("W21 runner lab: egress isolation proven by the runner_pro
         expect(await iso()).toMatchObject({state: "isolated", targetCount: r.targetCount});
         // ground truth independent of the probe
         for (const s of ["w21-sink-smtp", "w21-sink-hook", "w21-sink-dns"]) expect(logs(s)).not.toContain("CONN");
-        expect(logs("w21-sink-db")).not.toMatch(/connection received/);
+        expect(logs("w21-sink-db")).not.toMatch(/connection received: host=\d/); // (the init server logs `host=[local]`: not a network connection)
         expect(runner(["capture", "show"])).not.toContain(NONCE);
         // verified wipe: nothing carrying the probe label survives in the box
         expect(inbox(["docker", "ps", "-aq", "--filter", "label=com.portabase.fork.runner_probe"])).toBe("");
@@ -195,7 +196,7 @@ describe.skipIf(!LAB)("W21 runner lab: egress isolation proven by the runner_pro
             for (const c of ["smtp", "webhook", "database", "dns"]) expect(classes, c).toContain(c);
             expect(logs("w21-sink-smtp")).toContain("CONN w21-sink-smtp");
             expect(logs("w21-sink-hook")).toContain("CONN w21-sink-hook");
-            expect(logs("w21-sink-db")).toMatch(/connection received/);
+            expect(logs("w21-sink-db")).toMatch(/connection received: host=172\.31\.244\.10/); // NATed by the runner box
             expect(runner(["capture", "show"])).toContain(NONCE); // the DNS name left the VM: R-W21-3, the probe outcome of a name is not the ground truth, the wire is
             await expect(assertRunnerReady(db, runnerAgent, {serverUrl: urlForAgents(), now: new Date()})).rejects.toBeInstanceOf(RunnerNotIsolatedError);
             keep("probe-fw-off.json", JSON.stringify({results: (done.result as {results: unknown}).results, verdict: v}, null, 2));
