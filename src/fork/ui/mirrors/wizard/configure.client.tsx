@@ -228,7 +228,7 @@ export function ConfigureSteps({stackId, stackName, rp, runner, source, locked, 
                 {step === 4 && <ReasonButton className={`${BTN} ${PRIMARY_AA}`} reason={pending.length > 0 ? MIRRORS.review.reasons.keep : null} onClick={() => { setPreview({kind: "idle"}); setStep(5); }}>{MIRRORS.steps.next.review}</ReasonButton>}
                 {step === 5 && <ReasonButton className={`${BTN} ${PRIMARY_AA}`} reason={createReason} aria-busy={busy || undefined} onClick={create} data-testid="create-mirror">{busy ? MIRRORS.review.creating : MIRRORS.steps.next.create}</ReasonButton>}
                 {step === 3 ? <Link href={links.runner} className="inline-flex h-9 items-center text-sm font-medium underline underline-offset-4">{MIRRORS.steps.back}</Link>
-                    : <Button type="button" variant="link" className="h-9 p-0" onClick={() => setStep((step - 1) as Step)}>{MIRRORS.steps.back}</Button>}
+                    : <Button type="button" variant="ghost" className="h-9 px-0 font-medium underline underline-offset-4 hover:bg-transparent" onClick={() => setStep((step - 1) as Step)}>{MIRRORS.steps.back}</Button>}
             </div>
         </section>
     );

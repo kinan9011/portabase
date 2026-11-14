@@ -200,9 +200,8 @@ function RunnerStep({data}: {data: WizardData}) {
                 </ul>
             )}
             {ok.length > 0 && data.isSysAdmin && data.canProbe && (
-                <Button type="button" variant="outline" size="sm" className="mt-3" disabled={pending} onClick={() => sel && check(sel)} aria-describedby="chk-h" data-testid="runner-check-selected">{MIRRORS.runner.check}</Button>
+                <Button type="button" variant="outline" size="sm" className="mt-3" disabled={pending} onClick={() => sel && check(sel)} data-testid="runner-check-selected">{MIRRORS.runner.check}</Button>
             )}
-            <p id="chk-h" className="sr-only">{MIRRORS.runner.checkRequested}</p>
             {err && <p role="alert" data-testid="runner-error" className="mt-3 max-w-2xl rounded-md border p-3 text-sm">{err}</p>}
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start">
                 {data.runners.length > 0 && <ReasonButton className={`${BTN} ${PRIMARY_AA}`} reason={sel ? null : MIRRORS.steps.chooseRunner} onClick={() => sel && router.push(newHref({step: "configure", stack: data.stackId, point: data.pointSeq, runner: sel}))}>{MIRRORS.steps.next.access}</ReasonButton>}
