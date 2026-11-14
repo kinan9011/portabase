@@ -264,6 +264,7 @@ export const PLAN_REFUSAL_TEXT: Record<Refusal, string> = {
     rp_not_verified: RECOVERY.backup.gone, rp_purged: RECOVERY.backup.gone, stale: planChanged, expired: planChanged, hash_mismatch: integrity, plan_tampered: integrity,
     plan_blocked: RECOVERY.plan.blockedGo, invalid_input: "Some choices are not valid. Check them and try again.",
     test_restore_target_not_test: generic, personal_data_no_opt_in: generic, test_restore_mode_invalid: generic, approval_not_required: generic,
+    mirror_mode_invalid: generic, mirror_target_not_runner: generic, personal_data_no_mirror_opt_in: generic,
 };
 const notReady = "This machine is no longer ready for restores. Choose another machine.";
 export const START_REFUSAL_TEXT: Record<StartRefusal, (c: {machine: string; project: string}) => string> = {

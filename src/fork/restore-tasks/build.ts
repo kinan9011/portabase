@@ -25,6 +25,7 @@ export const workspaceOf = (plan: RestorePlanV1): string => {
 
 export function buildHeader(i: BuildInput): z.infer<typeof RestoreHeader> {
     const {plan} = i;
+    if (plan.purpose === "mirror" || plan.target.host_role === "runner") throw new BuildError("mode_unsupported"); // W22a: a mirror plan is built by `mirror/build.ts` only
     if (plan.mode === "existing_stack") throw new BuildError("mode_unsupported"); // OD-W17-5: in-place destructive restore is deferred
     return {v: 1, restore_id: i.restoreId, plan_id: i.planId, plan_hash: i.planHash, stack_id: plan.rp.stack_id, rp_id: plan.rp.id, purpose: plan.purpose, mode: plan.mode,
         host_role: plan.target.host_role, approvals: [...new Set(i.approvals)].sort(), workspace: workspaceOf(plan), project: plan.target.project};

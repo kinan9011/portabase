@@ -3,11 +3,16 @@
  * strict zod schemas both read from here (a unit test keeps them in sync). A new value in any list needs a new `PLAN_VERSION`
  * (readers accept only versions they know), so consumers (W16b / W17 / W18a / W20a) can rely on the vocabulary being closed.
  */
-export const PLAN_VERSION = 1 as const;
-export const PLANNER_RULESET = "w16.1";
+export const PLAN_VERSION = 2 as const; // W22a: purpose `mirror` (ADR-014 §17: a new value bumps the version; stored v1 plans are `stale: plan_version`)
+export const PLANNER_RULESET = "w16.2";
 
-export const RESTORE_PURPOSES = ["restore", "test_restore"] as const;
-/** `mirror` is R3 only (D22) and arrives with a new plan version. */
+export const RESTORE_PURPOSES = ["restore", "test_restore", "mirror"] as const;
+/** Purposes of restore TASKS and restore RUNS (W17/W18a): a mirror plan is only created by `createMirror` (W22a) and can never become a restore run. */
+export const RESTORE_TASK_PURPOSES = ["restore", "test_restore"] as const;
+export const RESTORE_RUN_PURPOSES = RESTORE_TASK_PURPOSES;
+/** Plan `target.host_role` (plan field only; `HOST_ROLES` stays production/test, D48: the runner is agent-level). */
+export const PLAN_HOST_ROLES = ["production", "test", "runner"] as const;
+/** Modes. `mirror` is a PURPOSE since plan v2 (OD-W22a-11), with mode `new_stack`. */
 export const RESTORE_MODES = ["selective", "new_stack", "existing_stack"] as const;
 export const PLAN_OUTCOMES = ["ready", "blocked"] as const;
 
@@ -39,7 +44,7 @@ export const REASONS = [
 ] as const;
 
 export const REFUSALS = ["invalid_input", "not_found", "forbidden", "locked", "rate_limited", "rp_not_verified", "rp_purged",
-    "test_restore_target_not_test", "personal_data_no_opt_in", "test_restore_mode_invalid", "hash_mismatch", "plan_tampered", "stale", "expired",
+    "test_restore_target_not_test", "personal_data_no_opt_in", "test_restore_mode_invalid", "mirror_mode_invalid", "mirror_target_not_runner", "personal_data_no_mirror_opt_in", "hash_mismatch", "plan_tampered", "stale", "expired",
     "plan_blocked", "approval_not_required"] as const;
 
 export const PRECONDITIONS = ["target_enrolled", "target_capability_restore", "target_capability_compose", "target_facts_fresh", "arch_compat",

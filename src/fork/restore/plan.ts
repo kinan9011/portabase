@@ -1,5 +1,6 @@
 import {createHash} from "node:crypto";
 import {canonicalJson} from "@/fork/canonical";
+import {PROJECT_RE as MIRROR_PROJECT_RE} from "@/fork/compose-compiler/rules";
 import {isDockerSocket, isSystemPath, isUnder, normPath} from "@/fork/completeness/rules";
 import {PROJECT_NAME, SERVICE_NAME, safeAbsPath, safePathHint} from "@/fork/inventory/labels";
 import type {StackInventoryV1} from "@/fork/inventory/schema";
@@ -7,7 +8,7 @@ import {DUMP_ENGINES, isAdoptableVolumeName} from "@/fork/materialize/types";
 import {RP_STATUSES} from "@/fork/recovery/status";
 import {PlanInputV1, RestorePlanV1, type Action} from "./schema";
 import {
-    ACTION_KINDS, APPROVAL_CAPABILITY, APPROVAL_KINDS, PHASES, PRECONDITIONS, type ApprovalKind, type Reason,
+    ACTION_KINDS, APPROVAL_CAPABILITY, APPROVAL_KINDS, PHASES, PLAN_VERSION, PRECONDITIONS, type ApprovalKind, type Reason,
 } from "./vocab";
 
 /**
@@ -20,7 +21,7 @@ import {
  * Refusals (D43 / D44) throw `PlannerRefusal`; the service turns them into audited refusals.
  */
 export class PlannerRefusal extends Error {
-    constructor(readonly code: "rp_not_verified" | "rp_purged" | "test_restore_target_not_test" | "personal_data_no_opt_in" | "test_restore_mode_invalid") {
+    constructor(readonly code: "rp_not_verified" | "rp_purged" | "test_restore_target_not_test" | "personal_data_no_opt_in" | "test_restore_mode_invalid" | "mirror_mode_invalid" | "mirror_target_not_runner" | "personal_data_no_mirror_opt_in") {
         super(code);
         this.name = "PlannerRefusal";
     }
@@ -113,6 +114,7 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
     const inputsDigest = sha(input);
     const {purpose, mode, mappings, rp, stack, target, inventory} = input;
     const test = purpose === "test_restore";
+    const mirror = purpose === "mirror"; // W22a: a runner-only, approval-free, new_stack-like plan (the W20 compiler is authoritative for compose and secrets)
     const existing = mode === "existing_stack";
     const facts = target.facts;
 
@@ -124,6 +126,11 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
         if (target.environments.length === 0 || target.environments.some((e) => e.host_role !== "test")) throw new PlannerRefusal("test_restore_target_not_test");
         if (stack.contains_personal_data !== false && !stack.test_restore_opt_in) throw new PlannerRefusal("personal_data_no_opt_in");
     }
+    if (mirror) {
+        if (mode !== "new_stack") throw new PlannerRefusal("mirror_mode_invalid");
+        if (!target.runner_eligible || target.environments.length > 0) throw new PlannerRefusal("mirror_target_not_runner");
+        if (stack.contains_personal_data !== false && !stack.mirror_opt_in) throw new PlannerRefusal("personal_data_no_mirror_opt_in");
+    }
 
     const blockers = new Set<Reason>();
     const decisions: Decision[] = [];
@@ -133,13 +140,13 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
 
     // 2. target block ---------------------------------------------------------------------------------------------------------------
     const envs = target.environments;
-    const hostRole = envs.length === 0 || envs.some((e) => e.host_role === "production") ? "production" : "test";
+    const hostRole: RestorePlanV1["target"]["host_role"] = mirror ? "runner" : envs.length === 0 || envs.some((e) => e.host_role === "production") ? "production" : "test";
     const hostRoleSource = envs.length === 0 ? "default" : "environment";
     const enr = target.enrollment;
     const caps = new Set(enr?.capabilities ?? []);
     const enrolledReason: Reason | null = target.archived ? "target_agent_archived" : !enr ? "target_not_enrolled" : enr.revoked ? "target_revoked" : !enr.enabled ? "target_channel_disabled" : null;
     if (enrolledReason) { blockers.add(enrolledReason); pre("target_enrolled", "unmet", "dashboard", enrolledReason); } else pre("target_enrolled", "met", "dashboard");
-    if (caps.has("restore.target.v1")) pre("target_capability_restore", "met", "dashboard");
+    if (mirror ? caps.has("runner.v1") && caps.has("mirror.v1") : caps.has("restore.target.v1")) pre("target_capability_restore", "met", "dashboard");
     else { blockers.add("target_capability_missing"); pre("target_capability_restore", "unmet", "dashboard", "target_capability_missing"); }
     const factsFresh = envs.length > 0 && envs.every((e) => e.facts_fresh);
     if (factsFresh) pre("target_facts_fresh", "met", "dashboard");
@@ -162,6 +169,8 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
         if (mappings.target_project !== null && mappings.target_project !== sourceProject) { blockers.add("project_name_conflict"); decide("project_name_conflict", mappings.target_project, true); }
         project = sourceProject;
         if (!facts.projects.includes(project)) blockers.add("existing_stack_not_on_target");
+    } else if (mirror) {
+        if (!MIRROR_PROJECT_RE.test(project)) { blockers.add("project_name_conflict"); decide("project_name_conflict", project, true); } // a runner has no environment facts: no collision check
     } else if (!test && facts.projects.includes(project)) {
         blockers.add("project_name_conflict");
         const alt = `${project}-restored`;
@@ -316,7 +325,7 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
     if (startPhase && !willComposeUp) blockers.add("compose_not_in_backup");
 
     // 8. networks ---------------------------------------------------------------------------------------------------------------------
-    if (inv && startPhase) {
+    if (inv && startPhase && !mirror) { // mirror: the W20 compiler replaces external networks with created internal ones, the plan carries none
         for (const n of inv.networks) {
             const cls = n.classification ?? (n.external ? "shared_external" : "stack_owned");
             if (cls === "stack_owned") {
@@ -351,7 +360,7 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
         if (archState !== "unmet" && allKnown && facts.arch) archState = "met";
         pre("arch_compat", archState, archState === "met" || archState === "unmet" ? "dashboard" : "agent", archReason);
         const used = new Set(facts.published_ports.map((p) => `${p.port}/${p.protocol}`));
-        for (const s of inv.services) for (const p of s.ports) {
+        if (!mirror) for (const s of inv.services) for (const p of s.ports) { // mirror: W20 drops source ports
             if (p.published && p.published > 0 && used.has(`${p.published}/${p.protocol}`)) { portInUse = true; decide("port_in_use", `${p.published}/${p.protocol}`, true); }
         }
     }
@@ -360,7 +369,7 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
     if (willComposeUp) {
         drafts.push(mk(null, {kind: "compose_up", phase: "start", op: existing ? "replace" : "create", destructive: existing, approval: portInUse, info: portInUse ? ["port_in_use"] : [],
             dest: {kind: "project", name: project, path: null, relative_path: null}}));
-        if (caps.has("compose.render.v1")) pre("target_capability_compose", "met", "dashboard");
+        if (mirror || caps.has("compose.render.v1")) pre("target_capability_compose", "met", "dashboard"); // mirror: `mirror.v1` is checked above
         else { blockers.add("target_capability_missing"); pre("target_capability_compose", "unmet", "dashboard", "target_capability_missing"); }
     }
 
@@ -375,7 +384,7 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
     // 13. compose findings (informational; W20a is authoritative, D27) -----------------------------------------------------------------
     const findings = new Map<string, RestorePlanV1["compose_findings"][number]>();
     const find = (rule_id: RestorePlanV1["compose_findings"][number]["rule_id"], service: string) => { findings.set(`${rule_id}\u0000${service}`, {rule_id, service, informational: true}); };
-    if (inv && !test) {
+    if (inv && !test && !mirror) {
         for (const s of inv.services) { if (s.privileged === true) find("privileged", s.name); if (s.network_mode === "host") find("network_mode_host", s.name); }
         for (const m of inv.mounts) {
             if (m.kind !== "bind") continue;
@@ -390,7 +399,7 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
 
     // 14. secrets (purpose restore only; key NAMES, never values) ------------------------------------------------------------------------
     const secrets = new Map<string, RestorePlanV1["secrets"][number]>();
-    if (inv && !test) {
+    if (inv && !test && !mirror) {
         const put = (service: string, key: string, origin: "service_env" | "env_file", restore: boolean) => {
             secrets.set(`${service}\u0000${key}\u0000${origin}`, {service, key, origin, class: restore ? "restore" : "require_input", flagged: !restore, reason: null});
         };
@@ -404,8 +413,16 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
 
     // 15. approvals + outcome -------------------------------------------------------------------------------------------------------------
     const approvals: ApprovalKind[] = [];
-    if (!test && hostRole === "production") approvals.push("production_target");
-    if (drafts.some((d) => d.destructive)) approvals.push("destructive_replace");
+    if (mirror) {
+        // a mirror has NO approval path: whatever would need one (sqlite placement, unmapped artifact) blocks the plan instead; the operator fixes the mapping first
+        for (const d of drafts) {
+            if (d.risk !== "needs_approval") continue;
+            for (const r of d.reasons) if (r !== "restic_payload_credential") blockers.add(r);
+            d.risk = "blocked";
+        }
+    }
+    if (!test && !mirror && hostRole === "production") approvals.push("production_target");
+    if (!mirror && drafts.some((d) => d.destructive)) approvals.push("destructive_replace");
     const approvals_required = sortBy(approvals, (k) => [APPROVAL_KINDS.indexOf(k)]).map((kind) => ({kind, capability: APPROVAL_CAPABILITY[kind] as string}));
 
     // 16. order + ids ---------------------------------------------------------------------------------------------------------------------
@@ -415,7 +432,7 @@ export function planRestore(raw: PlanInputV1): {plan: RestorePlanV1; planHash: s
     const outcome = blockerList.length > 0 || actions.some((a) => a.risk === "blocked") ? "blocked" : "ready";
 
     const plan = RestorePlanV1.parse({
-        plan_version: 1, ruleset: input.planner.ruleset, deny_rules_sha256: input.planner.deny_rules_sha256, inputs_digest: inputsDigest, purpose, mode,
+        plan_version: PLAN_VERSION, ruleset: input.planner.ruleset, deny_rules_sha256: input.planner.deny_rules_sha256, inputs_digest: inputsDigest, purpose, mode,
         rp: {id: rp.id, stack_id: rp.stack_id, stack_name: rp.stack_name, sequence: rp.sequence, manifest_sha256: rp.manifest_sha256, manifest_sig_kid: rp.manifest_sig_kid, verified_at: rp.verified_at, inventory_hash: rp.inventory_hash, consistency_level: rp.consistency_level},
         source: {compose_project: sourceProject, environment_id: stack.environment_id},
         target: {agent_id: target.agent_id, agent_name: target.agent_name, environment_ids: envs.map((e) => e.id), host_role: hostRole, host_role_source: hostRoleSource, same_environment: target.same_environment, project, restore_root: rootCheck.ok ? rootCheck.root : null},
