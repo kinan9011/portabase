@@ -23,7 +23,6 @@ import {checkDbStep, checkFinalView, checkHealth, checkKept, checkSmoke, type Ch
 import {enabledOf, nowOf, type MirrorDeps} from "./deps";
 import {addEvent} from "./events";
 import {enqueueMirrorTask, TRANSIENT_ENQUEUE_CODES, type EnqueueArgs, type MirrorTaskDeps} from "./enqueue";
-import {mirrorDbWork} from "./build";
 import {MirrorCheckResult, MirrorDbResult, MirrorFinalizeResult, MirrorUpResult} from "./payload-schema";
 import type {MirrorPolicyV1} from "./policy";
 import {GATES, MAX_EXPIRED_REENQUEUES, type Gate, type MirrorJournalStep, type MirrorStep, STEP_TASK_TYPE} from "./vocab";
