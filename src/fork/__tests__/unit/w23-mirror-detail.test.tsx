@@ -242,7 +242,7 @@ describe("Stop / Start (W23 Part B)", () => {
         cleanup();
         mount(props({initial: view("stopped"), flagOn: false}));
         expect(screen.getByTestId("mirror-start").getAttribute("aria-disabled")).toBe("true");
-        expect(screen.getByText(MIRRORS.list.flagOff)).toBeTruthy();
+        expect(screen.getAllByText(MIRRORS.list.flagOff).length).toBeGreaterThan(0); // W25: Start, Refresh and Roll back each show the reason
     });
     it("failed with its revision (a stop that did not finish): honest sentence with the reason, Stop can be retried, Delete works, axe clean", async () => {
         const m = mount(props({initial: view("failed"), extras: extras({lastOp: {status: "failed", code: "stop_incomplete", at: now.toISOString()}})}));

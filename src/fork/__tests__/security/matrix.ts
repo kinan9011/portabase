@@ -51,6 +51,7 @@ export const ACTION_MATRIX: Record<`${string}#${string}`, ActionRow> = {
     "mirror.action.ts#deleteMirrorAction": row("mirrors.manage", X, "mirror", "mirror", true, (_w, id) => ({mirrorId: id, confirmName: "sec-mirror"}), {whileLocked: "allowed", lockedWhy: "OD-W23-2 / D51: removing a production-data copy is always allowed (like the wipe); it only marks the mirror deleting, the tick does the verified wipe"}),
     "mirror.action.ts#refreshMirrorAction": row("mirrors.manage", X, "mirror", "mirror", true, (_w, id) => ({mirrorId: id, rpId: "00000000-0000-4000-8000-0000000000a1", confirmName: "sec-mirror", acknowledgePrivacy: true})),
     "mirror.action.ts#rollbackMirrorAction": row("mirrors.manage", X, "mirror", "mirror", true, (_w, id) => ({mirrorId: id, revisionId: "00000000-0000-4000-8000-0000000000a2", confirmName: "sec-mirror"})),
+    "mirror.action.ts#previewMirrorRefreshAction": row("mirrors.manage", X, "mirror", "mirror", false, (_w, id) => ({mirrorId: id, rpId: null}), READ("read-only refresh preview, writes nothing")),
     "mirror.action.ts#getMirrorViewAction": row("mirrors.view", V, "mirror", "mirror", false, (_w, id) => ({mirrorId: id}), READ("read-only view, writes nothing")),
     "mirror.action.ts#getMirrorAccessAction": row("mirrors.view", V, "mirror", "mirror", false, (_w, id) => ({mirrorId: id}), READ("read-only; one audit row per read")),
     // ---- mirror runner (W21, ADR-008): system admin only (agents.channel.manage + host_role.manage), behind FORK_MIRRORS_ENABLED

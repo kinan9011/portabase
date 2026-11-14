@@ -1,4 +1,5 @@
 import type {MirrorRefusalCode} from "@/fork/mirror/service";
+import {PRIVACY_ACK} from "@/fork/mirror/vocab";
 import type {Gate, MirrorStatus, MirrorStep, MIRROR_REASONS} from "@/fork/mirror/vocab";
 import type {MIRROR_AGENT_CODES} from "@/fork/restore-tasks/codes";
 
@@ -14,6 +15,11 @@ export type RunnerReasonKey = "not_a_runner" | "not_enrolled" | "agent_disabled"
 export const BANNER = (runnerName: string): string => `This mirror contains a copy of real production data, including personal data. It lives only on the runner \`${runnerName}\`. Do not share access.`;
 
 export const MIRROR_FLAG_OFF = "Test mirrors are not enabled on this installation.";
+
+/** W25: shared by the Refresh and Rollback dialogs (a route switch drops open connections for about a second). */
+const TUNNEL = "Access keeps the same port. At the switch, open connections drop for about a second: reconnect your SSH tunnel.";
+const TYPED = "Type the mirror name to confirm";
+const MISMATCH = "Type the exact name of the mirror.";
 
 export const MIRRORS = {
     page: {title: "Create test mirror", loadError: {title: "Could not load this page", body: "Something went wrong while reading the data. Reload the page; if it keeps happening ask an administrator."}},
@@ -256,6 +262,61 @@ export const MIRRORS = {
             cancelFirst: "Cancel creating it first.", busy: "Wait for the running action to finish.", locked: "Configuration is locked.",
             startLocked: "Configuration is locked, so a mirror cannot start.",
         },
+    },
+    // ---- W25: refresh + rollback dialogs, progress lines ---------------------------------------------------------------------------------
+    refresh: {
+        open: "Refresh", title: (name: string) => `Refresh ${name}`,
+        intro: (next: number, cur: number) => `Builds revision #${next} next to #${cur}. #${cur} keeps serving until all checks pass.`,
+        pick: "Newer backup", none: "There is no newer verified backup of this app yet.",
+        rp: (seq: number, date: string) => `Backup #${seq} · ${date}`,
+        changes: "What changes", loading: "Checking the plan…", previewFailed: "Could not check this backup. Try again.",
+        rows: {age: "Data age", space: "Required space", memory: "Memory", app: "App definition", lost: "Lost on switch", wiped: "Deleted after the switch"} as Record<string, string>,
+        age: (to: string, from: string | null) => `Data from ${to} (now ${from ?? "unknown"})`,
+        space: (need: string) => `${need} on the runner (backup size + 10 %)`,
+        spaceUnknown: "Unknown: the backup does not record its size. The runner checks before copying.",
+        lastSeen: (free: string, ago: string) => `Runner reported ${free} free ${ago}.`,
+        notReported: "The runner has not reported its free space yet; it checks before copying.",
+        memory: (need: string) => `${need} free memory while both revisions run`,
+        app: {same: "Same services and settings as the running revision.", changed: "The app definition changed (services, images or settings). The new revision uses the newer one.", unknown: "Not known for these backups."},
+        lost: (cur: number, since: string) => `Changes made inside revision #${cur} since ${since} (test data, uploads). #${cur} is kept for rollback.`,
+        wiped: (seq: number, rp: number, cur: number) => `Revision #${seq} (backup #${rp}) is deleted and checked after the switch. You can then roll back only to #${cur}.`,
+        wipedNone: "Nothing else is deleted.",
+        preserved: "Kept: mirror policy, ports and test credentials.",
+        capacityWarn: "The last report suggests the runner may not have enough space or memory. The refresh stops safely at the space check if so; the running revision is not touched.",
+        blocked: "This backup cannot be used for a refresh:",
+        tunnel: TUNNEL,
+        ackLabel: PRIVACY_ACK, input: TYPED, mismatch: MISMATCH,
+        confirm: (next: number) => `Build revision #${next}`, dismiss: "Cancel", working: "Starting…",
+        started: (next: number, cur: number) => `Refresh started: revision #${next} is being built. #${cur} keeps serving.`,
+        already: "A refresh of this mirror is already running.",
+        reasons: {
+            pick: "Choose a backup.", plan: "Wait for the plan check.", planBlocked: "This backup is blocked.", ack: "Confirm the privacy statement.", name: MISMATCH,
+            startFirst: "Start the mirror first.", notReady: "Only a Ready mirror can be refreshed or rolled back.", noNewer: "No newer verified backup of this app yet.", noTarget: "No earlier revision is kept for rollback.",
+        },
+        line: (next: number, rp: number, cur: number, step: string | null) => `Refreshing: building revision #${next} from backup #${rp}${step ? ` (${step})` : ""}. Revision #${cur} keeps serving.`,
+        switching: (next: number, cur: number) => `Refreshing: revision #${next} passed its checks; switching private access from #${cur}.`,
+        cancel: {label: "Cancel refresh", title: (next: number) => `Stop building revision #${next}?`, body: (cur: number) => `Revision #${cur} keeps serving. The new copy on the runner is deleted and checked.`, confirm: "Stop refresh"},
+        failedLine: (why: string, cur: number) => `The last refresh did not complete: ${why} Revision #${cur} is still active.`,
+        brokenLine: "Private access could not be switched back after the refresh. The app may not be reachable on its usual port. Stop or Delete the mirror.",
+        retention: "The running revision is older than 30 days. Refresh it from a newer backup: old copies of production data should not be kept.",
+    },
+    rollback: {
+        open: "Roll back", title: (name: string) => `Roll back ${name}`, current: (cur: number) => `Currently active: revision #${cur}`,
+        pick: "Revision to return to", rev: (seq: number, rp: number, date: string, built: string) => `Revision #${seq} · backup #${rp} · data from ${date} · built ${built}`,
+        rows: {impact: "Impact", capacity: "Capacity", lost: "Lost", checks: "Checks"} as Record<string, string>,
+        impact: (cur: number, curDate: string, to: number, toDate: string) => `Private access switches from #${cur} (data ${curDate}) to #${to} (data ${toDate}).`,
+        capacity: (mem: string) => `No extra disk: the data is already on the runner. About ${mem} memory is used while both run until the switch (not checked in advance).`,
+        lost: (cur: number) => `Revision #${cur} and every change made in it are deleted and checked after the switch. You cannot switch back to it; refresh again instead.`,
+        checks: "Isolation, health and app checks run before access switches. Recorded in the audit log.",
+        tunnel: TUNNEL, input: TYPED, mismatch: MISMATCH,
+        confirm: (to: number) => `Roll back to #${to}`, cancel: "Cancel", working: "Starting…", none: "No earlier revision is kept for rollback.",
+        started: (to: number, cur: number) => `Rollback started: checking revision #${to}. #${cur} keeps serving.`,
+        already: "A rollback of this mirror is already running.",
+        line: (to: number, cur: number) => `Rolling back to revision #${to}: isolation, health and app checks, then access switches. Revision #${cur} keeps serving.`,
+        failedLine: (why: string, cur: number) => `The last rollback did not complete: ${why} Revision #${cur} is still active.`,
+        brokenLine: "Private access could not be switched back after the rollback. The app may not be reachable on its usual port. Stop or Delete the mirror.",
+        target: "Rollback target",
+        reasons: {target: "Choose a revision.", name: MISMATCH},
     },
 } as const;
 

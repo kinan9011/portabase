@@ -100,8 +100,16 @@ export function allocatePort(used: readonly number[], range: {min: number; max: 
  * (`capacity_unknown`). A first creation keeps the old behaviour (an unreported free disk passes) except for the headroom.
  */
 export function checkMirrorCapacity(result: unknown, plan: RestorePlanV1, o: {refresh: boolean; memNeed: number}): Check {
+    const {free, mem} = capacityFacts(result, plan.target.restore_root);
+    if (o.refresh && (free === null || mem === null)) return bad("capacity_unknown");
+    if (free !== null && free < Math.ceil(neededBytes(plan) * CAPACITY_DISK_FACTOR)) return bad("insufficient_disk");
+    if (o.refresh && mem !== null && mem < o.memNeed) return bad("insufficient_memory");
+    return OK;
+}
+
+/** Free bytes of the root's mount (first matching reported root wins, non-finite ⇒ null) and `mem_available_bytes` of a `mirror_probe` result. Shared with the W25 refresh preview ("last reported"). */
+export function capacityFacts(result: unknown, root: string | null): {free: number | null; mem: number | null} {
     const r = (result && typeof result === "object" ? result : {}) as {roots?: unknown; mem_available_bytes?: unknown};
-    const root = plan.target.restore_root;
     let free: number | null = null;
     if (root && Array.isArray(r.roots)) {
         for (const x of r.roots as {path?: unknown; free_bytes?: unknown}[]) {
@@ -110,10 +118,7 @@ export function checkMirrorCapacity(result: unknown, plan: RestorePlanV1, o: {re
         }
     }
     const mem = typeof r.mem_available_bytes === "number" && Number.isFinite(r.mem_available_bytes) && r.mem_available_bytes >= 0 ? r.mem_available_bytes : null;
-    if (o.refresh && (free === null || mem === null)) return bad("capacity_unknown");
-    if (free !== null && free < Math.ceil(neededBytes(plan) * CAPACITY_DISK_FACTOR)) return bad("insufficient_disk");
-    if (o.refresh && mem !== null && mem < o.memNeed) return bad("insufficient_memory");
-    return OK;
+    return {free, mem};
 }
 
 /**

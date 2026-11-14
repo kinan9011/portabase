@@ -8,7 +8,7 @@ import {ACTIVE_REVISION_STATES, GATES, WIPE_REVISION_STATES} from "@/fork/mirror
 import type {MirrorView} from "@/fork/mirror/view";
 import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
 import {BANNER, GATE_TEXT, MIRRORS, reasonText, refusalText, statusText, stepText} from "@/fork/ui/mirrors/labels";
-import {groupSteps} from "@/fork/ui/mirrors/model";
+import {failedNewerRevision, groupSteps} from "@/fork/ui/mirrors/model";
 import {settled} from "@/fork/ui/mirrors/wizard/model";
 import {useAnnounce} from "@/fork/ui/status-announcer";
 import type {Tone} from "@/fork/ui/tone";
@@ -21,16 +21,35 @@ const dataOf = (r: unknown): Record<string, unknown> | null => { const d = (r as
 const isActive = (s: string) => (ACTIVE_REVISION_STATES as readonly string[]).includes(s);
 const isWipeState = (s: string) => (WIPE_REVISION_STATES as readonly string[]).includes(s);
 
-/** Headline + tone by state. READY says "isolated and health-checked" and nothing stronger (D43: start-tested is not restore-tested). */
-export function headline(view: MirrorView): {text: string; tone: Tone} {
-    const r = view.revisions[0];
+/**
+ * Headline + tone by state. READY says "isolated and health-checked" and nothing stronger (D43: start-tested is not restore-tested). W25 (F-2): while a refresh / rollback runs the headline names the
+ * operation (the OLD revision keeps serving), a failed newest revision next to an active one never reads "The mirror could not be created", and a `failed` mirror whose last operation was a refresh /
+ * rollback (`ctx.lastFrom`) says the route switch back failed, not that a stop did.
+ */
+export function headline(view: MirrorView, ctx?: {lastFrom?: string | null}): {text: string; tone: Tone} {
+    const active = view.revisions.find((x) => x.id === view.mirror.activeRevisionId);
+    const r = view.mirror.status === "ready" && active ? active : view.revisions[0]; // a failed newer revision is explained by the failed-newer panel; the mirror itself is Ready
     if (view.mirror.status === "deleting") return {text: MIRRORS.lifecycle.deletingLine, tone: "active"}; // W23
     if (view.mirror.status === "deleted") return {text: MIRRORS.detail.deleted, tone: "neutral"};
     switch (view.mirror.status) { // W23 Part B: stop / start states (the revision itself stays `ready`: the creation's evidence is never rewritten)
         case "stopping": return {text: MIRRORS.lifecycle.stoppingLine, tone: "active"};
         case "stopped": return {text: MIRRORS.lifecycle.stoppedLine, tone: "neutral"};
         case "starting": return {text: MIRRORS.lifecycle.startingLine, tone: "active"};
-        case "failed": if (view.mirror.activeRevisionId) return {text: MIRRORS.lifecycle.stopFailedLine, tone: "danger"}; break;
+        case "refreshing": case "rolling_back": {
+            const op = view.revisions.find((x) => x.id === view.mirror.opRevisionId);
+            const cur = active?.seq ?? 0;
+            if (view.mirror.status === "rolling_back") return {text: MIRRORS.rollback.line(op?.seq ?? 0, cur), tone: "active"};
+            if (op?.state === "ready") return {text: MIRRORS.refresh.switching(op.seq, cur), tone: "active"};
+            const step = op?.steps.find((s) => s.status !== "done");
+            return {text: MIRRORS.refresh.line(op?.seq ?? 0, op?.rpSequence ?? 0, cur, step ? stepText(step.name) : null), tone: "active"};
+        }
+        case "failed":
+            if (view.mirror.activeRevisionId) {
+                if (ctx?.lastFrom === "refreshing") return {text: MIRRORS.refresh.brokenLine, tone: "danger"};
+                if (ctx?.lastFrom === "rolling_back") return {text: MIRRORS.rollback.brokenLine, tone: "danger"};
+                return {text: MIRRORS.lifecycle.stopFailedLine, tone: "danger"};
+            }
+            break;
         default: break;
     }
     if (!r) return {text: P.creating, tone: "active"};
@@ -45,6 +64,7 @@ export function headline(view: MirrorView): {text: string; tone: Tone} {
         }
     }
 }
+const active0Seq = (v: MirrorView): number => v.revisions.find((x) => x.id === v.mirror.activeRevisionId)?.seq ?? 0;
 const stepTone = (s: string): Tone => (s === "done" ? "success" : s === "failed" ? "danger" : s === "running" ? "active" : "neutral");
 const wipeLine = (r: Rev, deleting: boolean): string | null => {
     if (!isWipeState(r.state) && !(deleting && r.state === "ready")) return null;
@@ -52,10 +72,10 @@ const wipeLine = (r: Rev, deleting: boolean): string | null => {
 };
 
 /** `embedded` (W23 detail page): the page supplies the `<h1 id="mirror-h">` and the privacy banner; `extra` renders under the headline from the CURRENT (polled) view: facet, alerts, lifecycle buttons. */
-export type ProgressProps = {initial: MirrorView; canManage: boolean; locked: boolean; embedded?: boolean; extra?: (view: MirrorView, ctx: {poll: () => Promise<void>}) => React.ReactNode};
+export type ProgressProps = {initial: MirrorView; canManage: boolean; locked: boolean; embedded?: boolean; lastFrom?: string | null; extra?: (view: MirrorView, ctx: {poll: () => Promise<void>}) => React.ReactNode};
 type Access = {runnerName: string; hostPort: number; service: string; target: number; tunnelHint: string};
 
-export function MirrorProgress({initial, canManage, locked, embedded = false, extra}: ProgressProps) {
+export function MirrorProgress({initial, canManage, locked, embedded = false, lastFrom = null, extra}: ProgressProps) {
     const announce = useAnnounce();
     const [view, setView] = React.useState(initial);
     const [pollFailed, setPollFailed] = React.useState(false);
@@ -91,14 +111,16 @@ export function MirrorProgress({initial, canManage, locked, embedded = false, ex
     }, [active, poll]);
 
     // announce only real changes (state / step statuses / wipe), the alert only for transitions into blocked / failed
-    const head = headline(view);
+    const head = headline(view, {lastFrom});
+    const failedNewer = failedNewerRevision(view);
+    const headSay = view.mirror.status === "ready" && failedNewer ? MIRRORS.detail.failedNewer(failedNewer.seq, failedNewer.activeSeq, reasonText(failedNewer.reason)) : head.text;
     const sig = `${view.mirror.status}|${rev?.state ?? ""}|${(rev?.steps ?? []).map((s) => `${s.name}:${s.status}`).join(",")}|${rev?.wipeState ?? ""}`;
     const first = React.useRef(true); const prev = React.useRef(rev?.state ?? "");
     // biome-ignore lint/correctness/useExhaustiveDependencies: fires on the change signature only (not on every poll tick)
     React.useEffect(() => {
         if (first.current) { first.current = false; return; }
-        announce(head.text);
-        if (prev.current !== rev?.state) setAlertText(rev && (rev.state === "blocked" || rev.state === "failed") ? head.text : null);
+        announce(headSay);
+        if (prev.current !== rev?.state) setAlertText(rev && (rev.state === "blocked" || rev.state === "failed") ? headSay : null);
         prev.current = rev?.state ?? "";
         if (!document.activeElement || document.activeElement === document.body) document.getElementById("mirror-h")?.focus();
     }, [sig]);
@@ -123,13 +145,16 @@ export function MirrorProgress({initial, canManage, locked, embedded = false, ex
     const deleting = view.mirror.status === "deleting";
     const deleted = view.mirror.status === "deleted";
     const wipe = rev ? wipeLine(rev, deleting) : null;
-    const lifecycleStatus = ["stopping", "stopped", "starting"].includes(view.mirror.status) || (view.mirror.status === "failed" && view.mirror.activeRevisionId !== null);
-    const ready = rev?.state === "ready" && !deleting && !deleted && !lifecycleStatus;
+    const lifecycleStatus = ["stopping", "stopped", "starting", "refreshing", "rolling_back"].includes(view.mirror.status) || (view.mirror.status === "failed" && view.mirror.activeRevisionId !== null);
+    const shown = view.mirror.status === "ready" && failedNewer ? view.revisions.find((x) => x.id === view.mirror.activeRevisionId) : rev; // the ACTIVE revision describes a Ready mirror whose newest (refresh) revision failed
+    const ready = shown?.state === "ready" && !deleting && !deleted && !lifecycleStatus;
+    const serving = ["refreshing", "rolling_back"].includes(view.mirror.status) && view.mirror.activeRevisionId !== null; // the active revision keeps serving; access stays open (getMirrorAccess allows it)
+    const refreshing = view.mirror.status === "refreshing";
     return (
         <section aria-labelledby="mirror-h" className="max-w-3xl space-y-6">
             <div>
                 {!embedded && <h1 id="mirror-h" tabIndex={-1} className="mb-2 text-2xl font-bold break-words outline-none">{P.title} · {view.mirror.name}</h1>}
-                <p className="mb-2"><ToneBadge tone={head.tone} busy={active}>{deleted ? "Deleted" : deleting ? "Deleting" : lifecycleStatus ? statusText(view.mirror.status) : ready ? "Ready" : rev?.state === "cancelled" ? "Cancelled" : rev && !isActive(rev.state) ? (rev.state === "blocked" ? "Blocked" : "Failed") : "Creating"}</ToneBadge></p>
+                <p className="mb-2"><ToneBadge tone={head.tone} busy={active}>{deleted ? "Deleted" : deleting ? "Deleting" : lifecycleStatus ? statusText(view.mirror.status) : ready ? "Ready" : shown?.state === "cancelled" ? "Cancelled" : shown && !isActive(shown.state) ? (shown.state === "blocked" ? "Blocked" : "Failed") : "Creating"}</ToneBadge></p>
                 <p data-testid="mirror-headline" className="text-base break-words">{head.text}</p>
                 {ready && <p data-testid="ready-note" className="text-muted-foreground mt-1 text-sm">{P.readyNote}</p>}
                 {rev && <p className="text-muted-foreground mt-2 text-sm">Backup #{rev.rpSequence} · {view.mirror.runnerName}</p>}
@@ -182,15 +207,15 @@ export function MirrorProgress({initial, canManage, locked, embedded = false, ex
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
                 {rev && isActive(rev.state) && canManage && !cancelAsked && (
                     <>
-                        <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirm(true)} data-testid="mirror-cancel">{P.cancel}</Button>
-                        <DangerousActionConfirm title={P.cancelTitle} description={P.cancelBody} confirmLabel={P.cancelConfirm} open={confirm} onOpenChange={setConfirm}
+                        <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirm(true)} data-testid="mirror-cancel">{refreshing ? MIRRORS.refresh.cancel.label : P.cancel}</Button>
+                        <DangerousActionConfirm title={refreshing ? MIRRORS.refresh.cancel.title(rev.seq) : P.cancelTitle} description={refreshing ? MIRRORS.refresh.cancel.body(active0Seq(view)) : P.cancelBody} confirmLabel={refreshing ? MIRRORS.refresh.cancel.confirm : P.cancelConfirm} open={confirm} onOpenChange={setConfirm}
                             onConfirm={() => void act(() => cancelMirrorRevisionAction({revisionId: rev.id}), P.cancelRequested).then(() => setCancelAsked(true))}/>
                     </>
                 )}
                 {rev && (isWipeState(rev.state) || (deleting && rev.state === "ready")) && rev.wipeState === "failed" && (canManage
                     ? <Button type="button" variant="outline" disabled={busy || locked} onClick={() => void act(() => retryMirrorWipeAction({revisionId: rev.id}), P.retryDone)} data-testid="mirror-retry-wipe">{P.retry}</Button>
                     : <p data-testid="wipe-admin" className="text-sm">{P.wipeAdmin}</p>)}
-                {ready && <Button type="button" variant="outline" disabled={busy} onClick={() => void showAccess()} data-testid="mirror-access">{P.access}</Button>}
+                {(ready || serving) && <Button type="button" variant="outline" disabled={busy} onClick={() => void showAccess()} data-testid="mirror-access">{P.access}</Button>}
             </div>
             {note && <p role="note" data-testid="mirror-note" className="text-sm">{note}</p>}
             {err && <p role="alert" data-testid="mirror-error" className="text-sm">{err}</p>}

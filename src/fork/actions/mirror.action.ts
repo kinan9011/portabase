@@ -3,7 +3,7 @@
 import {appDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
 import type {MirrorDeps} from "@/fork/mirror/deps";
-import {cancelMirrorRevision, createMirror, deleteMirror, getMirrorAccess, getMirrorView, previewMirrorPlan, refreshMirror, retryMirrorWipe, rollbackMirror, setStackMirrorOptIn, startMirror, stopMirror} from "@/fork/mirror/service";
+import {cancelMirrorRevision, createMirror, deleteMirror, getMirrorAccess, getMirrorView, previewMirrorPlan, previewMirrorRefresh, refreshMirror, retryMirrorWipe, rollbackMirror, setStackMirrorOptIn, startMirror, stopMirror} from "@/fork/mirror/service";
 import {getForkPrincipal} from "@/fork/principal";
 import {userAction} from "@/lib/safe-actions/actions";
 import {getServerUrl} from "@/utils/get-server-url";
@@ -27,3 +27,4 @@ export const startMirrorAction = userAction.inputSchema(z.unknown()).action(asyn
 export const deleteMirrorAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => deleteMirror(await deps(), parsedInput));
 export const refreshMirrorAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => refreshMirror(await deps(), parsedInput));
 export const rollbackMirrorAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => rollbackMirror(await deps(), parsedInput));
+export const previewMirrorRefreshAction = userAction.inputSchema(z.unknown()).action(async ({parsedInput}) => previewMirrorRefresh(await deps(), parsedInput));

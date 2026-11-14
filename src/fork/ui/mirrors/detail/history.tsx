@@ -1,15 +1,17 @@
 import type {MirrorView} from "@/fork/mirror/view";
 import {MIRRORS, reasonText} from "@/fork/ui/mirrors/labels";
 import {isActiveRevision} from "@/fork/ui/mirrors/model";
+import {rollbackTargets} from "@/fork/ui/mirrors/refresh/model";
 import {ScrollRegion} from "@/fork/ui/stacks/scroll-region";
 
 const H = MIRRORS.history;
 const when = (iso: string) => iso.replace("T", " ").slice(0, 16);
 const dur = (s: number | null) => (s === null ? "" : s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`);
 
-/** Refresh History tab: every revision, newest first (no Refresh / Rollback controls until W24 / W25). */
+/** Refresh History tab: every revision, newest first. W25: the kept earlier revision a Roll back can return to carries the "Rollback target" badge (same predicate as the server). The controls live on Overview. */
 export function HistoryTab({view, rpDates}: {view: MirrorView; rpDates: Record<string, string>}) {
     if (view.revisions.length === 0) return <p className="text-sm">{H.empty}</p>;
+    const targets = new Set(rollbackTargets(view).map((t) => t.id));
     return (
         <div className="space-y-3" data-testid="history-tab">
             <ScrollRegion label={H.region}>
@@ -23,7 +25,7 @@ export function HistoryTab({view, rpDates}: {view: MirrorView; rpDates: Record<s
                             : r.wipeState ? H.wipe[r.wipeState as keyof typeof H.wipe] ?? "" : isActiveRevision(r.state) ? "" : H.wipe.running;
                         return (
                             <tr key={r.id} data-testid="history-row" data-active={isActive} className="border-b align-top last:border-0">
-                                <th scope="row" className="px-3 py-2 font-medium whitespace-nowrap">#{r.seq}{isActive && <span className="ml-2 rounded border px-1.5 py-0.5 text-xs" data-testid="history-active">{H.active}</span>}</th>
+                                <th scope="row" className="px-3 py-2 font-medium whitespace-nowrap">#{r.seq}{isActive && <span className="ml-2 rounded border px-1.5 py-0.5 text-xs" data-testid="history-active">{H.active}</span>}{targets.has(r.id) && <span className="ml-2 rounded border px-1.5 py-0.5 text-xs" data-testid="history-rollback-target">{MIRRORS.rollback.target}</span>}</th>
                                 <td className="px-3 py-2 whitespace-nowrap">#{r.rpSequence}{rpDates[String(r.rpSequence)] ? ` · ${rpDates[String(r.rpSequence)]?.slice(0, 10)}` : ""}</td>
                                 <td className="px-3 py-2 whitespace-nowrap">{when(r.createdAt)} UTC</td>
                                 <td className="px-3 py-2">{outcome}</td>
