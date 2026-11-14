@@ -234,7 +234,7 @@ export const MIRRORS = {
         title: "Revisions", cols: {rev: "Revision", rp: "Backup", created: "Created", outcome: "Outcome", duration: "Duration", wipe: "Copy on the runner"},
         active: "Active", empty: "No revisions.",
         ready: "Ready (isolated, health-checked)", cancelled: "Cancelled", inProgress: "In progress",
-        wipe: {verified: "Deleted and checked", not_needed: "Nothing was copied", failed: "Deleting failed", running: "Deleting…", kept: "Kept (this is the running copy)", none: "Kept"},
+        wipe: {verified: "Deleted and checked", not_needed: "Nothing was copied", failed: "Deleting failed", running: "Deleting…", kept: "Kept (this is the running copy)", keptSpare: "Kept, not running", none: "Kept"},
         note: "Each refresh builds a new revision; the active one keeps running until the new one passes its checks.",
         region: "Mirror revisions",
     },
@@ -295,6 +295,7 @@ export const MIRRORS = {
         },
         line: (next: number, rp: number, cur: number, step: string | null) => `Refreshing: building revision #${next} from backup #${rp}${step ? ` (${step})` : ""}. Revision #${cur} keeps serving.`,
         switching: (next: number, cur: number) => `Refreshing: revision #${next} passed its checks; switching private access from #${cur}.`,
+        finishing: (next: number) => `Refreshing: revision #${next} is now active; finishing up.`,
         cancel: {label: "Cancel refresh", title: (next: number) => `Stop building revision #${next}?`, body: (cur: number) => `Revision #${cur} keeps serving. The new copy on the runner is deleted and checked.`, confirm: "Stop refresh"},
         failedLine: (why: string, cur: number) => `The last refresh did not complete: ${why} Revision #${cur} is still active.`,
         brokenLine: "Private access could not be switched back after the refresh. The app may not be reachable on its usual port. Stop or Delete the mirror.",
@@ -313,6 +314,7 @@ export const MIRRORS = {
         started: (to: number, cur: number) => `Rollback started: checking revision #${to}. #${cur} keeps serving.`,
         already: "A rollback of this mirror is already running.",
         line: (to: number, cur: number) => `Rolling back to revision #${to}: isolation, health and app checks, then access switches. Revision #${cur} keeps serving.`,
+        finishing: (to: number) => `Rolling back: revision #${to} is now active; finishing up.`,
         failedLine: (why: string, cur: number) => `The last rollback did not complete: ${why} Revision #${cur} is still active.`,
         brokenLine: "Private access could not be switched back after the rollback. The app may not be reachable on its usual port. Stop or Delete the mirror.",
         target: "Rollback target",
@@ -420,6 +422,11 @@ export const GATE_TEXT: Record<Gate, string> = {
 };
 
 const GENERIC_REASON = "The mirror stopped. Check the runner and try again.";
+/** W25 (drill D1): the runner's own stage codes reach the revision row verbatim; the two a bad backup produces get an honest sentence instead of the generic one */
+const AGENT_REASON_TEXT: Record<string, string> = {
+    checksum_mismatch: "The backup file does not match its recorded checksum. It may be damaged; pick another backup.",
+    archive_invalid: "The backup file is not a valid Portabase archive. Pick another backup.",
+};
 export const REASON_TEXT: Record<MirrorReasonCode, string> = {
     plan_blocked: "The restore plan is blocked.",
     stop_incomplete: "Some containers could not be stopped and may still be running.",
@@ -471,7 +478,7 @@ export const REASON_TEXT: Record<MirrorReasonCode, string> = {
     smoke_failed_internal: "The app did not answer its health check.",
     mirror_disabled: "Mirrors are switched off on the runner.",
 };
-export const reasonText = (code: string | null): string => (code !== null && Object.hasOwn(REASON_TEXT, code) ? REASON_TEXT[code as MirrorReasonCode] : GENERIC_REASON);
+export const reasonText = (code: string | null): string => (code !== null && Object.hasOwn(REASON_TEXT, code) ? REASON_TEXT[code as MirrorReasonCode] : code !== null && Object.hasOwn(AGENT_REASON_TEXT, code) ? AGENT_REASON_TEXT[code]! : GENERIC_REASON);
 
 // ---- Logs tab: fixed sentences for timeline events and journal rows (the loader never returns free text) -----------------------------------
 const STATE_WORD: Record<string, string> = {

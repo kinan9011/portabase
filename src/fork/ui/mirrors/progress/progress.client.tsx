@@ -38,6 +38,8 @@ export function headline(view: MirrorView, ctx?: {lastFrom?: string | null}): {t
         case "refreshing": case "rolling_back": {
             const op = view.revisions.find((x) => x.id === view.mirror.opRevisionId);
             const cur = active?.seq ?? 0;
+            // W25 (browser finding): between the commit of the new active revision and the status flip back to Ready, the "from #cur" sentence would name the NEW revision
+            if (op && active && op.id === active.id) return {text: view.mirror.status === "rolling_back" ? MIRRORS.rollback.finishing(op.seq) : MIRRORS.refresh.finishing(op.seq), tone: "active"};
             if (view.mirror.status === "rolling_back") return {text: MIRRORS.rollback.line(op?.seq ?? 0, cur), tone: "active"};
             if (op?.state === "ready") return {text: MIRRORS.refresh.switching(op.seq, cur), tone: "active"};
             const step = op?.steps.find((s) => s.status !== "done");
@@ -72,10 +74,10 @@ const wipeLine = (r: Rev, deleting: boolean): string | null => {
 };
 
 /** `embedded` (W23 detail page): the page supplies the `<h1 id="mirror-h">` and the privacy banner; `extra` renders under the headline from the CURRENT (polled) view: facet, alerts, lifecycle buttons. */
-export type ProgressProps = {initial: MirrorView; canManage: boolean; locked: boolean; embedded?: boolean; lastFrom?: string | null; extra?: (view: MirrorView, ctx: {poll: () => Promise<void>}) => React.ReactNode};
+export type ProgressProps = {initial: MirrorView; canManage: boolean; locked: boolean; embedded?: boolean; lastFrom?: string | null; extra?: (view: MirrorView, ctx: {poll: () => Promise<void>}) => React.ReactNode; onCommitted?: () => void};
 type Access = {runnerName: string; hostPort: number; service: string; target: number; tunnelHint: string};
 
-export function MirrorProgress({initial, canManage, locked, embedded = false, lastFrom = null, extra}: ProgressProps) {
+export function MirrorProgress({initial, canManage, locked, embedded = false, lastFrom = null, extra, onCommitted}: ProgressProps) {
     const announce = useAnnounce();
     const [view, setView] = React.useState(initial);
     const [pollFailed, setPollFailed] = React.useState(false);
@@ -95,6 +97,16 @@ export function MirrorProgress({initial, canManage, locked, embedded = false, la
             if (d?.ok === true && d.view) { setView(d.view as MirrorView); setPollFailed(false); } else setPollFailed(true);
         } catch { setPollFailed(true); }
     }, [mirrorId]);
+
+    // W25 (browser finding): an operation that COMMITTED (the active revision changed, or the mirror left a busy status) changes what the server-rendered tabs and the Refresh facts show: ask the page to re-read them once
+    const seenCommit = React.useRef<string>(`${initial.mirror.status}|${initial.mirror.activeRevisionId}`);
+    React.useEffect(() => {
+        const key = `${view.mirror.status}|${view.mirror.activeRevisionId}`;
+        if (key === seenCommit.current) return;
+        const before = seenCommit.current; seenCommit.current = key;
+        const busy = ["refreshing", "rolling_back", "stopping", "starting"];
+        if (!busy.includes(view.mirror.status) || before.split("|")[1] !== String(view.mirror.activeRevisionId)) onCommitted?.();
+    }, [view.mirror.status, view.mirror.activeRevisionId, onCommitted]);
 
     React.useEffect(() => { document.getElementById("mirror-h")?.focus(); }, []);
 

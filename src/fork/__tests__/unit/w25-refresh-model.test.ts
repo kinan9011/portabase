@@ -146,6 +146,12 @@ describe("F-1 settled() keeps polling during a refresh / rollback (even when the
 });
 
 describe("F-2 headline()", () => {
+    it("committed but not yet Ready: the op revision is already the active one ⇒ 'finishing', never 'switching from #<itself>'", () => {
+        const r = rev(now, {id: "r3", seq: 3});
+        const v = view(now, {status: "refreshing", revisions: [r, rev(now, {id: "r2", seq: 2})], op: "r3", active: "r3"});
+        expect(headline(v).text).toBe(MIRRORS.refresh.finishing(3));
+        expect(headline(view(now, {status: "rolling_back", revisions: [rev(now, {id: "r2", seq: 2}), rev(now, {id: "r3", seq: 3})], op: "r2", active: "r2"})).text).toBe(MIRRORS.rollback.finishing(2));
+    });
     const building = rev(now, {id: "r3", seq: 3, rpSequence: 6, state: "restoring_db", steps: [{name: "verify_manifest", status: "done"}, {name: "stage", status: "running"}], activatedAt: null, readiedAt: null});
     it("refreshing: names the build and says the old revision keeps serving; switching once the new one is READY", () => {
         const h = headline(view(now, {status: "refreshing", revisions: [building, rev(now, {id: "r2", seq: 2})], op: "r3"}));

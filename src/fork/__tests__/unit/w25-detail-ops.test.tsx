@@ -65,6 +65,12 @@ describe("buttons and notes on Overview", () => {
         const t = screen.getAllByTestId("history-rollback-target");
         expect(t.length).toBe(1);
         expect(t[0]!.closest("tr")?.textContent).toContain("#1");
+        // W25 browser finding: only the ACTIVE copy is "the running copy"; a kept rollback target is stopped
+        const rows = screen.getAllByTestId("history-row");
+        for (const r of rows) {
+            if (r.getAttribute("data-active") === "true") expect(r.textContent).toContain("this is the running copy");
+            else if (r.textContent?.includes("Ready")) { expect(r.textContent).not.toContain("this is the running copy"); expect(r.textContent).toContain("Kept, not running"); }
+        }
     });
 });
 
@@ -129,6 +135,8 @@ describe("progress during a refresh / rollback (F-1, F-2, F-3)", () => {
         const calls = h.view.mock.calls.length;
         await act(async () => { await vi.advanceTimersByTimeAsync(MIRROR_POLL_MS * 3); });
         expect(h.view.mock.calls.length).toBe(calls); // settled: polling stopped
+        // W25 browser finding: the commit (new active revision) makes the page re-read the server-rendered tabs + Refresh facts, once
+        expect(h.refresh).toHaveBeenCalledTimes(1);
     });
     it("rolling back: names the target; a Ready mirror with a failed newest revision says Ready and announces the failed-newer sentence", async () => {
         mount(props({initial: view(now, {status: "rolling_back", op: "r1"})}));

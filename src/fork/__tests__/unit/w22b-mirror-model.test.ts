@@ -132,6 +132,8 @@ describe("pins and exhaustiveness", () => {
         expect(refusalText("totally_new")).toMatch(/could not be created/);
         expect(reasonText("totally_new")).not.toContain("totally_new");
         expect(reasonText(null)).toBeTruthy();
+        // W25 D1: the runner's stage codes of a bad backup are not the generic sentence
+        for (const c of ["checksum_mismatch", "archive_invalid"]) expect(reasonText(c)).not.toBe(reasonText("totally_new"));
         expect(retryText("rate_limited", 12)).toContain("12 s");
     });
     it("the ADR-009 §4 banner is exact", () => expect(BANNER("lab-runner")).toBe("This mirror contains a copy of real production data, including personal data. It lives only on the runner `lab-runner`. Do not share access."));
