@@ -129,6 +129,13 @@ describe("applyMirrorSpec (D-6)", () => {
         expect(code(labFull() as Doc, s3 as MirrorSpecV1)).toBe("structure_mismatch");
     });
 
+    it("the final equality rejects a spec view that smuggles a value into an x-* subtree (only this check catches it)", () => {
+        const s = structuredClone(spec()) as Doc;
+        s.view.services.web["x-leak"] = "literal-secret";
+        const r = applyMirrorSpec(labFull(), s as MirrorSpecV1, seedA);
+        expect(r).toEqual({ok: false, code: "structure_mismatch"});
+    });
+
     it("structure always comes from the spec: an extra port in the full render never reaches the mirror (source_changed is the caller's hash check)", () => {
         const f = labFull() as Doc;
         f.services.db.ports = [{mode: "ingress", host_ip: "0.0.0.0", target: 5432, published: "5432", protocol: "tcp"}];
