@@ -34,9 +34,13 @@ export const forkStack = pgTable("fork_stack", {
     /** W16 (D44): explicit per-stack opt-in to data-only test restores. Both set or both NULL. */
     testRestoreOptInAt: ts("test_restore_opt_in_at"),
     testRestoreOptInBy: text("test_restore_opt_in_by"),
+    /** W22a (ADR-009 §4): explicit per-stack opt-in to test mirrors (a mirror holds a copy of production data on a runner). */
+    mirrorOptInAt: ts("mirror_opt_in_at"),
+    mirrorOptInBy: text("mirror_opt_in_by"),
 }, (t) => [
     unique("fork_stack_env_project_uq").on(t.environmentId, t.composeProject),
     check("fork_stack_opt_in_ck", sql`(${t.testRestoreOptInAt} IS NULL) = (${t.testRestoreOptInBy} IS NULL)`),
+    check("fork_stack_mirror_opt_in_ck", sql`(${t.mirrorOptInAt} IS NULL) = (${t.mirrorOptInBy} IS NULL)`),
     index("fork_stack_org_idx").on(t.organizationId),
     check("fork_stack_runtime_state_ck", inList("runtime_state", RUNTIME_STATES)),
     check("fork_stack_protection_state_ck", inList("protection_state", PROTECTION_STATES)),

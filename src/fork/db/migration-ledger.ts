@@ -30,6 +30,7 @@ export const MIGRATION_LEDGER: readonly LedgerEntry[] = [
     {tag: "0015_quiesce", wave: "W17b", note: "fork_stack_policy quiesce opt-in (services, max stop, enabler); fork_stack_run quiesce state/task/result; RP consistency 'stopped' + downgrade 'quiesce_unconfirmed' (D29)"},
     {tag: "0016_test_restore", wave: "W-TR", note: "fork_test_restore_schedule; fork_restore_run trigger/scheduled_for/integrity/wipe_*, verification 'data_verified'; step journal integrity/wipe/wipe_check"},
     {tag: "0017_runner", wave: "W21", note: "fork_runner: agent-level runner designation (DD-1), admin probe targets, last probe binding (task id, resolved targets, config sha)"},
+    {tag: "0018_mirror", wave: "W22a", note: "mirror model: fork_mirror / revision / event / task journal, stack mirror opt-in, plan purpose mirror"},
     // R2: append here; one entry per generated migration, in order.
 ];
 

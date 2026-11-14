@@ -14,3 +14,4 @@ export * from "./restore-override";
 export * from "./restore-run";
 export * from "./test-restore";
 export * from "./runner";
+export * from "./mirror";

@@ -26,7 +26,7 @@ describe("W22a mirror module guards", () => {
     it("every DB write of `state` goes through transition() (`state: next`)", () => {
         for (const p of all(DIR)) {
             const src = readFileSync(p, "utf8");
-            for (const m of src.matchAll(/\.set\(\{([^}]*)\}\)/gs)) {
+            for (const m of src.matchAll(/\.set\(\{([^}]*)\}\)/g)) {
                 const body = m[1] as string;
                 const hit = body.match(/(?:^|[\s,{])state:\s*([^,\n}]+)/);
                 if (hit) expect((hit[1] as string).trim(), `${path.basename(p)}: ${body.slice(0, 80)}`).toBe("next");

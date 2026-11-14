@@ -99,5 +99,5 @@ export function assertForkCapability(principal: ForkPrincipal | null | undefined
  * Resource kinds that carry an ID from the client. The owning organization is ALWAYS loaded from the row (never
  * trusted from the request) and the capability is checked against THAT organization.
  */
-export const FORK_RESOURCE_KINDS = ["connection", "environment", "stack", "stack_inventory", "recovery_point", "recovery_point_artifact", "stack_run", "restore_plan", "restore_run"] as const;
+export const FORK_RESOURCE_KINDS = ["connection", "environment", "stack", "stack_inventory", "recovery_point", "recovery_point_artifact", "stack_run", "restore_plan", "restore_run", "mirror"] as const;
 export type ForkResourceKind = (typeof FORK_RESOURCE_KINDS)[number];
