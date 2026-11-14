@@ -8,8 +8,8 @@ import type {MirrorView} from "@/fork/mirror/view";
 import {BANNER, GATE_TEXT, MIRRORS, REASON_TEXT, stepText} from "@/fork/ui/mirrors/labels";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 
-const h = vi.hoisted(() => ({view: vi.fn(), access: vi.fn(), cancel: vi.fn(), retry: vi.fn(), del: vi.fn(), refresh: vi.fn()}));
-vi.mock("@/fork/actions/mirror.action", () => ({getMirrorViewAction: h.view, getMirrorAccessAction: h.access, cancelMirrorRevisionAction: h.cancel, retryMirrorWipeAction: h.retry, deleteMirrorAction: h.del}));
+const h = vi.hoisted(() => ({view: vi.fn(), access: vi.fn(), cancel: vi.fn(), retry: vi.fn(), del: vi.fn(), stop: vi.fn(), start: vi.fn(), refresh: vi.fn()}));
+vi.mock("@/fork/actions/mirror.action", () => ({getMirrorViewAction: h.view, getMirrorAccessAction: h.access, cancelMirrorRevisionAction: h.cancel, retryMirrorWipeAction: h.retry, deleteMirrorAction: h.del, stopMirrorAction: h.stop, startMirrorAction: h.start}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh: h.refresh, push: vi.fn()}), usePathname: () => "/dashboard/mirrors/x"}));
 
 import {MirrorDetail, type DetailProps} from "@/fork/ui/mirrors/detail/detail.client";
@@ -32,7 +32,7 @@ const extras = (o: Partial<MirrorDetailExtras> = {}): MirrorDetailExtras => ({
     config: {access: {service: "web", target: 8080, hostPort: 41000}, httpPath: "/health", limits: {memBytes: 1073741824, pids: 512, nanoCpus: 1_000_000_000},
         overrides: [{service: "web", key: "SMTP_URL", action: "disable"}, {service: "db", key: "API_KEY", action: "keep_exact"}], overrideCount: 2, keptCount: 1},
     runnerIsolation: {state: "isolated", probedAt: new Date(now.getTime() - 2 * 3600e3).toISOString(), reason: null},
-    facet: {readiedAt: new Date(now.getTime() - 2 * 86_400_000).toISOString(), rpSequence: 3}, ...o,
+    facet: {readiedAt: new Date(now.getTime() - 2 * 86_400_000).toISOString(), rpSequence: 3}, lastOp: null, ...o,
 });
 const LOG: MirrorLogEntry[] = [
     {at: new Date(now.getTime() - 1000).toISOString(), kind: "event", title: "Mirror ready", code: null, status: null, actor: "system", durationSeconds: null},
@@ -201,5 +201,73 @@ describe("Refresh History + Logs", () => {
     it("empty logs", () => {
         mount(props({tab: "logs", log: []}));
         expect(screen.getByText(MIRRORS.logs.empty)).toBeTruthy();
+    });
+});
+
+describe("Stop / Start (W23 Part B)", () => {
+    const L = MIRRORS.lifecycle;
+    it("Stop (confirmed) calls the action once, announces, re-reads the view and shows the stopping state without the access button", async () => {
+        h.stop.mockResolvedValue({data: {ok: true}});
+        h.view.mockResolvedValue({data: {ok: true, view: view("stopping")}});
+        mount(props());
+        expect(screen.queryByTestId("mirror-start")).toBeNull();
+        fireEvent.click(screen.getByTestId("mirror-stop"));
+        const dialog = await screen.findByRole("alertdialog");
+        expect(within(dialog).getByText(L.stopTitle("shop-3"))).toBeTruthy();
+        fireEvent.click(within(dialog).getByRole("button", {name: L.stopConfirm}));
+        await waitFor(() => expect(h.stop).toHaveBeenCalledTimes(1));
+        expect(h.stop).toHaveBeenCalledWith({mirrorId: MID});
+        await waitFor(() => expect(screen.getByTestId("mirror-headline").textContent).toBe(L.stoppingLine));
+        expect(screen.queryByTestId("mirror-access")).toBeNull(); // the revision stays ready, the mirror is not: no tunnel hint while it does not run
+        expect(screen.getByRole("status").textContent).toBe(L.stopRequested);
+    });
+    it("a stopped mirror: Stopped headline, no access, Start offered with the data note; Start calls the action", async () => {
+        h.start.mockResolvedValue({data: {ok: true}});
+        h.view.mockResolvedValue({data: {ok: true, view: view("starting")}});
+        const m = mount(props({initial: view("stopped")}));
+        expect(screen.getByTestId("mirror-headline").textContent).toBe(L.stoppedLine);
+        expect(screen.queryByTestId("mirror-access")).toBeNull();
+        expect(screen.queryByTestId("mirror-stop")).toBeNull();
+        expect(screen.getByText(L.startNote)).toBeTruthy();
+        expect(await axeViolations(m.container)).toEqual([]);
+        fireEvent.click(screen.getByTestId("mirror-start"));
+        await waitFor(() => expect(h.start).toHaveBeenCalledWith({mirrorId: MID}));
+        await waitFor(() => expect(screen.getByTestId("mirror-headline").textContent).toBe(L.startingLine));
+    });
+    it("Start is blocked with a visible reason while locked or with the flag off; Delete stays available", () => {
+        mount(props({initial: view("stopped"), locked: true}));
+        expect(screen.getByTestId("mirror-start").getAttribute("aria-disabled")).toBe("true");
+        expect(screen.getByText(L.reasons.startLocked)).toBeTruthy();
+        expect(screen.getByTestId("mirror-delete").getAttribute("aria-disabled")).toBeNull();
+        cleanup();
+        mount(props({initial: view("stopped"), flagOn: false}));
+        expect(screen.getByTestId("mirror-start").getAttribute("aria-disabled")).toBe("true");
+        expect(screen.getByText(MIRRORS.list.flagOff)).toBeTruthy();
+    });
+    it("failed with its revision (a stop that did not finish): honest sentence with the reason, Stop can be retried, Delete works, axe clean", async () => {
+        const m = mount(props({initial: view("failed"), extras: extras({lastOp: {status: "failed", code: "stop_incomplete", at: now.toISOString()}})}));
+        expect(screen.getByTestId("mirror-headline").textContent).toBe(L.stopFailedLine);
+        expect(screen.getByTestId("last-op").textContent).toBe(L.lastStopFailed(REASON_TEXT.stop_incomplete));
+        expect(screen.getByTestId("mirror-stop").getAttribute("aria-disabled")).toBeNull();
+        expect(screen.getByTestId("mirror-delete").getAttribute("aria-disabled")).toBeNull();
+        expect(screen.queryByTestId("mirror-access")).toBeNull();
+        expect(await axeViolations(m.container)).toEqual([]);
+    });
+    it("a start that did not complete says why and that the mirror is stopped", () => {
+        mount(props({initial: view("stopped"), extras: extras({lastOp: {status: "stopped", code: "smoke_failed", at: now.toISOString()}})}));
+        expect(screen.getByTestId("last-op").textContent).toBe(L.startFailedLine(REASON_TEXT.smoke_failed));
+    });
+    it("a refused Stop shows the refusal text in role=alert and does not refresh", async () => {
+        h.stop.mockResolvedValue({data: {ok: false, code: "mirror_busy"}});
+        mount(props());
+        fireEvent.click(screen.getByTestId("mirror-stop"));
+        fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: L.stopConfirm}));
+        const alert = await screen.findByTestId("lifecycle-error");
+        expect(alert.getAttribute("role")).toBe("alert");
+        expect(h.refresh).not.toHaveBeenCalled();
+    });
+    it("members get no Stop / Start / Delete at all", () => {
+        mount(props({initial: view("stopped"), canManage: false}));
+        for (const id of ["mirror-stop", "mirror-start", "mirror-delete"]) expect(screen.queryByTestId(id)).toBeNull();
     });
 });

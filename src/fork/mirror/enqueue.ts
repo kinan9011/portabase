@@ -26,7 +26,7 @@ import {BuildError, artifactIndexes} from "@/fork/restore-tasks/build";
 import {resolveManifest} from "@/fork/restore-tasks/enqueue";
 import {artifactDownloadUrl} from "@/fork/upstream/storage-read";
 import {assertRunnerTarget} from "@/fork/runner/service";
-import {buildMirrorApply, buildMirrorCheck, buildMirrorDb, buildMirrorFinalize, buildMirrorProbe, buildMirrorRender, buildMirrorStage, buildMirrorUp, buildMirrorWipe, type MirrorBuildInput} from "./build";
+import {buildMirrorApply, buildMirrorCheck, buildMirrorDb, buildMirrorFinalize, buildMirrorProbe, buildMirrorRender, buildMirrorStage, buildMirrorStop, buildMirrorUp, buildMirrorWipe, type MirrorBuildInput} from "./build";
 import type {MirrorPolicyV1} from "./policy";
 import {MIRROR_JOURNAL_STEPS, STEP_TASK_TYPE, type MirrorJournalStep} from "./vocab";
 
@@ -49,13 +49,14 @@ export type EnqueueArgs = {
     manifest?: {json: string; sigB64: string}; spec?: MirrorSpecV1; specSha256?: string; finalSha256?: string; policy?: MirrorPolicyV1;
 };
 
-const WIPE_STEPS: readonly MirrorJournalStep[] = ["wipe", "wipe_check"];
+/** Safety steps (reduce exposure of a production-data copy): no principal re-check and no config lock (OD-W23-2); runner eligibility + payload checks still run. */
+const SAFETY_STEPS: readonly MirrorJournalStep[] = ["wipe", "wipe_check", "stop"];
 
 export async function enqueueMirrorTask(d: MirrorTaskDeps, a: EnqueueArgs): Promise<MirrorEnqueueResult> {
     const {revision: rev, plan, step} = a;
     const type = STEP_TASK_TYPE[step] as TaskType;
     const now = chNow(d);
-    const wipe = WIPE_STEPS.includes(step);
+    const wipe = SAFETY_STEPS.includes(step);
     const audit = (result: "success" | "denied", details: Record<string, unknown>, db: ForkDb = d.db) =>
         recordAudit(db, {organizationId: rev.organizationId, actorUserId: rev.startedBy, action: result === "success" ? "fork.mirror_task.enqueue" : "fork.mirror_task.denied", resourceType: "mirror", resourceId: rev.mirrorId, result,
             details: {revisionId: rev.id, type, step, attempt: a.attempt, ...details}, now});
@@ -89,8 +90,9 @@ export async function enqueueMirrorTask(d: MirrorTaskDeps, a: EnqueueArgs): Prom
         const bi: MirrorBuildInput = {revisionId: rev.id, planId: rev.planId, planHash: rev.planHash, plan, indexOf: new Map()};
         let body: unknown;
         if (step === "probe" || step === "wipe_check") body = buildMirrorProbe(rev.workspace);
-        else if (step === "up" || step === "check" || step === "wipe") {
+        else if (step === "up" || step === "check" || step === "wipe" || step === "stop") {
             if (step === "wipe") body = buildMirrorWipe(bi);
+            else if (step === "stop") body = buildMirrorStop(bi);
             else if (!a.finalSha256) return deny("invalid_input", {detail: "final_sha"});
             else if (step === "up") body = buildMirrorUp(bi, a.finalSha256);
             else if (!a.policy) return deny("invalid_input", {detail: "policy"});

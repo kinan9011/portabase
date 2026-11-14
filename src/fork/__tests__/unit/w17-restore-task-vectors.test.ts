@@ -61,6 +61,7 @@ const samples = {
     mirror_up: {...mheader(), final_sha256: HEX("e"), volumes: ["pbm-demo-r1_appdata"]},
     mirror_check: {...mheader(), final_sha256: HEX("e"), access: {service: "web", target: 80}, http_path: "/", wait_s: 120},
     mirror_wipe: {...mheader()},
+    mirror_stop: {...mheader()},
     runner_probe: {v: 1, probe_id: "99999999-9999-4999-8999-999999999999", targets_sha256: HEX("d"), timeout_ms: 1500, targets: [{id: "t01", kind: "tcp", host: "10.20.30.40", port: 25}, {id: "t02", kind: "dns_tcp", host: "10.20.30.53", port: 53}, {id: "t03", kind: "dns_name", host: "example.com"}]},
 } as const;
 const ALL_TYPES = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES] as const;
@@ -182,6 +183,8 @@ function mirrorPayloadCases(): PCase[] {
     bad("mirror_probe", "probe_unknown_key", {...s.mirror_probe, x: 1});
     bad("mirror_wipe", "wipe_unknown_key", {...s.mirror_wipe, extra: true});
     bad("mirror_wipe", "wipe_host_role_production", {...s.mirror_wipe, host_role: "production"});
+    bad("mirror_stop", "stop_unknown_key", {...s.mirror_stop, extra: true});
+    bad("mirror_stop", "stop_host_role_production", {...s.mirror_stop, host_role: "production"});
     return out;
 }
 
@@ -295,7 +298,7 @@ function buildVectors() {
     ];
 
     // ---- W22a mirror role gating (plan-W22a §3.3): mirror tasks need runner.v1 AND mirror.v1; restore tasks never run on a runner ----
-    for (const type of ["mirror_probe", "mirror_stage", "mirror_finalize", "mirror_wipe"] as const) cases.push({name: `${type}_on_non_runner`, expect: "role_forbidden", ...mk(type)});
+    for (const type of ["mirror_probe", "mirror_stage", "mirror_finalize", "mirror_wipe", "mirror_stop"] as const) cases.push({name: `${type}_on_non_runner`, expect: "role_forbidden", ...mk(type)});
     const mirrorRunnerCases = [
         ...MIRROR_TASK_TYPES.map((type) => ({name: `${type}_ok`, expect: "ok", ...mk(type)})),
         {name: "mirror_stage_without_target", expect: "target_mismatch", ...mk("mirror_stage", {omitTarget: true})},

@@ -39,7 +39,7 @@ export function registerMirrorJob(): void {
                         if ((await currentForkMode()).mode === "off") return;
                         const d: MirrorDeps = {db: await appDb(), keys: fileKeyProvider, serverUrl: getServerUrl};
                         const r = await tickAllMirrors(d);
-                        if (r.advanced + r.done + r.failed + r.wipes.advanced + r.wipes.verified + r.wipes.failed + r.deletes.advanced + r.deletes.deleted + r.deletes.failed > 0) log.info({mirrors: r}, "Mirror tick");
+                        if (r.advanced + r.done + r.failed + r.wipes.advanced + r.wipes.verified + r.wipes.failed + r.ops.advanced + r.ops.stopped + r.ops.ready + r.ops.failed + r.deletes.advanced + r.deletes.deleted + r.deletes.failed > 0) log.info({mirrors: r}, "Mirror tick");
                     } catch (error) {
                         log.error({error: error instanceof Error ? error.name : "unknown"}, "Mirror tick failed");
                     } finally {

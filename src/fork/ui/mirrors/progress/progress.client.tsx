@@ -7,7 +7,7 @@ import {cancelMirrorRevisionAction, getMirrorAccessAction, getMirrorViewAction, 
 import {ACTIVE_REVISION_STATES, GATES, WIPE_REVISION_STATES} from "@/fork/mirror/vocab";
 import type {MirrorView} from "@/fork/mirror/view";
 import {DangerousActionConfirm} from "@/fork/ui/dangerous-action-confirm";
-import {BANNER, GATE_TEXT, MIRRORS, reasonText, refusalText, stepText} from "@/fork/ui/mirrors/labels";
+import {BANNER, GATE_TEXT, MIRRORS, reasonText, refusalText, statusText, stepText} from "@/fork/ui/mirrors/labels";
 import {groupSteps} from "@/fork/ui/mirrors/model";
 import {settled} from "@/fork/ui/mirrors/wizard/model";
 import {useAnnounce} from "@/fork/ui/status-announcer";
@@ -26,6 +26,13 @@ export function headline(view: MirrorView): {text: string; tone: Tone} {
     const r = view.revisions[0];
     if (view.mirror.status === "deleting") return {text: MIRRORS.lifecycle.deletingLine, tone: "active"}; // W23
     if (view.mirror.status === "deleted") return {text: MIRRORS.detail.deleted, tone: "neutral"};
+    switch (view.mirror.status) { // W23 Part B: stop / start states (the revision itself stays `ready`: the creation's evidence is never rewritten)
+        case "stopping": return {text: MIRRORS.lifecycle.stoppingLine, tone: "active"};
+        case "stopped": return {text: MIRRORS.lifecycle.stoppedLine, tone: "neutral"};
+        case "starting": return {text: MIRRORS.lifecycle.startingLine, tone: "active"};
+        case "failed": if (view.mirror.activeRevisionId) return {text: MIRRORS.lifecycle.stopFailedLine, tone: "danger"}; break;
+        default: break;
+    }
     if (!r) return {text: P.creating, tone: "active"};
     switch (r.state) {
         case "ready": return {text: P.ready(view.mirror.runnerName), tone: "success"};
@@ -85,7 +92,7 @@ export function MirrorProgress({initial, canManage, locked, embedded = false, ex
 
     // announce only real changes (state / step statuses / wipe), the alert only for transitions into blocked / failed
     const head = headline(view);
-    const sig = `${rev?.state ?? ""}|${(rev?.steps ?? []).map((s) => `${s.name}:${s.status}`).join(",")}|${rev?.wipeState ?? ""}`;
+    const sig = `${view.mirror.status}|${rev?.state ?? ""}|${(rev?.steps ?? []).map((s) => `${s.name}:${s.status}`).join(",")}|${rev?.wipeState ?? ""}`;
     const first = React.useRef(true); const prev = React.useRef(rev?.state ?? "");
     // biome-ignore lint/correctness/useExhaustiveDependencies: fires on the change signature only (not on every poll tick)
     React.useEffect(() => {
@@ -116,12 +123,13 @@ export function MirrorProgress({initial, canManage, locked, embedded = false, ex
     const deleting = view.mirror.status === "deleting";
     const deleted = view.mirror.status === "deleted";
     const wipe = rev ? wipeLine(rev, deleting) : null;
-    const ready = rev?.state === "ready" && !deleting && !deleted;
+    const lifecycleStatus = ["stopping", "stopped", "starting"].includes(view.mirror.status) || (view.mirror.status === "failed" && view.mirror.activeRevisionId !== null);
+    const ready = rev?.state === "ready" && !deleting && !deleted && !lifecycleStatus;
     return (
         <section aria-labelledby="mirror-h" className="max-w-3xl space-y-6">
             <div>
                 {!embedded && <h1 id="mirror-h" tabIndex={-1} className="mb-2 text-2xl font-bold break-words outline-none">{P.title} · {view.mirror.name}</h1>}
-                <p className="mb-2"><ToneBadge tone={head.tone} busy={active}>{deleted ? "Deleted" : deleting ? "Deleting" : ready ? "Ready" : rev?.state === "cancelled" ? "Cancelled" : rev && !isActive(rev.state) ? (rev.state === "blocked" ? "Blocked" : "Failed") : "Creating"}</ToneBadge></p>
+                <p className="mb-2"><ToneBadge tone={head.tone} busy={active}>{deleted ? "Deleted" : deleting ? "Deleting" : lifecycleStatus ? statusText(view.mirror.status) : ready ? "Ready" : rev?.state === "cancelled" ? "Cancelled" : rev && !isActive(rev.state) ? (rev.state === "blocked" ? "Blocked" : "Failed") : "Creating"}</ToneBadge></p>
                 <p data-testid="mirror-headline" className="text-base break-words">{head.text}</p>
                 {ready && <p data-testid="ready-note" className="text-muted-foreground mt-1 text-sm">{P.readyNote}</p>}
                 {rev && <p className="text-muted-foreground mt-2 text-sm">Backup #{rev.rpSequence} · {view.mirror.runnerName}</p>}

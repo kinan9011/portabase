@@ -1,0 +1,4 @@
+ALTER TABLE "fork_mirror" DROP CONSTRAINT "fork_mirror_status_ck";--> statement-breakpoint
+ALTER TABLE "fork_mirror_task" DROP CONSTRAINT "fork_mirror_task_step_ck";--> statement-breakpoint
+ALTER TABLE "fork_mirror" ADD CONSTRAINT "fork_mirror_status_ck" CHECK ("status" IN ('creating', 'ready', 'failed', 'cancelled', 'refreshing', 'deleting', 'deleted', 'stopping', 'stopped', 'starting'));--> statement-breakpoint
+ALTER TABLE "fork_mirror_task" ADD CONSTRAINT "fork_mirror_task_step_ck" CHECK ("step" IN ('probe', 'stage', 'apply', 'render', 'finalize', 'restore_db', 'up', 'check', 'isolation', 'wipe', 'wipe_check', 'stop'));

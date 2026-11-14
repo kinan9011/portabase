@@ -17,7 +17,7 @@ import type {ForkDb} from "@/fork/db/handle";
 import {fileKeyProvider} from "@/fork/keys";
 import {kidOfPublicKey} from "@/fork/manifest/sign";
 import type {MirrorDeps} from "@/fork/mirror/deps";
-import {createMirror, deleteMirror} from "@/fork/mirror/service";
+import {createMirror, deleteMirror, getMirrorAccess, startMirror, stopMirror} from "@/fork/mirror/service";
 import {tickAllMirrors} from "@/fork/mirror/tick";
 import {designateRunner, requestRunnerProbe, runnerIsolation, setRunnerTargets, type RunnerDeps} from "@/fork/runner/service";
 import {encryptAgentArchive, sha256} from "@/fork/__tests__/agent-archive";
@@ -34,7 +34,9 @@ import {PASSWORD, seedW17World, type W17} from "@/fork/__tests__/w17-world";
  * docker-in-docker runner box (nftables egress policy in the box's netns). The orchestrator tick (incl. the W23 delete tick) runs in THIS process with the W22a storage seams (synthetic RP).
  * Real-VM proof stays PENDING-HUMAN (#125).
  *   L-A1 list + four detail tabs for a real READY mirror (+ canary) · L-A2 delete = verified wipe of the runner copy, a DECOY of another owner survives, name + port reusable ·
- *   L-A3 delete while configuration is locked · HOLD (browser pass, W23_LAB_HOLD=1).
+ *   L-A3 delete while configuration is locked · Part B (needs the agent image with `mirror_stop`, W23_AGENT_IMAGE=portabase-agent-fork:w23-lab): L-B1 stop (containers exited, loopback closed) ·
+ *   L-B2 start (probe → up → check → ready, data kept, start-tested fact unchanged) · L-B3 start re-gates isolation (firewall off ⇒ refused / aborted, nothing started) · L-B4 delete of a stopped mirror ·
+ *   HOLD (browser pass, W23_LAB_HOLD=1).
  */
 const LAB = process.env.FORK_LAB === "1";
 const AGENT_IMAGE = process.env.W23_AGENT_IMAGE ?? "portabase-agent-fork:w22a-lab";
@@ -353,6 +355,103 @@ describe.skipIf(!LAB)("W23 wizard lab (Flow D through the UI): a test mirror is 
         expect((await mirrorStatus(m1.mirrorId)).status).toBe("ready");
         expect(ctrs(m1.revisionId).length).toBeGreaterThan(0);
         RUN.push("L-A3 PASS delete while locked; the L-A1 mirror untouched");
+    }, 600_000);
+
+    // ---- Part B: Stop / Start (agent task `mirror_stop`) ----------------------------------------------------------------------------------------------------------------------------
+    const PART_B = process.env.W23_PART_B !== "0";
+    const ctrStates = (project: string) => inbox(["docker", "ps", "-a", "--filter", `label=com.docker.compose.project=${project}`, "--format", "{{.Names}}={{.State}}"]).split("\n").filter(Boolean);
+    const wget = (port: number) => spawnSync("docker", ["exec", BOX, "sh", "-c", `wget -qO- -T 6 http://127.0.0.1:${port} 2>&1`], {encoding: "utf8"});
+    async function driveStatus(mirrorId: string, want: string[], ms = 240_000) {
+        const end = Date.now() + ms;
+        for (;;) {
+            await tickAllMirrors(mdeps());
+            const m = await mirrorStatus(mirrorId);
+            if (want.includes(m.status)) return m;
+            if (Date.now() > end) throw new Error(`status timeout: status=${m.status} want=${want} events=${JSON.stringify(await q("select kind, from_state, to_state, code from fork_mirror_event where mirror_id=$1 order by at desc limit 4", [mirrorId]))}`);
+            await sleep(1000);
+        }
+    }
+    let mb: {mirrorId: string; revisionId: string; hostPort: number; name: string; project: string; readiedAt?: string; probeTask?: string};
+
+    it.skipIf(!PART_B)("L-B1 Stop: every container of the mirror exits (data kept), the loopback port closes, access is refused", async () => {
+        const name = `lb1-${NONCE.slice(0, 6)}`;
+        const r = await create(world, name);
+        const row = await drive(r.revisionId, {ms: 240_000});
+        expect(row.state, `reason=${row.reason} step=${row.failed_step}`).toBe("ready");
+        mb = {...r, name, project: await projectOf(r.revisionId), readiedAt: new Date(row.readied_at).toISOString(), probeTask: row.probe_task_id};
+        expect(ctrStates(mb.project).some((x) => x.endsWith("=running"))).toBe(true);
+        const up = wget(mb.hostPort);
+        expect(up.status, `${up.stdout}${up.stderr}`).toBe(0); // reachable while running
+        expect(await stopMirror(mdeps(), {mirrorId: mb.mirrorId})).toEqual({ok: true});
+        expect((await driveStatus(mb.mirrorId, ["stopped", "failed"])).status).toBe("stopped");
+        const states = ctrStates(mb.project);
+        expect(states.length).toBeGreaterThan(0);
+        expect(states.every((x) => x.endsWith("=exited")), JSON.stringify(states)).toBe(true);
+        expect(wget(mb.hostPort).status).not.toBe(0); // nothing answers on the loopback port any more
+        expect(await getMirrorAccess(mdeps(), {mirrorId: mb.mirrorId})).toMatchObject({ok: false, code: "mirror_not_ready"});
+        expect(inbox(["sh", "-c", `test -d ${wsOf(mb.project)} && echo present`])).toBe("present"); // data + workspace stay
+        keep("lb1-stop.txt", `stopped ${name}: ${states.join(" ")}`);
+        RUN.push(`L-B1 PASS stop: ${states.join(", ")}; port ${mb.hostPort} closed; access refused`);
+    }, 600_000);
+
+    it.skipIf(!PART_B)("L-B2 Start: own isolation probe → up → check ⇒ ready; the demo page answers with its data; the creation's evidence (probe task, readied_at) and the start-tested fact are unchanged", async () => {
+        expect(await startMirror(mdeps(), {mirrorId: mb.mirrorId})).toEqual({ok: true});
+        expect((await driveStatus(mb.mirrorId, ["ready", "stopped", "failed"])).status).toBe("ready");
+        const o = wget(mb.hostPort);
+        expect(o.status, `${o.stdout}${o.stderr}`).toBe(0);
+        expect(o.stdout).toContain("greeting=");
+        expect(o.stdout).toContain("rows=500"); // the restored data survived stop + start
+        const rev = await revRow(mb.revisionId);
+        expect(new Date(rev.readied_at).toISOString()).toBe(mb.readiedAt);
+        expect(rev.probe_task_id).toBe(mb.probeTask);
+        expect(rev.state).toBe("ready");
+        const kinds = (await q("select step from fork_mirror_task where revision_id=$1 and created_at >= (select max(at) from fork_mirror_event where mirror_id=$2 and to_state='starting') order by created_at", [mb.revisionId, mb.mirrorId])).map((x) => x.step);
+        expect(kinds).toEqual(["isolation", "up", "check"]);
+        keep("lb2-start.txt", `started ${mb.name}: steps ${kinds.join(" → ")}; page: ${o.stdout.replace(/\s+/g, " ").slice(0, 200)}`);
+        RUN.push(`L-B2 PASS start: ${kinds.join(" → ")}; page answers (${o.stdout.replace(/\s+/g, " ").slice(0, 80)}); readied_at + probe task unchanged`);
+    }, 600_000);
+
+    it.skipIf(!PART_B)("L-B3 Start re-gates isolation: firewall off ⇒ refused at the precheck; firewall off right after the request ⇒ the start's own probe fails, stopped, nothing was ever started; firewall on ⇒ start works", async () => {
+        expect(await stopMirror(mdeps(), {mirrorId: mb.mirrorId})).toEqual({ok: true});
+        await driveStatus(mb.mirrorId, ["stopped"]);
+        lab(["fw-off"]);
+        try {
+            const p = await probe(); expect(p.status).toBe("succeeded");
+            expect((await iso()).state).toBe("not_isolated");
+            expect(await startMirror(mdeps(), {mirrorId: mb.mirrorId})).toMatchObject({ok: false, code: "runner_not_isolated"});
+        } finally { lab(["fw-on"]); }
+        expect((await probe()).status).toBe("succeeded");
+        expect(await iso()).toMatchObject({state: "isolated"});
+        // precheck passes (fresh isolated probe) ... then the firewall drops BEFORE the start's own probe runs
+        const asked = await startMirror(mdeps(), {mirrorId: mb.mirrorId});
+        expect(asked).toEqual({ok: true});
+        lab(["fw-off"]);
+        let m: Record<string, any>;
+        try { m = await driveStatus(mb.mirrorId, ["stopped", "failed", "ready"]); } finally { lab(["fw-on"]); }
+        expect(m.status).toBe("stopped");
+        const ev = (await q("select to_state, code from fork_mirror_event where mirror_id=$1 and details->>'scope'='mirror' and kind='state_changed' order by at desc, id limit 1", [mb.mirrorId]))[0]!;
+        expect(ev).toMatchObject({to_state: "stopped", code: "runner_not_isolated"});
+        const states = ctrStates(mb.project);
+        expect(states.every((x) => x.endsWith("=exited")), `containers must never have been started: ${JSON.stringify(states)}`).toBe(true);
+        const steps = (await q("select step from fork_mirror_task where revision_id=$1 and created_at >= (select max(at) from fork_mirror_event where mirror_id=$2 and to_state='starting') order by created_at", [mb.revisionId, mb.mirrorId])).map((x) => x.step);
+        expect(steps).toEqual(["isolation"]); // no `up` task was ever enqueued
+        // firewall back on + fresh probe ⇒ start works
+        expect((await probe()).status).toBe("succeeded");
+        expect(await startMirror(mdeps(), {mirrorId: mb.mirrorId})).toEqual({ok: true});
+        expect((await driveStatus(mb.mirrorId, ["ready", "stopped", "failed"])).status).toBe("ready");
+        RUN.push("L-B3 PASS start refused with the firewall off; firewall dropped after the request ⇒ stopped runner_not_isolated, only the isolation task ran, containers never started; firewall on ⇒ ready");
+    }, 900_000);
+
+    it.skipIf(!PART_B)("L-B4 Delete of a stopped mirror ⇒ verified wipe (containers, workspace) ⇒ deleted", async () => {
+        expect(await stopMirror(mdeps(), {mirrorId: mb.mirrorId})).toEqual({ok: true});
+        await driveStatus(mb.mirrorId, ["stopped"]);
+        expect(await deleteMirror(mdeps(), {mirrorId: mb.mirrorId, confirmName: mb.name})).toEqual({ok: true});
+        const m = await driveDelete(mb.mirrorId);
+        expect(m.deleted_at).not.toBeNull();
+        expect(ctrs(mb.revisionId)).toEqual([]);
+        expect(inbox(["sh", "-c", `test ! -e ${wsOf(mb.project)} && echo gone`])).toBe("gone");
+        expect((await revRow(mb.revisionId)).wipe_state).toBe("verified");
+        RUN.push("L-B4 PASS delete of a stopped mirror: wipe verified, containers + workspace gone");
     }, 600_000);
 
     /** HOLD (browser pass): keeps everything up, ticks the orchestrator every 2 s, executes lab commands until $W23_SCRATCH/w23-lab.stop exists */

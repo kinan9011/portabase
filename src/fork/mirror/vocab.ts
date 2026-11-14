@@ -3,7 +3,7 @@
  * `fork_mirror*` tables, the strict zod schemas and the state machine all read from here. Nothing here may carry a value, a secret,
  * a URL or a path (ids, names, codes, numbers only).
  */
-export const MIRROR_STATUSES = ["creating", "ready", "failed", "cancelled", "refreshing", "deleting", "deleted"] as const; // last three reserved (W24/W25)
+export const MIRROR_STATUSES = ["creating", "ready", "failed", "cancelled", "refreshing", "deleting", "deleted", "stopping", "stopped", "starting"] as const; // `refreshing` reserved (W24/W25); stopping|stopped|starting = W23 Part B
 export const REVISION_STATES = ["requested", "planning", "validating", "staging", "restoring_files", "transforming", "restoring_db", "starting",
     "healthchecking", "ready", "blocked", "failed", "cancelled", "rolled_back"] as const; // rolled_back reserved (W24/W25), never set in W22a
 export const ACTIVE_REVISION_STATES = ["requested", "planning", "validating", "staging", "restoring_files", "transforming", "restoring_db", "starting",
@@ -14,10 +14,10 @@ export const WIPE_REVISION_STATES = ["blocked", "failed", "cancelled"] as const;
 
 export const MIRROR_STEPS = ["verify_manifest", "probe", "stage", "apply", "render", "compile", "finalize", "restore_db", "up", "check", "isolation",
     "activate"] as const;
-export const MIRROR_JOURNAL_STEPS = ["probe", "stage", "apply", "render", "finalize", "restore_db", "up", "check", "isolation", "wipe", "wipe_check"] as const;
+export const MIRROR_JOURNAL_STEPS = ["probe", "stage", "apply", "render", "finalize", "restore_db", "up", "check", "isolation", "wipe", "wipe_check", "stop"] as const;
 export const STEP_TASK_TYPE = {
     probe: "mirror_probe", stage: "mirror_stage", apply: "mirror_apply", render: "mirror_render", finalize: "mirror_finalize", restore_db: "mirror_db",
-    up: "mirror_up", check: "mirror_check", isolation: "runner_probe", wipe: "mirror_wipe", wipe_check: "mirror_probe",
+    up: "mirror_up", check: "mirror_check", isolation: "runner_probe", wipe: "mirror_wipe", wipe_check: "mirror_probe", stop: "mirror_stop",
 } as const;
 
 export type MirrorStatus = (typeof MIRROR_STATUSES)[number];
@@ -43,7 +43,7 @@ export const MIRROR_REASONS = ["plan_blocked", "compile_refused", "kept_secret_u
     "service_unhealthy", "smoke_failed", "expected_data_failed", "runner_not_isolated", "runner_ineligible", "probe_stale", "rp_not_verified", "reauth_failed",
     "run_timeout", "cancelled", "mirrors_disabled", "render_missing", "policy_refused", "manifest_unavailable", "agent_offline", "task_cancelled",
     "execution_error", "internal_error", "payload_too_large", "port_unavailable", "stage_mismatch", "plan_tampered", "hash_mismatch", "wipe_timeout",
-    "wipe_incomplete", "db_restore_failed"] as const;
+    "wipe_incomplete", "db_restore_failed", "stop_incomplete"] as const;
 
 export const LIMIT_DEFAULTS = {mem_bytes: 1073741824, pids: 512, nano_cpus: 1_000_000_000} as const; // OD-W22a-4
 export const LIMIT_CAPS = {mem_bytes: 8589934592, pids: 4096, nano_cpus: 4_000_000_000} as const;
@@ -53,6 +53,7 @@ export const DEFAULT_MIRROR_ROOT = "/srv/portabase-mirrors"; // OD-W22a-6 (a tes
 export const RUNNER_PRECHECK_MAX_AGE_MS = 24 * 3600e3; // create refuses a runner not isolated within 24 h
 export const WIPE_BUDGET_MS = 2 * 3600e3; // a wipe phase older than this is `wipe_timeout`
 export const MAX_EXPIRED_REENQUEUES = 3;
+export const LIFECYCLE_BUDGET_MS = 30 * 60_000; // W23: a stop / start operation older than this is `run_timeout`
 
 export const keepConfirmPhrase = (svc: string, key: string): string => `KEEP ${svc}.${key}`;
 export const PRIVACY_ACK = "I understand this mirror holds a copy of real production data"; // W22b shows the ADR-009 §4 banner; W22a checks the boolean

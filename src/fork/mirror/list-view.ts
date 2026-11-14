@@ -1,4 +1,4 @@
-import {and, asc, desc, eq, inArray, isNull, sql} from "drizzle-orm";
+import {and, asc, desc, eq, inArray, isNull, max, sql} from "drizzle-orm";
 import {z} from "zod";
 import type {ForkDb} from "@/fork/db/handle";
 import {forkMirror, forkMirrorEvent, forkMirrorRevision, forkMirrorTask} from "@/fork/db/schema/mirror";
@@ -27,6 +27,7 @@ export const MirrorListRow = z.strictObject({
 });
 export type MirrorListRow = z.infer<typeof MirrorListRow>;
 
+const newest = (a: Date | null, b: Date | null): Date | null => (a && b ? (a.getTime() >= b.getTime() ? a : b) : a ?? b);
 const svcOf = (v: unknown): {state: string; health: string | null}[] =>
     (Array.isArray(v) ? v : []).map((s) => ({state: String((s as {state?: unknown}).state ?? ""), health: typeof (s as {health?: unknown}).health === "string" ? String((s as {health: string}).health) : null}));
 
@@ -43,6 +44,10 @@ export async function loadMirrorList(db: ForkDb, organizationId: string): Promis
     const rpIds = [...new Set(revs.map((r) => r.rpId).filter((x): x is string => x !== null))];
     const rps = rpIds.length ? await db.select({id: forkRecoveryPoint.id, createdAt: forkRecoveryPoint.createdAt}).from(forkRecoveryPoint).where(inArray(forkRecoveryPoint.id, rpIds)) : [];
     const rpDate = new Map(rps.map((r) => [r.id, r.createdAt.toISOString()]));
+    // a successful Start re-ran the health + app checks: the newest mirror-scoped "back to ready" event is the newer check time (the creation's `readied_at` stays the start-tested fact)
+    const backReady = await db.select({mirrorId: forkMirrorEvent.mirrorId, at: max(forkMirrorEvent.at)}).from(forkMirrorEvent)
+        .where(and(inArray(forkMirrorEvent.mirrorId, mirrors.map((m) => m.id)), eq(forkMirrorEvent.kind, "state_changed"), eq(forkMirrorEvent.toState, "ready"), sql`details->>'scope' = 'mirror'`)).groupBy(forkMirrorEvent.mirrorId);
+    const readyAgain = new Map(backReady.map((r) => [r.mirrorId, r.at]));
     return mirrors.map((m) => {
         const mine = revs.filter((r) => r.mirrorId === m.id); // newest first
         const latest = mine[0] ?? null;
@@ -52,9 +57,9 @@ export async function loadMirrorList(db: ForkDb, organizationId: string): Promis
         return MirrorListRow.parse({
             id: m.id, name: m.name, status: m.status, stack: {id: m.stackId, name: m.stackName}, runnerName: m.runnerName,
             activeSeq: active?.seq ?? null, rpSequence: shown?.rpSequence ?? null, rpCreatedAt: shown?.rpId ? rpDate.get(shown.rpId) ?? null : null,
-            health: mirrorHealth(m.status, active ? svcOf(active.services) : []), checkedAt: active?.readiedAt?.toISOString() ?? null,
+            health: mirrorHealth(m.status, active ? svcOf(active.services) : []), checkedAt: newest(active?.readiedAt ?? null, readyAgain.get(m.id) ?? null)?.toISOString() ?? null,
             hostPort: shown?.hostPort ?? null, latest: latest ? {seq: latest.seq, state: latest.state, reason: codeOrNull(latest.reason)} : null,
-            alert: failedNewer, updatedAt: m.updatedAt.toISOString(),
+            alert: failedNewer || (m.status === "failed" && active !== null), updatedAt: m.updatedAt.toISOString(),
         });
     });
 }
@@ -75,6 +80,8 @@ export const MirrorDetailExtras = z.strictObject({
     }),
     runnerIsolation: z.strictObject({state: z.enum(["isolated", "not_isolated", "unknown"]), probedAt: z.string().nullable(), reason: z.string().nullable()}),
     facet: z.strictObject({readiedAt: z.string(), rpSequence: z.number().int()}).nullable(),
+    /** outcome of the newest stop / start attempt (a mirror-scoped event into `stopped` or `failed`): status + closed code + time; shown only while the mirror is still in that status */
+    lastOp: z.strictObject({status: z.enum(["stopped", "failed"]), code: z.string().nullable(), at: z.string()}).nullable(),
 });
 export type MirrorDetailExtras = z.infer<typeof MirrorDetailExtras>;
 
@@ -95,6 +102,8 @@ export async function loadMirrorDetailExtras(db: ForkDb, mirrorId: string, o: {n
     const active = revs.find((r) => r.id === m.activeRevisionId) ?? revs[0];
     const iso = m.runnerAgentId ? await runnerIsolation(db, m.runnerAgentId, {now: o.now, maxAgeMs: RUNNER_PRECHECK_MAX_AGE_MS, serverUrl: o.serverUrl}) : null;
     const fact = await startTestedFact(db, m.stackId);
+    const [op] = await db.select({toState: forkMirrorEvent.toState, code: forkMirrorEvent.code, at: forkMirrorEvent.at}).from(forkMirrorEvent)
+        .where(and(eq(forkMirrorEvent.mirrorId, mirrorId), eq(forkMirrorEvent.kind, "state_changed"), inArray(forkMirrorEvent.toState, ["stopped", "failed"]), sql`details->>'scope' = 'mirror'`)).orderBy(desc(forkMirrorEvent.at)).limit(1);
     return MirrorDetailExtras.parse({
         stack: {id: m.stackId, name: m.stackName}, rpDates,
         config: {
@@ -107,6 +116,7 @@ export async function loadMirrorDetailExtras(db: ForkDb, mirrorId: string, o: {n
             : iso.state === "not_isolated" ? {state: "not_isolated", probedAt: iso.probedAt?.toISOString() ?? null, reason: null}
             : {state: "unknown", probedAt: null, reason: codeOrNull(iso.reason)},
         facet: fact ? {readiedAt: fact.readiedAt.toISOString(), rpSequence: fact.rpSequence} : null,
+        lastOp: op && (op.toState === "stopped" || op.toState === "failed") ? {status: op.toState, code: codeOrNull(op.code), at: op.at.toISOString()} : null,
     });
 }
 

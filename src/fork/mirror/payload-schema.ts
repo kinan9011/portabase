@@ -76,6 +76,8 @@ export const MirrorCheckPayload = withWorkspace(MirrorHeader.extend({
     wait_s: z.number().int().min(10).max(300),
 }));
 export const MirrorWipePayload = withWorkspace(MirrorHeader.extend({}));
+/** W23: stop the running containers of this revision (no body fields; the revision, project and workspace are in the header, like the wipe). */
+export const MirrorStopPayload = withWorkspace(MirrorHeader.extend({}));
 
 // ---- results (strict, size-capped by the channel) ----------------------------------------------------------------------------------------
 export const MirrorFinalizeResult = z.strictObject({v: z.literal(1), view_sha256: hex64, services: z.number().int().min(0).max(500)});
@@ -93,3 +95,5 @@ export const MirrorCheckResult = z.strictObject({
 export const MirrorWipeResult = z.strictObject({
     v: z.literal(1), containers: z.number().int().min(0), networks: z.number().int().min(0), volumes: z.number().int().min(0), workspace_removed: z.boolean(), remaining: z.literal(0),
 });
+/** W23: what the agent reports after a verified stop (`remaining` is always 0: a leftover is the agent code `stop_incomplete`, never a result). */
+export const MirrorStopResult = z.strictObject({v: z.literal(1), stopped: z.number().int().min(0), services: z.array(z.strictObject({service, state: z.string().max(32)})).max(500), remaining: z.literal(0)});

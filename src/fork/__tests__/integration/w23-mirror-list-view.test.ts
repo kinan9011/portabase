@@ -61,6 +61,25 @@ describe("loadMirrorList", () => {
         expect(await rowOf(m.mirrorId)).toMatchObject({health: "pending", status: "deleting"});
     });
 
+    it("W23 Part B: stopped / stopping / starting / failed-with-revision statuses, a successful Start renews the check time, lastOp reports the outcome", async () => {
+        const m = await ready();
+        const at = (ms: number) => new Date(Date.now() + ms);
+        for (const [s, h] of [["stopping", "pending"], ["stopped", "not_running"], ["starting", "pending"]] as const) {
+            await w.q("update fork_mirror set status=$2 where id=$1", [m.mirrorId, s]);
+            expect(await rowOf(m.mirrorId)).toMatchObject({status: s, health: h});
+        }
+        await w.q("update fork_mirror set status='failed' where id=$1", [m.mirrorId]);
+        expect(await rowOf(m.mirrorId)).toMatchObject({status: "failed", health: "failed", alert: true}); // failed but it still has its revision: "Needs attention"
+        const before = (await rowOf(m.mirrorId)).checkedAt!;
+        await w.q("insert into fork_mirror_event (mirror_id, kind, from_state, to_state, code, actor_kind, at, details) values ($1,'state_changed','starting','ready',null,'system',$2,'{\"scope\":\"mirror\"}')", [m.mirrorId, at(3600e3)]);
+        await w.q("insert into fork_mirror_event (mirror_id, kind, from_state, to_state, code, actor_kind, at, details) values ($1,'state_changed','stopping','failed','stop_incomplete','system',$2,'{\"scope\":\"mirror\"}')", [m.mirrorId, at(7200e3)]);
+        await w.q("update fork_mirror set status='ready' where id=$1", [m.mirrorId]);
+        expect((await rowOf(m.mirrorId)).checkedAt! > before).toBe(true); // the Start's check is the newer "at last check"
+        const x = await extras(m.mirrorId);
+        expect(x.lastOp).toMatchObject({status: "failed", code: "stop_incomplete"});
+        expect(MirrorDetailExtras.safeParse(x).success).toBe(true);
+    });
+
     it("a newer failed revision next to an older active one raises the alert; latest differs from active", async () => {
         const m = await ready();
         await w.pool.query(`create temp table w23_rev as select * from fork_mirror_revision where id=$1::uuid`, [m.revisionId]);

@@ -10,6 +10,7 @@ import {HistoryTab} from "@/fork/ui/mirrors/detail/history";
 import {LogsTab} from "@/fork/ui/mirrors/detail/logs.client";
 import {BANNER, MIRRORS, reasonText} from "@/fork/ui/mirrors/labels";
 import {DeleteMirrorButton} from "@/fork/ui/mirrors/lifecycle/delete-button.client";
+import {StopStartButtons} from "@/fork/ui/mirrors/lifecycle/stop-start.client";
 import {failedNewerRevision, MIRROR_TABS, type MirrorTab, mirrorActions, startTestedLabel} from "@/fork/ui/mirrors/model";
 import {MirrorProgress} from "@/fork/ui/mirrors/progress/progress.client";
 import {FOCUS_RING_AA} from "@/fork/ui/a11y/focus";
@@ -23,7 +24,7 @@ export type DetailProps = {
 };
 
 /** 4-tab mirror detail (W23): persistent ADR-009 banner, URL-synced Radix tabs (`?tab=`), Overview = the W22b progress view with facet, alerts and lifecycle buttons. */
-export function MirrorDetail({initial, extras, log, canManage, locked, flagOn, stopStart = false, now, staleAfterDays, tab: initialTab}: DetailProps) {
+export function MirrorDetail({initial, extras, log, canManage, locked, flagOn, stopStart = true, now, staleAfterDays, tab: initialTab}: DetailProps) {
     const [tab, setTab] = React.useState<MirrorTab>(initialTab);
     const onTab = (t: string) => {
         const next = (MIRROR_TABS as readonly string[]).includes(t) ? (t as MirrorTab) : "overview";
@@ -51,8 +52,10 @@ export function MirrorDetail({initial, extras, log, canManage, locked, flagOn, s
                         <p className={danger.body}>{D.failedNewer(failed.seq, failed.activeSeq, reasonText(failed.reason))}</p>
                     </div>
                 )}
-                {!("hidden" in actions.delete) && (
+                {lastOpLine(view.mirror.status, extras.lastOp) && <p role="note" data-testid="last-op" className="text-sm">{lastOpLine(view.mirror.status, extras.lastOp)}</p>}
+                {!("hidden" in actions.delete && "hidden" in actions.stop && "hidden" in actions.start) && (
                     <div className="flex flex-wrap items-start gap-2" data-testid="lifecycle-actions">
+                        <StopStartButtons mirrorId={view.mirror.id} name={view.mirror.name} stop={actions.stop} start={actions.start} onDone={() => void ctx.poll()}/>
                         <DeleteMirrorButton mirrorId={view.mirror.id} name={view.mirror.name} runner={view.mirror.runnerName} action={actions.delete} onDone={() => void ctx.poll()}/>
                     </div>
                 )}
@@ -77,5 +80,10 @@ export function MirrorDetail({initial, extras, log, canManage, locked, flagOn, s
             </Tabs>
         </div>
     );
+}
+/** The outcome sentence of the last stop / start attempt, only while the mirror is still in the state that attempt ended in. */
+function lastOpLine(status: string, op: MirrorDetailExtras["lastOp"]): string | null {
+    if (!op || op.status !== status || !op.code) return null;
+    return status === "stopped" ? MIRRORS.lifecycle.startFailedLine(reasonText(op.code)) : status === "failed" ? MIRRORS.lifecycle.lastStopFailed(reasonText(op.code)) : null;
 }
 const TAB_LABELS: readonly [MirrorTab, string][] = [["overview", D.tabs.overview], ["configuration", D.tabs.configuration], ["history", D.tabs.history], ["logs", D.tabs.logs]];

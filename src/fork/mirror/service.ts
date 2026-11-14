@@ -18,7 +18,7 @@ import {loadPlanInput} from "@/fork/restore/load";
 import {planRestore, PlannerRefusal} from "@/fork/restore/plan";
 import {EMPTY_MAPPINGS} from "@/fork/restore/schema";
 import {PLAN_VERSION} from "@/fork/restore/vocab";
-import {runnerIsolation, assertRunnerTarget} from "@/fork/runner/service";
+import {adminTargetCount, runnerIsolation, assertRunnerTarget} from "@/fork/runner/service";
 import {initialSteps} from "@/fork/runs/engine";
 import {allocatePort, deriveMirrorSteps} from "./derive";
 import {maxRunMsOf, enabledOf, nowOf, type MirrorDeps} from "./deps";
@@ -26,6 +26,7 @@ import {addEvent} from "./events";
 import {transition} from "./machine";
 import {MirrorPolicyInput, resolvePolicy} from "./policy";
 import {toMirrorView, type MirrorView} from "./view";
+import {nextMirrorStatus} from "./lifecycle";
 import {isWipeEligible} from "./wipe";
 import {ACTIVE_REVISION_STATES, keepConfirmPhrase, PORT_RANGE, REFUSAL_MESSAGES, RUNNER_PRECHECK_MAX_AGE_MS, type RevisionState} from "./vocab";
 
@@ -297,6 +298,85 @@ export async function deleteMirror(d: MirrorDeps, raw: unknown): Promise<{ok: tr
         if (rows.length !== 1) return false;
         await addEvent(tx, {mirrorId: m.id, revisionId: null, kind: "state_changed", at: now, fromState: m.status, toState: "deleting", actor: {userId: p.userId}, details: {scope: "mirror"}});
         await recordAudit(tx, {organizationId: orgId, actorUserId: p.userId, action: "fork.mirror.delete", resourceType: "mirror", resourceId: m.id, result: "success", now, details: {phase: "requested", revisionIds: revs.map((r) => r.id)}});
+        return true;
+    });
+    if (!done) return deny("mirror_busy");
+    return {ok: true};
+}
+
+// ---- stop / start (W23 Part B, DD-9) ------------------------------------------------------------------------------------------------------
+/** Statuses Stop can start from: a running mirror, or one whose last stop failed while it still has its revision (retry the stop). */
+const STOPPABLE = ["ready", "failed"] as const;
+
+/**
+ * Stop: allowed while configuration is locked and with the flag off (OD-W23-2: it reduces exposure of a production-data copy, like Delete). Marks the mirror `stopping`;
+ * the tick enqueues `mirror_stop` (no principal, like the wipe) and moves it to `stopped` only after the runner confirms nothing of the revision is running.
+ */
+export async function stopMirror(d: MirrorDeps, raw: unknown): Promise<{ok: true} | MirrorRefusal> {
+    const input = MirrorIdRequest.safeParse(raw);
+    const p = d.principal;
+    if (!p) return refuse("forbidden");
+    const audit = auditor(d, "fork.mirror.stop", "mirror", input.success ? input.data.mirrorId : null);
+    if (!input.success) { await audit("denied", {reason: "invalid_input"}); return refuse("invalid_input"); }
+    const g = await gate(d, "mirrors.manage", "mirror", input.data.mirrorId, audit);
+    if (!g.ok) return g;
+    const orgId = g.organizationId;
+    const deny = async (code: MirrorRefusalCode, extra: Partial<MirrorRefusal> = {}): Promise<MirrorRefusal> => { await audit("denied", {reason: code}, orgId); return refuse(code, extra); };
+    const now = nowOf(d);
+    const rl = (d.rate ?? checkRate)(`mirror-op:${p.userId}`, MIRROR_OP_RATE.limit, MIRROR_OP_RATE.windowMs, now.getTime());
+    if (!rl.ok) return deny("rate_limited", {retryAfterSeconds: rl.retryAfterSeconds});
+    const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, input.data.mirrorId));
+    if (!m || m.deletedAt) return refuse("not_found");
+    if (m.status === "stopping" || m.status === "stopped") return {ok: true}; // idempotent
+    if (m.status === "creating" || m.status === "starting" || m.status === "deleting") return deny("mirror_busy");
+    if (!(STOPPABLE as readonly string[]).includes(m.status) || !m.activeRevisionId) return deny("mirror_state_invalid");
+    const to = nextMirrorStatus(m.status as "ready" | "failed", "stop_requested");
+    const done = await withForkLock(d.db, `mirror:${m.id}`, async (tx) => {
+        const rows = await tx.update(forkMirror).set({status: to, updatedAt: now}).where(and(eq(forkMirror.id, m.id), eq(forkMirror.status, m.status))).returning({id: forkMirror.id});
+        if (rows.length !== 1) return false;
+        await addEvent(tx, {mirrorId: m.id, revisionId: null, kind: "state_changed", at: now, fromState: m.status, toState: to, actor: {userId: p.userId}, details: {scope: "mirror"}});
+        await recordAudit(tx, {organizationId: orgId, actorUserId: p.userId, action: "fork.mirror.stop", resourceType: "mirror", resourceId: m.id, result: "success", now, details: {phase: "requested", revisionId: m.activeRevisionId}});
+        return true;
+    });
+    if (!done) return deny("mirror_busy");
+    return {ok: true};
+}
+
+/**
+ * Start (from `stopped`): refused while configuration is locked or the flag is off, and unless the runner is still an eligible, freshly isolated runner. Marks the mirror `starting`;
+ * the tick re-gates (own isolation probe BEFORE anything runs, `mirror_up`, `mirror_check` health + app smoke) before the mirror is `ready` again.
+ */
+export async function startMirror(d: MirrorDeps, raw: unknown): Promise<{ok: true} | MirrorRefusal> {
+    const input = MirrorIdRequest.safeParse(raw);
+    const p = d.principal;
+    if (!p) return refuse("forbidden");
+    const audit = auditor(d, "fork.mirror.start", "mirror", input.success ? input.data.mirrorId : null);
+    if (!input.success) { await audit("denied", {reason: "invalid_input"}); return refuse("invalid_input"); }
+    if (!(await allowed(d))) { await audit("denied", {reason: "locked"}); return refuse("locked"); }
+    const g = await gate(d, "mirrors.manage", "mirror", input.data.mirrorId, audit);
+    if (!g.ok) return g;
+    const orgId = g.organizationId;
+    const deny = async (code: MirrorRefusalCode, extra: Partial<MirrorRefusal> = {}): Promise<MirrorRefusal> => { await audit("denied", {reason: code}, orgId); return refuse(code, extra); };
+    if (!enabledOf(d)) return deny("mirrors_disabled");
+    const now = nowOf(d);
+    const rl = (d.rate ?? checkRate)(`mirror-op:${p.userId}`, MIRROR_OP_RATE.limit, MIRROR_OP_RATE.windowMs, now.getTime());
+    if (!rl.ok) return deny("rate_limited", {retryAfterSeconds: rl.retryAfterSeconds});
+    const [m] = await d.db.select().from(forkMirror).where(eq(forkMirror.id, input.data.mirrorId));
+    if (!m || m.deletedAt) return refuse("not_found");
+    if (m.status === "starting") return {ok: true}; // idempotent
+    if (m.status === "creating" || m.status === "stopping" || m.status === "deleting") return deny("mirror_busy");
+    if (m.status !== "stopped" || !m.activeRevisionId) return deny("mirror_state_invalid");
+    if (!m.runnerAgentId) return deny("runner_ineligible");
+    const el = await assertRunnerTarget(d.db, m.runnerAgentId);
+    if (!el.ok) return deny("runner_ineligible");
+    const iso = await runnerIsolation(d.db, m.runnerAgentId, {now, maxAgeMs: RUNNER_PRECHECK_MAX_AGE_MS, serverUrl: d.serverUrl()});
+    if (iso.state !== "isolated" || (await adminTargetCount(d.db, m.runnerAgentId)) < 1) return deny("runner_not_isolated");
+    const to = nextMirrorStatus("stopped", "start_requested");
+    const done = await withForkLock(d.db, `mirror:${m.id}`, async (tx) => {
+        const rows = await tx.update(forkMirror).set({status: to, updatedAt: now}).where(and(eq(forkMirror.id, m.id), eq(forkMirror.status, "stopped"))).returning({id: forkMirror.id});
+        if (rows.length !== 1) return false;
+        await addEvent(tx, {mirrorId: m.id, revisionId: null, kind: "state_changed", at: now, fromState: "stopped", toState: to, actor: {userId: p.userId}, details: {scope: "mirror"}});
+        await recordAudit(tx, {organizationId: orgId, actorUserId: p.userId, action: "fork.mirror.start", resourceType: "mirror", resourceId: m.id, result: "success", now, details: {phase: "requested", revisionId: m.activeRevisionId}});
         return true;
     });
     if (!done) return deny("mirror_busy");
