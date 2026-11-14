@@ -99,10 +99,10 @@ describe("W22b mirror pages (real build)", () => {
         for (const sid of [fw.stack, randomUUID()]) expect(visible(mainOf(await (await get(base, `/dashboard/mirrors/new?stack=${sid}`, orgAdminCk)).text())), sid).toContain(MIRRORS.gone);
         // a point that is not verified / does not exist is dropped
         expect(visible(mainOf(await (await get(base, `/dashboard/mirrors/new?stack=${w.stack}&point=999&step=runner`, orgAdminCk)).text()))).toContain(MIRRORS.gone);
-        // the breadcrumb target /dashboard/mirrors leads to the stack list for a signed-in user (never a 404); anonymous / flags off stay 404
+        // W23: the breadcrumb target /dashboard/mirrors is now the real list (200, heading "Test mirrors"); anonymous / flags off stay 404
         const idx = await get(base, "/dashboard/mirrors", admin);
-        const idxHtml = await idx.text();
-        expect(idx.status === 307 ? new URL(idx.headers.get("location") ?? "", base).pathname : /http-equiv="refresh"[^>]*url=\/dashboard\/stacks"/.test(idxHtml) ? "/dashboard/stacks" : `${idx.status}:${idxHtml.slice(0, 80)}`).toBe("/dashboard/stacks");
+        expect(idx.status).toBe(200);
+        expect(visible(mainOf(await idx.text()))).toContain(MIRRORS.list.title);
         // unknown mirror ids and a malformed id are the same not-found page (a page-level notFound() streams as 200 behind loading.tsx, so the marker is in the body)
         const notFound = async (id: string) => { const h = await (await get(base, `/dashboard/mirrors/${id}`, admin)).text(); const body = mainOf(h); return h.includes("NEXT_HTTP_ERROR_FALLBACK") && !body.includes("mirror-headline") && !body.includes(`${MIRRORS.progress.title} ·`); };
         for (const id of [randomUUID(), "not-a-uuid"]) expect(await notFound(id), id).toBe(true);

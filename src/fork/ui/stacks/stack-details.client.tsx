@@ -25,6 +25,8 @@ import {PrimaryStateBadge, ProtectionBadge, RpStatusBadge, RuntimeBadge, StaleBa
 import {SyncPoller} from "@/fork/ui/stacks/sync-poller";
 import {TONE_MAP} from "@/fork/ui/tone";
 import {ToneBadge} from "@/fork/ui/tone-badge";
+import {MIRRORS} from "@/fork/ui/mirrors/labels";
+import {startTestedLabel} from "@/fork/ui/mirrors/model";
 import {FOCUS_RING_AA} from "@/fork/ui/a11y/focus";
 import type {MirrorEntry} from "@/fork/ui/mirrors/entry";
 
@@ -69,6 +71,12 @@ function groupWarnings(ws: InventoryView["warnings"]) {
     const m = new Map<string, {code: string; severity: InventoryView["warnings"][number]["severity"]; count: number}>();
     for (const w of ws) { const e = m.get(w.code); if (e) e.count++; else m.set(w.code, {...w, count: 1}); }
     return [...m.values()];
+}
+
+/** W23 (ADR-016): one line under the protection strip, only when a mirror revision reached READY for this stack. Fixed wording, never "verified" or "restore-tested". */
+function StartTestedLine({f}: {f: {readiedAt: string; rpSequence: number; staleAfterDays: number; now: string}}) {
+    const l = startTestedLabel({readiedAt: f.readiedAt, now: new Date(f.now), staleAfterDays: f.staleAfterDays});
+    return l ? <p data-testid="start-tested" className="flex flex-wrap items-center gap-2 text-sm"><ToneBadge tone={l.tone}>{l.text}</ToneBadge><span className="text-muted-foreground">{MIRRORS.facet.fromRp(f.rpSequence)}</span></p> : null;
 }
 
 function Overview({v, p, c, onOpenConfiguration}: {v: InventoryView; p: ProtectionView; c: ConfigurationView; onOpenConfiguration: () => void}) {
@@ -130,7 +138,7 @@ function Overview({v, p, c, onOpenConfiguration}: {v: InventoryView; p: Protecti
     );
 }
 
-export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false, canRestore = false, quiesce = null, testRestore = null, mirror}: {mirror?: MirrorEntry; detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean; canRestore?: boolean; quiesce?: QuiesceViewDto | null; testRestore?: TestRestoreView | null}) {
+export function StackDetailsClient({detail, initialTab, canConfigure, configLocked = false, canRun = false, canRestore = false, quiesce = null, testRestore = null, mirror, startTested = null}: {mirror?: MirrorEntry; startTested?: {readiedAt: string; rpSequence: number; staleAfterDays: number; now: string} | null; detail: StackDetail; initialTab: StackTab; canConfigure: boolean; configLocked?: boolean; canRun?: boolean; canRestore?: boolean; quiesce?: QuiesceViewDto | null; testRestore?: TestRestoreView | null}) {
     const [tab, setTab] = React.useState<StackTab>(initialTab);
     // a real navigation (e.g. "Open in Backups" from Activity) changes the server-parsed tab: follow it; polling refreshes keep the same value and change nothing
     React.useEffect(() => { setTab(initialTab); }, [initialTab]);
@@ -167,6 +175,7 @@ export function StackDetailsClient({detail, initialTab, canConfigure, configLock
                 </div>
                 {protection && <LastGoodBackupLine p={protection}/>}
                 <div className="flex flex-wrap items-start gap-4"><RuntimeBadge state={detail.runtime} describe/>{protection ? <PrimaryStateBadge state={protection.primary} describe/> : <ProtectionBadge state={detail.protection} describe/>}{stale && <StaleBadge/>}</div>
+                {startTested && <StartTestedLine f={startTested}/>}
             </header>
 
             {gone && <StateNotice testId="gone-banner" tone="warning" title={D.goneBanner.title} body={D.goneBanner.body}/>}

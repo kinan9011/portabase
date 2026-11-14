@@ -1,5 +1,5 @@
 import type {MirrorRefusalCode} from "@/fork/mirror/service";
-import type {Gate, MirrorStep, MIRROR_REASONS} from "@/fork/mirror/vocab";
+import type {Gate, MirrorStatus, MirrorStep, MIRROR_REASONS} from "@/fork/mirror/vocab";
 import type {MIRROR_AGENT_CODES} from "@/fork/restore-tasks/codes";
 
 /**
@@ -173,7 +173,95 @@ export const MIRRORS = {
         gone: "This mirror could not be found.",
         unauthorized: {title: "No access", body: "Your role cannot open this mirror."},
     },
+    // ---- W23: list, detail tabs, lifecycle ------------------------------------------------------------------------------------------------
+    list: {
+        title: "Test mirrors",
+        intro: "Isolated copies of your apps, started from a backup on a test-mirror runner.",
+        banner: "Test mirrors contain copies of real production data, including personal data. They live only on their runner. Do not share access.",
+        flagOff: "Test mirrors are not enabled on this installation. Existing mirrors can still be stopped and deleted.",
+        loadError: {title: "Could not load the test mirrors", body: "Something went wrong while reading the data. Reload the page; if it keeps happening ask an administrator."},
+        unauthorized: {title: "No access", body: "Your role cannot see test mirrors."},
+        empty: {title: "No test mirrors yet.", manager: "Open an app and choose Create test mirror to start one.", link: "Open the apps"},
+        counts: {label: "Summary", healthy: "Healthy", stopped: "Stopped", attention: "Needs attention"},
+        region: "Table of test mirrors",
+        cols: {name: "Name", stack: "Source app", runner: "Runner", revision: "Revision", rp: "Backup", status: "Status", access: "Private access", actions: "Actions"},
+        rp: (seq: number, date: string) => `#${seq} · ${date}`,
+        loopback: (runner: string) => `Loopback only · on ${runner}`,
+        connect: "How to connect",
+        open: "Open",
+        reload: "Reload",
+        lastFailed: "Last attempt failed",
+        newMirror: "Test mirrors are created from an app's page.",
+    },
+    detail: {
+        tabs: {label: "Test mirror sections", overview: "Overview", configuration: "Configuration", history: "Refresh History", logs: "Logs"},
+        deleted: "This test mirror was deleted. Its copy on the runner was removed and checked.",
+        back: "All test mirrors",
+        loadError: {title: "Could not load this mirror", body: "Something went wrong while reading the data. Reload the page; if it keeps happening ask an administrator."},
+        failedNewer: (seq: number, activeSeq: number, why: string) => `The newer revision #${seq} failed. ${why} Revision #${activeSeq} is still the active one.`,
+    },
+    health: {
+        text: {healthy: "Healthy", degraded: "Degraded", not_running: "Not running", pending: "Checks pending", failed: "Failed", unknown: "Unknown"} as Record<string, string>,
+        at: (when: string) => `at last check ${when}`,
+        note: "Health is shown as of the last check; it is not re-checked while the mirror runs.",
+    },
+    facet: {
+        fresh: (days: number) => `App start-tested · ${days} d ago`,
+        stale: (days: number) => `App start-tested · Out of date (${days} d ago)`,
+        fromRp: (seq: number) => `From backup #${seq}`,
+        meaning: "The app started from this backup on an isolated runner and passed its health, data and isolation checks. This is not a full restore test.",
+    },
+    config: {
+        access: "Access", accessValue: (port: number, runner: string) => `127.0.0.1:${port} on ${runner}`, accessNone: "No access service is set.",
+        healthPath: "Health check path", healthPathNone: "Only checks that the port answers.",
+        limits: "Resource limits", limitsValue: (mem: string, pids: number, cpus: string) => `${mem} memory · ${pids} processes · ${cpus} CPU`,
+        profile: "Isolation profile", profileValue: "Strict: the mirror has its own private network with no way out, and listens on the runner's loopback only.",
+        evidence: "Isolation evidence", evidenceNote: "The five safety checks of the active revision.", notReached: "not reached",
+        runnerNow: "Runner isolation now",
+        runnerState: {isolated: (when: string) => `Isolated (checked ${when})`, not_isolated: "Not isolated", unknown: "Unknown (no recent check)"},
+        env: "Settings changed from the safe default", envTable: "Table of changed settings", envNone: "No setting was changed from the safe default.",
+        envCounts: (changed: number, kept: number) => `${changed} setting${changed === 1 ? "" : "s"} changed from the safe default; ${kept} production value${kept === 1 ? "" : "s"} kept.`,
+        envKept: "production value kept",
+        footer: "Settings not listed use the safe default (test credentials, side effects switched off).",
+    },
+    history: {
+        title: "Revisions", cols: {rev: "Revision", rp: "Backup", created: "Created", outcome: "Outcome", duration: "Duration", wipe: "Copy on the runner"},
+        active: "Active", empty: "No revisions.",
+        ready: "Ready (isolated, health-checked)", cancelled: "Cancelled", inProgress: "In progress",
+        wipe: {verified: "Deleted and checked", not_needed: "Nothing was copied", failed: "Deleting failed", running: "Deleting…", kept: "Kept (this is the running copy)", none: "Kept"},
+        note: "Each refresh builds a new revision; the active one keeps running until the new one passes its checks.",
+        region: "Mirror revisions",
+    },
+    logs: {
+        title: "Timeline", empty: "Nothing recorded yet.", reload: "Reload", region: "Mirror log", cols: {when: "When", what: "What happened", result: "Result"},
+        actor: {user: "a user", system: "Portabase"}, task: "Runner task", event: "Event",
+        status: {queued: "queued", leased: "running", running: "running", succeeded: "done", failed: "failed", rejected: "failed", cancelled: "cancelled", expired: "expired"} as Record<string, string>,
+    },
+    lifecycle: {
+        delete: "Delete", deleteTitle: (name: string) => `Delete test mirror ${name}?`,
+        deleteBody: (runner: string) => `The copy on the runner ${runner} is deleted, then Portabase checks that nothing is left. This cannot be undone.`,
+        deleteInput: "Type the mirror name to confirm", deleteConfirm: "Delete mirror", deleteMismatch: "Type the exact name of the mirror.",
+        deleting: "Deleting the mirror…", deleted: "Delete requested. The copy on the runner is being removed and checked.",
+        deletingLine: "Deleting this mirror: removing its copy on the runner and checking that nothing is left.",
+        stop: "Stop", stopTitle: (name: string) => `Stop test mirror ${name}?`,
+        stopBody: "The app stops on the runner. Its data stays on the runner; Start brings it back after isolation and health checks.",
+        stopConfirm: "Stop mirror", stopped: "Stop requested.", stoppingLine: "Stopping the mirror…", stoppedLine: "The mirror is stopped. Its data stays on the runner.",
+        start: "Start", started: "Start requested.", startingLine: "Starting the mirror: isolation, health and app checks…",
+        startNote: "Start checks isolation, container health and the app; it does not re-check the data.",
+        stopFailedLine: "Some containers may still be running. Try Stop again or Delete the mirror.",
+        working: "Working…", failed: "That did not work. Try again.",
+        reasons: {
+            cancelFirst: "Cancel creating it first.", busy: "Wait for the running action to finish.", locked: "Configuration is locked.",
+            startLocked: "Configuration is locked, so a mirror cannot start.",
+        },
+    },
 } as const;
+
+/** Mirror status words (exhaustive over the closed list: tsc forces a sentence for every new status). */
+export const STATUS_TEXT: Record<MirrorStatus, string> = {
+    creating: "Creating", ready: "Ready", failed: "Needs attention", cancelled: "Cancelled", refreshing: "Refreshing", deleting: "Deleting", deleted: "Deleted",
+};
+export const statusText = (s: string): string => (Object.hasOwn(STATUS_TEXT, s) ? STATUS_TEXT[s as MirrorStatus] : s);
 
 export const ENV_ACTION_TEXT: Record<EnvActionKey, string> = {
     keep: "Keep",
@@ -234,6 +322,8 @@ export const MIRROR_REFUSAL_TEXT: Record<MirrorRefusalCode, string> = {
     personal_data_no_mirror_opt_in: "A system administrator must allow test mirrors of this app first.",
     not_failed: "There is nothing to retry.",
     rp_purged: "This backup was deleted.",
+    mirror_busy: "Stop creating it first (Cancel), or wait for the running action to finish.",
+    mirror_state_invalid: "This action is not possible in the mirror's current state.",
 };
 const GENERIC_REFUSAL = "The mirror could not be created. Try again or check the runner.";
 export const refusalText = (code: unknown): string => (typeof code === "string" && Object.hasOwn(MIRROR_REFUSAL_TEXT, code) ? MIRROR_REFUSAL_TEXT[code as MirrorRefusalCode] : GENERIC_REFUSAL);
@@ -307,3 +397,25 @@ export const REASON_TEXT: Record<MirrorReasonCode, string> = {
     mirror_disabled: "Mirrors are switched off on the runner.",
 };
 export const reasonText = (code: string | null): string => (code !== null && Object.hasOwn(REASON_TEXT, code) ? REASON_TEXT[code as MirrorReasonCode] : GENERIC_REASON);
+
+// ---- Logs tab: fixed sentences for timeline events and journal rows (the loader never returns free text) -----------------------------------
+const STATE_WORD: Record<string, string> = {
+    requested: "Requested", planning: "Planning", validating: "Checking the backup and the runner", staging: "Copying the backup to the runner", restoring_files: "Restoring files",
+    transforming: "Making the app safe to run", restoring_db: "Restoring the database", starting: "Starting the app", healthchecking: "Running health checks", ready: "Ready",
+    blocked: "Blocked", failed: "Failed", cancelled: "Cancelled", rolled_back: "Rolled back",
+};
+const EVENT_TEXT: Record<string, string> = {
+    requested: "Creation requested", gate_passed: "A safety check passed", gate_failed: "A safety check failed", blocked: "Creation blocked", failed: "Creation failed",
+    cancel_requested: "Cancel requested", cancelled: "Creation cancelled", ready: "Mirror ready", wipe_started: "Deleting the copy on the runner",
+    wipe_verified: "The copy on the runner was deleted and checked", wipe_failed: "Deleting the copy on the runner failed",
+};
+export const eventTitle = (kind: string, toState: string | null, mirrorScope: boolean): string => {
+    if (kind === "state_changed" && toState) return mirrorScope ? `Mirror status: ${statusText(toState)}` : (STATE_WORD[toState] ?? statusText(toState));
+    return Object.hasOwn(EVENT_TEXT, kind) ? (EVENT_TEXT[kind] as string) : "Event";
+};
+const TASK_STEP_TEXT: Record<string, string> = {
+    probe: "Check the backup and the runner", stage: "Copy the backup to the runner", apply: "Restore files", render: "Prepare the safe version of the app", finalize: "Make the app safe to run",
+    restore_db: "Restore the database", up: "Start the app", check: "Health checks", isolation: "Isolation check", wipe: "Delete the copy on the runner", wipe_check: "Check that the copy is gone",
+    stop: "Stop the app",
+};
+export const taskTitle = (step: string, attempt: number): string => `${Object.hasOwn(TASK_STEP_TEXT, step) ? (TASK_STEP_TEXT[step] as string) : step}${attempt > 1 ? ` (attempt ${attempt})` : ""}`;

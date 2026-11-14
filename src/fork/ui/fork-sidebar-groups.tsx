@@ -1,6 +1,7 @@
 import {actorIn} from "@/fork/acl";
 import {soleOrganization} from "@/fork/arcane/connection-service";
 import {appDb} from "@/fork/db/handle";
+import {forkEnv} from "@/fork/env";
 import {currentForkMode} from "@/fork/mode";
 import {buildForkNav} from "@/fork/nav";
 import {getForkPrincipal} from "@/fork/principal";
@@ -19,7 +20,7 @@ export async function ForkSidebarGroups() {
     if (!principal) return null;
     const organizationId = await soleOrganization(await appDb());
     const actor = organizationId ? actorIn(principal, organizationId) : {systemRole: principal.systemRole ?? null, orgRole: null};
-    const groups = buildForkNav(mode.mode, actor);
+    const groups = buildForkNav(mode.mode, actor, {mirrors: forkEnv().FORK_MIRRORS_ENABLED});
     if (groups.length === 0) return null;
     return <ForkSidebarNav groups={groups}/>;
 }

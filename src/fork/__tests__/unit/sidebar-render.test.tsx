@@ -52,6 +52,19 @@ describe("<ForkSidebarGroups/> rendered output (flags-off parity, P05)", () => {
         unmount();
     });
 
+    it("W23: with FORK_MIRRORS_ENABLED an org member also sees the Test Mirrors link (no badge); without it the link is absent", async () => {
+        ON();
+        user.current = {systemRole: "user", orgRole: "member"};
+        const hrefs = async () => { const {container, unmount} = render(<SidebarProvider>{await ForkSidebarGroups()}</SidebarProvider>); const out = [...container.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]); const text = container.textContent ?? ""; unmount(); return {out, text}; };
+        expect((await hrefs()).out).not.toContainEqual(["Test Mirrors", "/dashboard/mirrors"]);
+        process.env.FORK_MIRRORS_ENABLED = "true";
+        try {
+            const r = await hrefs();
+            expect(r.out).toEqual([["Docker Stacks", "/dashboard/stacks"], ["Recovery", "/dashboard/recovery"], ["Test Mirrors", "/dashboard/mirrors"]]);
+            expect(r.text).not.toMatch(/\bNew\b|beta/i);
+        } finally { delete process.env.FORK_MIRRORS_ENABLED; }
+    });
+
     it("flags on + non-member user / pending / anonymous: renders nothing", async () => {
         ON();
         for (const u of [{systemRole: "user", orgRole: null}, null]) {

@@ -4,7 +4,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {axeViolations} from "@/fork/__tests__/axe";
 import {GATES, MIRROR_STEPS} from "@/fork/mirror/vocab";
 import type {MirrorView} from "@/fork/mirror/view";
-import {BANNER, MIRRORS, REASON_TEXT} from "@/fork/ui/mirrors/labels";
+import {BANNER, MIRRORS, REASON_TEXT, stepText} from "@/fork/ui/mirrors/labels";
+import {groupSteps} from "@/fork/ui/mirrors/model";
 import {StatusAnnouncer} from "@/fork/ui/status-announcer";
 
 const h = vi.hoisted(() => ({view: vi.fn(), access: vi.fn(), cancel: vi.fn(), retry: vi.fn()}));
@@ -101,7 +102,7 @@ describe("honest states", () => {
         const gates = screen.getAllByTestId("mirror-gate");
         expect(gates.map((g) => g.getAttribute("data-gate"))).toEqual([...GATES]);
         for (const g of gates) expect(g.textContent).toContain(MIRRORS.progress.gate.ok);
-        expect(screen.getAllByTestId("mirror-step").length).toBe(MIRROR_STEPS.length);
+        expect(screen.getAllByTestId("mirror-step").length).toBe(groupSteps(MIRROR_STEPS.map((name) => ({name, status: "done"})), stepText).length); // W23: steps with the same sentence are one line
         for (const st of screen.getAllByTestId("mirror-step")) expect(st.textContent).toContain("done"); // the engine vocabulary is pending|running|done|failed
         expect(within(screen.getByTestId("mirror-services")).getAllByRole("listitem").length).toBe(2);
         expect(container.querySelectorAll("[role=status]").length).toBe(1);
