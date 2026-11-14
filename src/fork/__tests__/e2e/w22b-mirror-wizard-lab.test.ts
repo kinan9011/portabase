@@ -29,6 +29,7 @@ import {ADMIN} from "@/fork/__tests__/e2e/helpers";
 import {freshForkDb, seedAgent, type W04Db} from "@/fork/__tests__/w04-helpers";
 import type {testKeypair} from "@/fork/__tests__/w14-fixtures";
 import {seedUser} from "@/fork/__tests__/w16-world";
+import {cleanInventory} from "@/fork/__tests__/w09-fixtures";
 import {PASSWORD, seedW17World, type W17} from "@/fork/__tests__/w17-world";
 
 // ponytail: copy of the W22a lab setup (unique names/subnets 172.31.249/250); extract shared helpers if a third mirror lab appears.
@@ -138,7 +139,11 @@ async function labWorld(poison: boolean): Promise<W17> {
     const tgz = path.join(tmp, `files-${poison ? "poison" : "demo"}.tar.gz`); execFileSync("tar", ["-czf", tgz, "-C", src, "."]);
     const filesPlain = readFileSync(tgz);
     const sk = await fileKeyProvider.signing(); const key = {privateKey: sk.privateKeyPem, publicKey: sk.publicKeyPem, kid: kidOfPublicKey(sk.publicKeyPem)};
-    const w = await seedW17World(t, "", key as ReturnType<typeof testKeypair>, adminId, {org, hostRole: "production", roots: ["/srv/none"], caps: ["channel.v1", "noop.v1", "restore.target.v1", "compose.render.v1"],
+    // the pinned inventory the wizard reads: a web service with its TCP port and a database service (env KEY NAMES only)
+    const base0 = cleanInventory().services[0]!;
+    const inventory = cleanInventory({services: [{...base0, ports: [{target: 8080, published: 18080, protocol: "tcp"}], env_keys: ["A", "APP_TITLE"]},
+        {...base0, name: "db", image: {ref: `postgres:17@sha256:${"b".repeat(64)}`, pinned: true, built_locally: false}, ports: [], mounts: [], env_keys: ["POSTGRES_PASSWORD"], database_hint: {engine: "postgresql", basis: "image"}}]});
+    const w = await seedW17World(t, "", key as ReturnType<typeof testKeypair>, adminId, {org, hostRole: "production", roots: ["/srv/none"], inventory, caps: ["channel.v1", "noop.v1", "restore.target.v1", "compose.render.v1"],
         plain: {compose_app: {sha: sha256(filesPlain), size: filesPlain.length}, volume_app_data: {sha: fx("lab-volume").plaintext_sha256, size: fx("lab-volume").plaintext_size}, db_db: {sha: fx("lab-postgres").plaintext_sha256, size: fx("lab-postgres").plaintext_size, dump: "pg_custom"}},
         enrolDeps: {serverUrl: urlForAgents, stepUp: async () => "ok", keys: fileKeyProvider, env: () => ENV, principal: {userId: adminId, systemRole: "superadmin", memberships: []}}});
     objects.set(`/${w.rp}/compose_app`, {body: encryptAgentArchive(MASTER, filesPlain), hits: 0}); objects.set(`/${w.rp}/volume_app_data`, {body: fxFile("lab-volume"), hits: 0}); objects.set(`/${w.rp}/db_db`, {body: fxFile("lab-postgres"), hits: 0});
@@ -263,6 +268,7 @@ describe.skipIf(!LAB)("W22b wizard lab (Flow D through the UI): a test mirror is
     it("W1 pages under the real build: the stack page links into the wizard (no stub), the wizard shows the runner and the services, and neither HTML nor RSC of any wizard page carries a secret, a seed, a nonce or a host path", async () => {
         const admin = await login(ADMIN);
         const seq = await rpSeq(world);
+        keep("w1-agent-contact.txt", `${JSON.stringify(await q("select name, last_contact, version from agents where id=$1", [runnerAgent]))}\n${out.split("\n").filter((l) => /status|agent/i.test(l)).slice(-10).join("\n")}`);
         const stackHtml = await page(`/dashboard/stacks/${world.stack}`, admin);
         expect(stackHtml).toContain(`href="/dashboard/mirrors/new?stack=${world.stack}"`);
         expect(stackHtml).not.toContain("not part of this release");
@@ -271,7 +277,7 @@ describe.skipIf(!LAB)("W22b wizard lab (Flow D through the UI): a test mirror is
         const step2 = `${step1}&point=${seq}&step=runner`;
         const step3 = `${step1}&point=${seq}&runner=${runnerAgent}&step=configure`;
         const html3 = await page(step3, admin);
-        expect(visible(html3)).toContain(MIRRORS.steps.title.access);
+        expect(visible(html3), visible(html3).slice(-700)).toContain(MIRRORS.steps.title.access);
         expect(html3).toContain(runnerName);
         expect(html3).toContain("web");
         expect(visible(await page(step2, admin))).toContain(runnerName);
@@ -302,7 +308,7 @@ describe.skipIf(!LAB)("W22b wizard lab (Flow D through the UI): a test mirror is
         const html = await page(`/dashboard/mirrors/${r.mirrorId}`, admin);
         const text = visible(html);
         expect(text).toContain(MIRRORS.progress.ready((await q("select name from agents where id=$1", [runnerAgent]))[0].name as string));
-        expect(text).not.toMatch(/restore-tested/i);
+        expect(/data-testid="mirror-headline"[^>]*>([^<]*)</.exec(html)?.[1] ?? "").not.toMatch(/restore-tested|verified/i); // the Ready note may say what Ready is NOT; the headline never claims it
         for (const p of [`/dashboard/mirrors/${r.mirrorId}`]) for (const body of [html, await page(p, admin, true)]) for (const secret of [PROD_PW, NONCE, "/srv/portabase-mirrors"]) expect(body.includes(secret), `${p} leaks ${secret}`).toBe(false);
         const demo = inbox(["sh", "-c", `wget -qO- -T 8 http://127.0.0.1:${r.hostPort}/ 2>&1`]);
         expect(demo).toContain("greeting=hello-from-the-forklab-demo-stack");
@@ -320,7 +326,7 @@ describe.skipIf(!LAB)("W22b wizard lab (Flow D through the UI): a test mirror is
             expect(await iso()).toMatchObject({state: "not_isolated"});
             const html = await page(runnerStep, admin);
             expect(html).toContain('data-testid="runner-disabled"');
-            expect(visible(html)).toContain(RUNNER_REASON_TEXT.not_isolated);
+            expect(visible(html), visible(html).slice(-700)).toContain(RUNNER_REASON_TEXT.not_isolated);
             expect(html).not.toContain('data-testid="runner-option"');
         } finally { lab(["fw-on"]); }
         const p2 = await probe(); expect(p2.status).toBe("succeeded");

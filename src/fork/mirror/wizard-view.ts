@@ -28,7 +28,7 @@ type AgentRow = {id: string; name: string; organization_id: string | null; last_
 async function visibleRunnerAgents(db: ForkDb, principal: ForkPrincipal | null, organizationId: string): Promise<AgentRow[]> {
     if (!principal) return [];
     const rows = (await db.execute(sql`
-        select a.id, a.name, a.organization_id, a.last_contact,
+        select a.id, a.name, a.organization_id, a.last_contact at time zone 'UTC' as last_contact, -- the column is timestamp WITHOUT time zone holding UTC wall time: read it as UTC whatever the process TZ is
                exists (select 1 from organization_agents oa where oa.agent_id = a.id and oa.organization_id is distinct from a.organization_id) as foreign_org
           from fork_runner r join agents a on a.id = r.agent_id where a.deleted_at is null order by a.name, a.id`)).rows as AgentRow[];
     return rows.filter((r) => agentAclAllows(principal, {organizationId: r.organization_id, foreignOrg: r.foreign_org}, organizationId));

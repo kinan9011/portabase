@@ -24,6 +24,13 @@ describe("loadMirrorRunners", () => {
         expect(r).toMatchObject({name: ru.name, eligible: true, ineligible: null, isolation: "isolated", isolationUnknown: null, reachableCount: 0, targetCount: 1, probePending: false, busy: false, mirrorsHeld: 0, freePorts: 1000});
         expect(r?.probedAt).not.toBeNull();
     });
+    it("online status: an agent that pinged a few seconds ago is online, one that pinged 2 h ago offline (the `timestamp` column holds UTC wall time, read as UTC whatever the process time zone is)", async () => {
+        const ru = await w.runner();
+        await w.pool.query("update agents set last_contact = timezone('UTC', now()) where id=$1", [ru.agentId]);
+        expect((await find(ru.agentId))?.status).toBe("online");
+        await w.pool.query("update agents set last_contact = timezone('UTC', now()) - interval '2 hours' where id=$1", [ru.agentId]);
+        expect((await find(ru.agentId))?.status).toBe("offline");
+    });
     it("an agent that is not designated is absent", async () => {
         const id = await seedAgent(w.pool, w.org, "plain-agent");
         expect(await find(id)).toBeUndefined();
