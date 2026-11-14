@@ -1,3 +1,5 @@
+import {readFileSync} from "node:fs";
+import path from "node:path";
 import {describe, expect, it} from "vitest";
 import {SERVICE_KEY_DISPOSITION, classifyEnvKey, isDroppedLabel} from "@/fork/compose-compiler/rules";
 import {RULES} from "@/fork/policy/rules";
@@ -42,5 +44,16 @@ describe("mirror compiler rules (W20 D-3, D-5)", () => {
     it("drops proxy / updater / scheduler labels, keeps others", () => {
         for (const k of ["traefik.enable", "Traefik.http.routers.x", "caddy", "caddy.reverse_proxy", "caddy_0", "com.centurylinklabs.watchtower.enable", "wud.watch", "diun.enable", "ofelia.job-exec.x", "swarm.cronjob.enable", "homepage.name", "autoheal", "com.docker.compose.project", "com.portabase.fork.restore_id"]) expect(isDroppedLabel(k), k).toBe(true);
         for (const k of ["forklab.role", "app.kubernetes.io/name", "caddyish", "traefіk.enable", "autohealer"]) expect(isDroppedLabel(k), k).toBe(false);
+    });
+});
+
+describe("FORK.md documents every service key (W20 D-10)", () => {
+    const md = readFileSync(path.join(process.cwd(), "FORK.md"), "utf8");
+    const i = md.indexOf("## Mirror compiler (W20");
+    const end = md.indexOf("\n## ", i + 5);
+    const section = i < 0 ? "" : md.slice(i, end < 0 ? undefined : end);
+    it("has the section and mentions every disposition key + top-level key", () => {
+        expect(i).toBeGreaterThan(-1);
+        for (const k of [...Object.keys(SERVICE_KEY_DISPOSITION), "name", "networks", "volumes", "secrets", "configs", "x-*"]) expect(section.includes(`\`${k}\``), k).toBe(true);
     });
 });
