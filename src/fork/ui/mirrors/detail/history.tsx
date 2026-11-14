@@ -1,6 +1,7 @@
 import type {MirrorView} from "@/fork/mirror/view";
 import {MIRRORS, reasonText} from "@/fork/ui/mirrors/labels";
 import {isActiveRevision} from "@/fork/ui/mirrors/model";
+import {ScrollRegion} from "@/fork/ui/stacks/scroll-region";
 
 const H = MIRRORS.history;
 const when = (iso: string) => iso.replace("T", " ").slice(0, 16);
@@ -11,7 +12,7 @@ export function HistoryTab({view, rpDates}: {view: MirrorView; rpDates: Record<s
     if (view.revisions.length === 0) return <p className="text-sm">{H.empty}</p>;
     return (
         <div className="space-y-3" data-testid="history-tab">
-            <div role="region" aria-label={H.region} tabIndex={0} className="overflow-x-auto rounded-lg border">
+            <ScrollRegion label={H.region}>
                 <table className="w-full text-left text-sm">
                     <caption className="sr-only">{H.title}</caption>
                     <thead><tr className="border-b">{(["rev", "rp", "created", "outcome", "duration", "wipe"] as const).map((k) => <th key={k} scope="col" className="px-3 py-2 font-semibold whitespace-nowrap">{H.cols[k]}</th>)}</tr></thead>
@@ -32,7 +33,7 @@ export function HistoryTab({view, rpDates}: {view: MirrorView; rpDates: Record<s
                         );
                     })}</tbody>
                 </table>
-            </div>
+            </ScrollRegion>
             <p className="text-muted-foreground text-sm">{H.note}</p>
         </div>
     );

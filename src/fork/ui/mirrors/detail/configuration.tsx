@@ -4,6 +4,7 @@ import {GATES} from "@/fork/mirror/vocab";
 import {ENV_ACTION_TEXT, GATE_TEXT, MIRRORS, reasonText, type EnvActionKey} from "@/fork/ui/mirrors/labels";
 import {ago} from "@/fork/ui/mirrors/model";
 import {ToneBadge} from "@/fork/ui/tone-badge";
+import {ScrollRegion} from "@/fork/ui/stacks/scroll-region";
 
 const C = MIRRORS.config;
 const mem = (b: number) => (b >= 1073741824 ? `${+(b / 1073741824).toFixed(2)} GiB` : `${Math.round(b / 1048576)} MiB`);
@@ -52,13 +53,13 @@ export function ConfigurationTab({view, extras, now}: {view: MirrorView; extras:
                 {cfg.overrides === null
                     ? <p className="text-sm">{C.envCounts(cfg.overrideCount, cfg.keptCount)}</p>
                     : cfg.overrides.length === 0 ? <p className="text-sm">{C.envNone}</p> : (
-                        <div role="region" aria-label={C.envTable} tabIndex={0} className="max-w-3xl overflow-x-auto rounded-lg border">
+                        <ScrollRegion label={C.envTable}>
                             <table className="w-full text-left text-sm"><thead><tr className="border-b"><th scope="col" className="px-3 py-2">Service</th><th scope="col" className="px-3 py-2">Setting</th><th scope="col" className="px-3 py-2">What happens</th></tr></thead>
                                 <tbody>{cfg.overrides.map((o) => (
                                     <tr key={`${o.service}.${o.key}`} className="border-b last:border-0" data-testid="config-override"><td className="px-3 py-2">{o.service}</td><td className="px-3 py-2 break-all font-mono">{o.key}</td>
                                         <td className="px-3 py-2">{ENV_ACTION_TEXT[o.action as EnvActionKey]}{o.action === "keep_exact" ? ` (${C.envKept})` : ""}</td></tr>
                                 ))}</tbody></table>
-                        </div>
+                        </ScrollRegion>
                     )}
                 <p className="text-muted-foreground mt-2 text-sm">{C.footer}</p>
             </section>
