@@ -1,0 +1,646 @@
+[
+ {
+  "name": "path traversal bind",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "volumes": [
+      {
+       "type": "bind",
+       "source": "/srv/mirrors/pbm-x/../../etc",
+       "target": "/t"
+      }
+     ]
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_hard"
+   ],
+   "has": [
+    "policy_hard|path_ambiguous"
+   ]
+  }
+ },
+ {
+  "name": "prefix trick bind",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "volumes": [
+      {
+       "type": "bind",
+       "source": "/srv/mirrors/pbm-x-evil/data",
+       "target": "/t"
+      }
+     ]
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_finding"
+   ],
+   "has": [
+    "policy_finding|bind_outside_root"
+   ]
+  }
+ },
+ {
+  "name": "dollar in bind path",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "volumes": [
+      {
+       "type": "bind",
+       "source": "/srv/mirrors/pbm-x/$HOME",
+       "target": "/t"
+      }
+     ]
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_hard"
+   ],
+   "has": [
+    "policy_hard|path_ambiguous"
+   ]
+  }
+ },
+ {
+  "name": "json depth bomb (33 levels)",
+  "gen": "depth_bomb",
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_hard"
+   ],
+   "has": [
+    "policy_hard|limits"
+   ]
+  }
+ },
+ {
+  "name": "view of 2 MiB + 1 byte",
+  "gen": "size_bomb",
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_hard"
+   ],
+   "has": [
+    "policy_hard|limits"
+   ]
+  }
+ },
+ {
+  "name": "501 services",
+  "gen": "many_services",
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_hard"
+   ],
+   "has": [
+    "policy_hard|limits"
+   ]
+  }
+ },
+ {
+  "name": "raw.reason = limits (yaml alias bomb upstream)",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "raw": {
+   "refused": true,
+   "violations": [],
+   "reason": "limits"
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_hard"
+   ],
+   "has": [
+    "policy_hard|limits"
+   ]
+  }
+ },
+ {
+  "name": "raw violation outside root",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "raw": {
+   "refused": true,
+   "violations": [
+    {
+     "kind": "env_file",
+     "service": "a",
+     "target": "/etc/shadow"
+    }
+   ],
+   "reason": null
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_hard"
+   ],
+   "has": [
+    "policy_hard|read_outside_root"
+   ]
+  }
+ },
+ {
+  "name": "forged unredacted env value",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "environment": {
+      "K": "production-secret-value"
+     }
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "view_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "env key with newline",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "environment": {
+      "A\nB": ""
+     }
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "env_key_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "env key with equals",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "environment": {
+      "A=B": ""
+     }
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "env_key_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "project pbm-../x",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "options": {
+   "project": "pbm-../x"
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "project_invalid",
+    "workspace_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "project PBM-X",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "options": {
+   "project": "PBM-X"
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "project_invalid",
+    "workspace_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "project x",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "options": {
+   "project": "x"
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "project_invalid",
+    "workspace_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "workspace /",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "options": {
+   "workspace": "/"
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "workspace_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "workspace relative",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "options": {
+   "workspace": "relative"
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "workspace_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "workspace /a/../b",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "options": {
+   "workspace": "/a/../b"
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "workspace_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "access to a missing service",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "options": {
+   "access": {
+    "service": "ghost",
+    "target": 80,
+    "host_port": 18099
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "access_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "access target port 0",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "options": {
+   "access": {
+    "service": "a",
+    "target": 0,
+    "host_port": 18099
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "access_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "access host port 80",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "options": {
+   "access": {
+    "service": "a",
+    "target": 80,
+    "host_port": 80
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "access_invalid"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "external secret",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   },
+   "secrets": {
+    "s": {
+     "external": true
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "external_secret"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "build key",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "build": {
+      "context": ""
+     }
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "build",
+    "policy_finding"
+   ],
+   "has": [
+    "policy_finding|unknown_directive"
+   ]
+  }
+ },
+ {
+  "name": "provider key",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "provider": {
+      "type": ""
+     }
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_finding",
+    "provider"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "extends key",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "extends": {
+      "service": ""
+     }
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_finding",
+    "unsupported_key"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "volume driver_opts bind /etc",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "volumes": [
+      {
+       "type": "volume",
+       "source": "evil",
+       "target": "/e"
+      }
+     ]
+    }
+   },
+   "volumes": {
+    "evil": {
+     "driver": "local",
+     "driver_opts": {
+      "type": "none",
+      "o": "bind",
+      "device": "/etc"
+     }
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_finding",
+    "volume_driver_opts"
+   ],
+   "has": [
+    "policy_finding|bind_outside_root"
+   ]
+  }
+ },
+ {
+  "name": "container_name equals another service",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "container_name": "b"
+    },
+    "b": {
+     "image": "busybox:1"
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "alias_collision"
+   ],
+   "has": []
+  }
+ },
+ {
+  "name": "top-level include",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1"
+    }
+   },
+   "include": [
+    {
+     "path": "other.yml"
+    }
+   ]
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_hard"
+   ],
+   "has": [
+    "policy_hard|top_level_unknown"
+   ]
+  }
+ },
+ {
+  "name": "docker.sock bind",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "volumes": [
+      {
+       "type": "bind",
+       "source": "/var/run/docker.sock",
+       "target": "/t"
+      }
+     ]
+    }
+   }
+  },
+  "expect": {
+   "ok": false,
+   "codes": [
+    "policy_finding"
+   ],
+   "has": [
+    "policy_finding|docker_sock"
+   ]
+  }
+ },
+ {
+  "name": "symlink inside the workspace (residual R-2)",
+  "view": {
+   "services": {
+    "a": {
+     "image": "busybox:1",
+     "volumes": [
+      {
+       "type": "bind",
+       "source": "/srv/mirrors/pbm-x/link-to-etc",
+       "target": "/t"
+      }
+     ]
+    }
+   }
+  },
+  "expect": {
+   "ok": true,
+   "codes": [],
+   "has": []
+  },
+  "note": "symlinks are invisible in JSON; the realpath gate is the agent symlink_escape check (W17-ii/W27a), plan-W20 R-2"
+ }
+]
