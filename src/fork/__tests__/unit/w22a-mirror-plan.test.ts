@@ -1,25 +1,13 @@
 import {describe, expect, it} from "vitest";
 import {art, planInput, u} from "@/fork/__tests__/w16-fixtures";
+import {MIRROR_ROOT, mirrorInput} from "@/fork/__tests__/w22a-fixtures";
 import {planRestore, PlannerRefusal} from "@/fork/restore/plan";
 import type {PlanInputV1} from "@/fork/restore/schema";
 import {BuildError, buildHeader} from "@/fork/restore-tasks/build";
 
-const ROOT = "/srv/portabase-mirrors";
+const ROOT = MIRROR_ROOT;
 const PROJECT = "pbm-demo-r1";
 
-/** Valid mirror baseline: a designated runner (no environment, runner.v1 + mirror.v1), purpose mirror / new_stack, project pbm-*, personal data declared false. */
-function mirrorInput(mut?: (i: PlanInputV1) => void): PlanInputV1 {
-    return planInput((i) => {
-        i.purpose = "mirror";
-        i.mode = "new_stack";
-        i.mappings = {target_project: PROJECT, restore_root: ROOT, volumes: null, select: null, sqlite: null};
-        i.stack.contains_personal_data = false;
-        i.target.runner_eligible = true;
-        i.target.environments = [];
-        i.target.enrollment = {enabled: true, revoked: false, capabilities: ["channel.v1", "noop.v1", "channel-maint.v1", "runner.v1", "mirror.v1"]};
-        mut?.(i);
-    });
-}
 const refusal = (i: PlanInputV1) => { try { planRestore(i); } catch (e) { return e instanceof PlannerRefusal ? e.code : `other:${e}`; } return "none"; };
 
 describe("W22a planner purpose mirror (plan v2)", () => {

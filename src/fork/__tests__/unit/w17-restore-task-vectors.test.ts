@@ -6,12 +6,13 @@ import {describe, expect, it} from "vitest";
 import {verifyEnvelope, type Envelope} from "@/fork/agent-channel/envelope";
 import {encryptPayload, payloadSha256} from "@/fork/agent-channel/payload";
 import {validatePayload} from "@/fork/agent-channel/tasks";
-import {COMPOSE_TASK_TYPES, QUIESCE_TASK_TYPES, RESTORE_TASK_TYPES, RUNNER_CAPABILITY, RUNNER_TASK_TYPES, SIGN_DOMAIN, TEST_RESTORE_TASK_TYPES, TASK_REQUIRES, TARGETED_TASK_TYPES} from "@/fork/agent-channel/vocab";
+import {COMPOSE_TASK_TYPES, MIRROR_CAPABILITY, MIRROR_TASK_TYPES, QUIESCE_TASK_TYPES, RESTORE_TASK_TYPES, RUNNER_CAPABILITY, RUNNER_TASK_TYPES, SIGN_DOMAIN, TEST_RESTORE_TASK_TYPES, TASK_REQUIRES, TARGETED_TASK_TYPES} from "@/fork/agent-channel/vocab";
 import {canonicalJson} from "@/fork/canonical";
 import {buildManifest} from "@/fork/manifest/build";
 import {signManifest} from "@/fork/manifest/sign";
 import {verifyManifestBundle} from "@/fork/manifest/verify";
-import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
+import {MIRROR_AGENT_CODES, RESTORE_REASONS} from "@/fork/restore-tasks/codes";
+import {MirrorHeader} from "@/fork/mirror/payload-schema";
 import {RunnerProbePayload} from "@/fork/runner/payload-schema";
 import {testKeypair} from "@/fork/__tests__/w14-fixtures";
 
@@ -33,6 +34,12 @@ const HEX = (c: string) => c.repeat(64);
 
 const header = (o: Record<string, unknown> = {}) => ({v: 1, restore_id: RESTORE, plan_id: PLAN, plan_hash: HEX("a"), stack_id: STACK, rp_id: RP, purpose: "restore", mode: "selective", host_role: "test", approvals: [], workspace: "/srv/restore/app", project: "app", ...o});
 function composeRef(o: Record<string, unknown> = {}) { return {dir: "/srv/restore/app/compose", override_yml: null, env: {}, path_map: [{from: "/opt/stack/www", to: "/srv/restore/app/files/www"}], ...o}; }
+const MIRROR_ROOT = "/srv/portabase-mirrors";
+const MIRROR_WS = `${MIRROR_ROOT}/pbm-demo-r1`;
+const mheader = (o: Record<string, unknown> = {}) => ({v: 1, restore_id: RESTORE, plan_id: PLAN, plan_hash: HEX("a"), stack_id: STACK, rp_id: RP, purpose: "mirror", mode: "new_stack", host_role: "runner", approvals: [], workspace: MIRROR_WS, project: "pbm-demo-r1", ...o});
+const mcompose = (o: Record<string, unknown> = {}) => ({dir: `${MIRROR_WS}/compose`, override_yml: null, env: {}, path_map: [{from: "/srv/app", to: `${MIRROR_WS}/binds/srv/app`}], ...o});
+const mspec = (o: Record<string, unknown> = {}) => ({v: 1, compiler: 1, project: "pbm-demo-r1", workspace: MIRROR_WS, source_view_sha256: HEX("1"), rules_sha256: HEX("2"), access: {service: "web", target: 80, host_port: 41000},
+    view: {name: "pbm-demo-r1", services: {web: {image: "nginx:1"}}}, env: {web: {A: "keep"}}, credential_resets: [{service: "db", engine: "postgresql", user_key: "POSTGRES_USER", password_key: "POSTGRES_PASSWORD"}], kept_production_secrets: [], ...o});
 const samples = {
     restore_probe: {v: 1},
     restore_stage: {...header(), manifest: {json_b64: "e30=", sig_b64: "AAAA", sha256: HEX("b")}, artifacts: [{index: 0, source: "archive", url: "https://minio.example.test/b/o?X-Amz-Signature=x"}], paths: [{index: 0, dest: "/srv/restore/app/files/app"}]},
@@ -44,6 +51,16 @@ const samples = {
     // W-TR (ADR-007 A16): engine integrity checks of a data-only TEST restore
     restore_verify: {...header({purpose: "test_restore", mode: "new_stack"}), manifest_sha256: HEX("b"), checks: [{index: 0, engine: "sqlite"}, {index: 1, engine: "postgresql"}]},
     // W21 (ADR-008): runner isolation probe
+    // W22a (plan-W22a §3.3): the nine mirror tasks (a runner executes them; workspace = <mirror root>/<project>)
+    mirror_probe: {v: 1, workspace: MIRROR_WS},
+    mirror_stage: {...mheader(), manifest: {json_b64: "e30=", sig_b64: "AAAA", sha256: HEX("b")}, artifacts: [{index: 0, source: "archive", url: "https://minio.example.test/b/o?X-Amz-Signature=x"}], paths: [{index: 0, dest: `${MIRROR_WS}/binds/srv/app`}]},
+    mirror_apply: {...mheader(), manifest_sha256: HEX("b"), volumes: [{index: 1, name: "pbm-demo-r1_appdata", compose_volume: "appdata"}], sqlite: [], networks: [], unpack: []},
+    mirror_render: {...mheader(), manifest_sha256: HEX("b"), compose: mcompose()},
+    mirror_finalize: {...mheader(), manifest_sha256: HEX("b"), compose: mcompose(), spec: mspec(), spec_sha256: HEX("c"), limits: {mem_bytes: 1073741824, pids: 512, nano_cpus: 1000000000}},
+    mirror_db: {...mheader(), manifest_sha256: HEX("b"), final_sha256: HEX("e"), dbs: [{index: 1, service: "db"}], resets: [{service: "db", engine: "postgresql", user_key: "POSTGRES_USER", password_key: "POSTGRES_PASSWORD"}]},
+    mirror_up: {...mheader(), final_sha256: HEX("e"), volumes: ["pbm-demo-r1_appdata"]},
+    mirror_check: {...mheader(), final_sha256: HEX("e"), access: {service: "web", target: 80}, http_path: "/", wait_s: 120},
+    mirror_wipe: {...mheader()},
     runner_probe: {v: 1, probe_id: "99999999-9999-4999-8999-999999999999", targets_sha256: HEX("d"), timeout_ms: 1500, targets: [{id: "t01", kind: "tcp", host: "10.20.30.40", port: 25}, {id: "t02", kind: "dns_tcp", host: "10.20.30.53", port: 53}, {id: "t03", kind: "dns_name", host: "example.com"}]},
 } as const;
 const ALL_TYPES = [...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES] as const;
@@ -104,6 +121,83 @@ function payloadCases(): PCase[] {
     bad("restore_verify", "verify_duplicate_index", {...s.restore_verify, checks: [{index: 0, engine: "sqlite"}, {index: 0, engine: "postgresql"}]}, true, "payload_invalid");
     bad("compose_up", "up_missing_approval_key", (({approval: _m, ...rest}) => rest)(s.compose_up));
     return out;
+}
+
+/** W22a: forged-input corpus of the nine mirror payloads. `schema_valid` = what the TS schema says; `agent` = what the Rust engine must answer for a schema-valid row. */
+function mirrorPayloadCases(): PCase[] {
+    const out: PCase[] = [];
+    const s = samples;
+    const ok = (type: keyof typeof samples) => out.push({type, name: `${type}_valid`, payload: s[type], schema_valid: true, agent: "ok"});
+    for (const t of MIRROR_TASK_TYPES) ok(t);
+    const bad = (type: keyof typeof samples, name: string, payload: unknown, schema_valid = false, agent = "payload_invalid") => out.push({type, name, payload, schema_valid, agent});
+    const drop = (o: Record<string, unknown>, k: string) => Object.fromEntries(Object.entries(o).filter(([key]) => key !== k));
+    bad("mirror_stage", "stage_host_role_production", {...s.mirror_stage, host_role: "production"});
+    bad("mirror_stage", "stage_host_role_test", {...s.mirror_stage, host_role: "test"});
+    bad("mirror_stage", "stage_purpose_restore", {...s.mirror_stage, purpose: "restore"});
+    bad("mirror_stage", "stage_purpose_test_restore", {...s.mirror_stage, purpose: "test_restore"});
+    bad("mirror_stage", "stage_mode_selective", {...s.mirror_stage, mode: "selective"});
+    bad("mirror_stage", "stage_mode_existing_stack", {...s.mirror_stage, mode: "existing_stack"});
+    bad("mirror_stage", "stage_approvals_nonempty", {...s.mirror_stage, approvals: ["production_target"]});
+    bad("mirror_stage", "stage_project_without_prefix", {...s.mirror_stage, project: "demo-r1", workspace: `${MIRROR_ROOT}/demo-r1`});
+    bad("mirror_stage", "stage_project_uppercase", {...s.mirror_stage, project: "pbm-Demo"});
+    bad("mirror_stage", "stage_workspace_not_ending_with_project", {...s.mirror_stage, workspace: `${MIRROR_ROOT}/other`});
+    bad("mirror_stage", "stage_workspace_dotdot", {...s.mirror_stage, workspace: `${MIRROR_ROOT}/../etc/pbm-demo-r1`});
+    bad("mirror_stage", "stage_unknown_key", {...s.mirror_stage, extra: 1});
+    bad("mirror_stage", "stage_missing_manifest", drop(s.mirror_stage, "manifest"));
+    bad("mirror_stage", "stage_dest_dotdot", {...s.mirror_stage, paths: [{index: 0, dest: `${MIRROR_WS}/../../etc`}]});
+    bad("mirror_stage", "stage_workspace_outside_mirror_root", {...s.mirror_stage, workspace: "/srv/restore/pbm-demo-r1", paths: [{index: 0, dest: "/srv/restore/pbm-demo-r1/binds/x"}]}, true, "path_not_allowed");
+    bad("mirror_apply", "apply_networks_nonempty", {...s.mirror_apply, networks: [{name: "pbm-demo-r1_default"}]});
+    bad("mirror_apply", "apply_missing_manifest_sha", drop(s.mirror_apply, "manifest_sha256"));
+    bad("mirror_apply", "apply_sqlite_absolute", {...s.mirror_apply, sqlite: [{index: 2, volume: "pbm-demo-r1_appdata", relative_path: "/etc/x.db"}]});
+    bad("mirror_render", "render_override_set", {...s.mirror_render, compose: mcompose({override_yml: "services: {}"})});
+    bad("mirror_render", "render_env_nonempty", {...s.mirror_render, compose: mcompose({env: {A: "x"}})});
+    bad("mirror_render", "render_dir_relative", {...s.mirror_render, compose: mcompose({dir: "srv/x"})});
+    bad("mirror_render", "render_path_map_outside_workspace", {...s.mirror_render, compose: mcompose({path_map: [{from: "/srv/app", to: "/etc/app"}]})}, true, "path_not_allowed");
+    bad("mirror_finalize", "finalize_spec_sha_not_hex", {...s.mirror_finalize, spec_sha256: "abc"});
+    bad("mirror_finalize", "finalize_spec_unknown_key", {...s.mirror_finalize, spec: mspec({extra: 1})});
+    bad("mirror_finalize", "finalize_spec_bad_env_action", {...s.mirror_finalize, spec: mspec({env: {web: {A: "reveal"}}})});
+    bad("mirror_finalize", "finalize_limits_zero", {...s.mirror_finalize, limits: {mem_bytes: 0, pids: 512, nano_cpus: 1000000000}});
+    bad("mirror_finalize", "finalize_limits_above_caps", {...s.mirror_finalize, limits: {mem_bytes: 8589934593, pids: 512, nano_cpus: 1000000000}});
+    bad("mirror_finalize", "finalize_limits_pids_above_cap", {...s.mirror_finalize, limits: {mem_bytes: 1073741824, pids: 4097, nano_cpus: 1000000000}});
+    bad("mirror_finalize", "finalize_limits_missing_cpus", {...s.mirror_finalize, limits: {mem_bytes: 1073741824, pids: 512}});
+    bad("mirror_finalize", "finalize_override_set", {...s.mirror_finalize, compose: mcompose({override_yml: "x: 1"})});
+    bad("mirror_db", "db_both_empty", {...s.mirror_db, dbs: [], resets: []});
+    bad("mirror_db", "db_bad_engine", {...s.mirror_db, resets: [{service: "db", engine: "mongodb", user_key: null, password_key: "P"}]});
+    bad("mirror_db", "db_too_many_resets", {...s.mirror_db, resets: Array.from({length: 21}, (_, i) => ({service: `db${i}`, engine: "postgresql", user_key: null, password_key: "P"}))});
+    bad("mirror_db", "db_missing_final_sha", drop(s.mirror_db, "final_sha256"));
+    bad("mirror_db", "db_reset_unknown_key", {...s.mirror_db, resets: [{service: "db", engine: "postgresql", user_key: null, password_key: "P", sql: "drop database"}]});
+    bad("mirror_up", "up_volume_with_slash", {...s.mirror_up, volumes: ["a/b"]});
+    bad("mirror_up", "up_unknown_key", {...s.mirror_up, extra: 1});
+    bad("mirror_check", "check_http_path_query", {...s.mirror_check, http_path: "/x?a=b"});
+    bad("mirror_check", "check_http_path_dotdot_chars", {...s.mirror_check, http_path: "/x y"});
+    bad("mirror_check", "check_http_path_crlf", {...s.mirror_check, http_path: "/x\r\nHost: evil"});
+    bad("mirror_check", "check_http_path_relative", {...s.mirror_check, http_path: "x"});
+    bad("mirror_check", "check_wait_9", {...s.mirror_check, wait_s: 9});
+    bad("mirror_check", "check_wait_301", {...s.mirror_check, wait_s: 301});
+    bad("mirror_check", "check_target_0", {...s.mirror_check, access: {service: "web", target: 0}});
+    bad("mirror_check", "check_target_70000", {...s.mirror_check, access: {service: "web", target: 70000}});
+    bad("mirror_check", "check_access_unknown_key", {...s.mirror_check, access: {service: "web", target: 80, host: "x"}});
+    bad("mirror_probe", "probe_relative_workspace", {v: 1, workspace: "srv/x"});
+    bad("mirror_probe", "probe_missing_workspace", {v: 1});
+    bad("mirror_probe", "probe_unknown_key", {...s.mirror_probe, x: 1});
+    bad("mirror_wipe", "wipe_unknown_key", {...s.mirror_wipe, extra: true});
+    bad("mirror_wipe", "wipe_host_role_production", {...s.mirror_wipe, host_role: "production"});
+    return out;
+}
+
+/** W22a: header table. The agent parses the header of every mirror task; `valid` is its verdict on a runner whose env says FORK_HOST_ROLE=runner. */
+function mirrorHeaderCases(): {name: string; header: unknown; valid: boolean}[] {
+    const h = (name: string, header: unknown, valid = false) => ({name, header, valid});
+    return [
+        h("ok", mheader(), true),
+        h("host_role_production", mheader({host_role: "production"})), h("host_role_test", mheader({host_role: "test"})),
+        h("purpose_restore", mheader({purpose: "restore"})), h("purpose_test_restore", mheader({purpose: "test_restore"})),
+        h("mode_selective", mheader({mode: "selective"})), h("mode_existing", mheader({mode: "existing_stack"})),
+        h("approvals_production_target", mheader({approvals: ["production_target"]})), h("approvals_destructive", mheader({approvals: ["destructive_replace"]})),
+        h("project_not_pbm", mheader({project: "demo"})), h("project_too_long", mheader({project: `pbm-${"a".repeat(60)}`})),
+        h("workspace_relative", mheader({workspace: "srv/x/pbm-demo-r1"})), h("workspace_dollar", mheader({workspace: `${MIRROR_ROOT}/$HOME/pbm-demo-r1`})),
+        h("restore_id_not_uuid", mheader({restore_id: "x"})), h("plan_hash_short", mheader({plan_hash: "abc"})), h("version_2", mheader({v: 2})),
+    ];
 }
 
 /** W21: shared forged-input corpus of the `runner_probe` payload. The TS schema and the Rust `validate()` must AGREE on every row (`valid`). */
@@ -200,6 +294,20 @@ function buildVectors() {
         {name: "unknown_type_on_runner_is_unsupported", expect: "unsupported_type", ...mk("compose_down", {requires: ["compose.render.v1"], target_agent_id: AGENT}, Buffer.from("{}"))},
     ];
 
+    // ---- W22a mirror role gating (plan-W22a §3.3): mirror tasks need runner.v1 AND mirror.v1; restore tasks never run on a runner ----
+    for (const type of ["mirror_probe", "mirror_stage", "mirror_finalize", "mirror_wipe"] as const) cases.push({name: `${type}_on_non_runner`, expect: "role_forbidden", ...mk(type)});
+    const mirrorRunnerCases = [
+        ...MIRROR_TASK_TYPES.map((type) => ({name: `${type}_ok`, expect: "ok", ...mk(type)})),
+        {name: "mirror_stage_without_target", expect: "target_mismatch", ...mk("mirror_stage", {omitTarget: true})},
+        {name: "mirror_stage_targeted_at_another_agent", expect: "target_mismatch", ...mk("mirror_stage", {target_agent_id: OTHER_AGENT})},
+        {name: "runner_probe_still_ok", expect: "ok", ...mk("runner_probe")},
+        {name: "restore_stage_on_mirror_runner", expect: "role_forbidden", ...mk("restore_stage")},
+        {name: "compose_render_on_mirror_runner", expect: "role_forbidden", ...mk("compose_render")},
+        {name: "restore_verify_on_mirror_runner", expect: "role_forbidden", ...mk("restore_verify")},
+    ];
+    // a runner WITHOUT mirror.v1 (no valid FORK_MIRROR_ROOT) is still a runner (role ok) but cannot run mirror tasks
+    const mirrorNoCapCases = [{name: "mirror_stage_on_runner_without_mirror_cap", expect: "capability_missing", ...mk("mirror_stage")}, {name: "runner_probe_on_runner_without_mirror_cap", expect: "ok", ...mk("runner_probe")}];
+
     // ---- manifest cases (RSA PKCS#1 v1.5 / SHA-256 over the RAW bytes, no domain prefix) ----
     const art = {sourceName: "volume_app_data", engine: "docker-volume", archiveKind: "archive_enc", dumpFormat: null, archiveFormatVersion: 1, encrypted: true, channelId: null, channelKind: "s3", pathOrSnapshotId: "backups/a/vol.tar.gz.enc", generatedId: "g1",
         sizeBytes: 1200, ciphertextSha256: HEX("c"), plaintextSha256: HEX("d"), plaintextSize: 1000, required: true};
@@ -244,8 +352,10 @@ function buildVectors() {
     return {note: "TEST-ONLY keys and data. Generated by dashboard src/fork/__tests__/unit/w17-restore-task-vectors.test.ts (W17_VECTORS_OUT=…). The Rust agent decides exactly like this.",
         now: NOW, agent_id: AGENT, enroll_id: ENROLL, own_capabilities: own, pins: [{kid: k.kid, pem: k.publicKey}], task_key_b64: taskKey.toString("base64"),
         ids: {stack_id: STACK, rp_id: RP, restore_id: RESTORE, plan_id: PLAN},
-        codes: [...RESTORE_REASONS], types: Object.fromEntries([...ALL_TYPES, ...QUIESCE_TASK_TYPES, ...RUNNER_TASK_TYPES].map((t) => [t, [...TASK_REQUIRES[t]]])), targeted: [...TARGETED_TASK_TYPES],
+        codes: [...RESTORE_REASONS, ...MIRROR_AGENT_CODES], types: Object.fromEntries([...ALL_TYPES, ...QUIESCE_TASK_TYPES, ...RUNNER_TASK_TYPES, ...MIRROR_TASK_TYPES].map((t) => [t, [...TASK_REQUIRES[t]]])), targeted: [...TARGETED_TASK_TYPES],
         runner: {capabilities: ["channel.v1", "noop.v1", "channel-maint.v1", RUNNER_CAPABILITY], cases: runnerCases, payload_cases: runnerPayloadCases()},
+        mirror: {root: MIRROR_ROOT, capabilities: ["channel.v1", "noop.v1", "channel-maint.v1", RUNNER_CAPABILITY, MIRROR_CAPABILITY], cases: mirrorRunnerCases, no_mirror_cap_capabilities: ["channel.v1", "noop.v1", "channel-maint.v1", RUNNER_CAPABILITY],
+            no_mirror_cap_cases: mirrorNoCapCases, payload_cases: mirrorPayloadCases(), header_cases: mirrorHeaderCases(), agent_codes: [...MIRROR_AGENT_CODES]},
         cases, stage_world, payload_cases: payloadCases(), manifest_artifacts: [art, db].map((a) => ({source_name: a.sourceName, plaintext_sha256: a.plaintextSha256, plaintext_size: a.plaintextSize, dump_format: a.dumpFormat})), manifests};
 }
 const VECTORS = path.join(process.cwd(), "src/fork/__tests__/fixtures/restore-task-vectors.json");
@@ -290,11 +400,27 @@ describe("W17-i cross-language vectors", () => {
         expect(v.runner.payload_cases.length).toBeGreaterThanOrEqual(35);
         for (const c of v.runner.payload_cases) expect(RunnerProbePayload.safeParse(c.payload).success, c.name).toBe(c.valid);
     });
+    it("W22a mirror envelopes verify under the TS reference verifier; the mirror runner capability set is the runner set + mirror.v1", () => {
+        const v = load();
+        expect(v.mirror.capabilities).toEqual(["channel.v1", "noop.v1", "channel-maint.v1", "runner.v1", "mirror.v1"]);
+        expect(v.mirror.cases.filter((c) => c.expect === "ok").length).toBe(MIRROR_TASK_TYPES.length + 1);
+        for (const c of [...v.mirror.cases, ...v.mirror.no_mirror_cap_cases]) expect(verifyEnvelope(c.envelope, c.signature, v.pins).ok, c.name).toBe(true);
+    });
+    it("W22a mirror payload cases: the TS schema accepts exactly the schema_valid ones; at least 30 forged rows; every type has a valid row", () => {
+        const v = load();
+        for (const c of v.mirror.payload_cases) expect(validatePayload(c.type as never, c.payload as Record<string, unknown>) === null, c.name).toBe(c.schema_valid);
+        expect(v.mirror.payload_cases.filter((c) => c.agent !== "ok").length).toBeGreaterThanOrEqual(30);
+        for (const t of MIRROR_TASK_TYPES) expect(v.mirror.payload_cases.some((c) => c.type === t && c.agent === "ok"), t).toBe(true);
+    });
+    it("W22a mirror header table: the TS MirrorHeader schema agrees with every row", () => {
+        const v = load();
+        for (const c of v.mirror.header_cases) expect(MirrorHeader.safeParse(c.header).success, c.name).toBe(c.valid);
+    });
     it("codes and types in the vectors equal the dashboard's lists", () => {
         const v = load();
-        expect(v.codes).toEqual([...RESTORE_REASONS]);
-        expect(Object.keys(v.types).sort()).toEqual([...ALL_TYPES, ...QUIESCE_TASK_TYPES, ...RUNNER_TASK_TYPES].sort()); // W17b: the agent compares this key set with its `TARGETED` list
-        expect(v.targeted).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES, ...RUNNER_TASK_TYPES]);
-        expect(v.codes).toHaveLength(47); // 34 + the 11 W17b quiesce codes + the 2 W-TR codes (appended, agent order)
+        expect(v.codes).toEqual([...RESTORE_REASONS, ...MIRROR_AGENT_CODES]);
+        expect(Object.keys(v.types).sort()).toEqual([...ALL_TYPES, ...QUIESCE_TASK_TYPES, ...RUNNER_TASK_TYPES, ...MIRROR_TASK_TYPES].sort()); // W17b: the agent compares this key set with its `TARGETED` list
+        expect(v.targeted).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, ...TEST_RESTORE_TASK_TYPES, ...RUNNER_TASK_TYPES, ...MIRROR_TASK_TYPES]);
+        expect(v.codes).toHaveLength(56); // 34 + the 11 W17b quiesce codes + the 2 W-TR codes + the 9 W22a mirror codes (appended, agent order)
     });
 });

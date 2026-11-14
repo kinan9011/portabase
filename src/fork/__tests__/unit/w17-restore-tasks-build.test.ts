@@ -2,7 +2,7 @@ import {readdirSync, readFileSync} from "node:fs";
 import path from "node:path";
 import {describe, expect, it} from "vitest";
 import {enqueueTask, validatePayload} from "@/fork/agent-channel/tasks";
-import {COMPOSE_TASK_TYPES, PUBLIC_TASK_TYPES, RESTORE_TASK_TYPES, TARGETED_TASK_TYPES, TASK_REQUIRES, TASK_TYPES, QUIESCE_TASK_TYPES} from "@/fork/agent-channel/vocab";
+import {COMPOSE_TASK_TYPES, PUBLIC_TASK_TYPES, RESTORE_TASK_TYPES, TARGETED_TASK_TYPES, TASK_REQUIRES, TASK_TYPES, QUIESCE_TASK_TYPES, MIRROR_TASK_TYPES} from "@/fork/agent-channel/vocab";
 import {planRestore} from "@/fork/restore/plan";
 import {BuildError, artifactIndexes, buildApplyPayload, buildCleanupPayload, buildHeader, buildProbePayload, buildStagePayload, type BuildInput} from "@/fork/restore-tasks/build";
 import {RESTORE_REASONS} from "@/fork/restore-tasks/codes";
@@ -20,7 +20,7 @@ const bi = (plan: ReturnType<typeof planOf>["plan"], approvals: BuildInput["appr
 describe("W17-i vocabulary", () => {
     it("restore types are targeted, require restore.target.v1 and are never public", () => {
         expect([...RESTORE_TASK_TYPES]).toEqual(["restore_probe", "restore_stage", "restore_apply", "restore_cleanup"]);
-        expect([...TARGETED_TASK_TYPES]).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, "restore_verify", "runner_probe"]); // W17b appends the two quiesce types, W-TR restore_verify, W21 runner_probe
+        expect([...TARGETED_TASK_TYPES]).toEqual([...RESTORE_TASK_TYPES, ...COMPOSE_TASK_TYPES, ...QUIESCE_TASK_TYPES, "restore_verify", "runner_probe", ...MIRROR_TASK_TYPES]); // W17b appends the two quiesce types, W-TR restore_verify, W21 runner_probe, W22a the nine mirror types
         for (const t of COMPOSE_TASK_TYPES) { expect(TASK_REQUIRES[t]).toEqual(["restore.target.v1", "compose.render.v1"]); expect(PUBLIC_TASK_TYPES as readonly string[]).not.toContain(t); }
         for (const t of RESTORE_TASK_TYPES) { expect(TASK_REQUIRES[t]).toEqual(["restore.target.v1"]); expect(TASK_TYPES).toContain(t); expect(PUBLIC_TASK_TYPES as readonly string[]).not.toContain(t); }
         // envelope type grammar has no dots (ADR-007 A13)

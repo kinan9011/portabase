@@ -17,4 +17,10 @@ export const RESTORE_REASONS = [
     // W-TR (ADR-007 A16): data-only test-restore integrity check — appended at the END, same order as the agent's `Code` enum
     "integrity_failed", "engine_unavailable",
 ] as const;
+/**
+ * W22a (plan-W22a §3.3): codes only the mirror engine returns. Appended AFTER `RESTORE_REASONS`, same order as the agent's `Code` enum (vectors carry the list).
+ * Without them in `REASONS` a mirror result would 400 and the agent would re-report forever (plan-W21 §10 lesson).
+ */
+export const MIRROR_AGENT_CODES = ["seed_invalid", "source_changed", "apply_failed", "limits_invalid", "final_view_mismatch", "credential_reset_failed", "credential_reset_unsupported",
+    "smoke_failed_internal", "mirror_disabled"] as const;
 export type RestoreReason = (typeof RESTORE_REASONS)[number];

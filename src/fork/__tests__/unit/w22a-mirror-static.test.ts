@@ -5,7 +5,7 @@ import {describe, expect, it} from "vitest";
 /** W22a purity + guard rules for `src/fork/mirror/**` (plan-W22a A1/A5/A7). */
 const DIR = path.join(process.cwd(), "src/fork/mirror");
 const read = (f: string) => readFileSync(path.join(DIR, f), "utf8");
-const PURE = ["vocab.ts", "machine.ts", "payload-schema.ts", "build.ts", "derive.ts"].filter((f) => existsSync(path.join(DIR, f)));
+const PURE = ["vocab.ts", "machine.ts", "payload-schema.ts", "policy.ts", "build.ts", "derive.ts"].filter((f) => existsSync(path.join(DIR, f)));
 const FORBIDDEN = [/process\.env/, /\bDate\.now\b/, /new Date\(\)/, /Math\.random/, /\bconsole\./, /child_process/, /\bfetch\s*\(/, /node:fs/, /from "fs"/, /@\/fork\/db/, /\bspawn/, /node:net/, /node:http/, /setTimeout/];
 const importsOf = (src: string) => [...src.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s+"([^"]+)"/g)].map((m) => m[1] as string);
 
