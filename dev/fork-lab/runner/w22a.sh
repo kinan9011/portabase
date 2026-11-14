@@ -14,6 +14,7 @@ MIRROR_ROOT=/srv/portabase-mirrors
 BB=busybox@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
 PG=postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
 DEMO_IMAGE=postgres:17-alpine
+DEMO_WEB_IMAGE=w22a-demo-web:lab   # the same bytes under another name: the W20 compiler derives credential resets from the IMAGE NAME, a web tier named postgres would get a (bogus) reset
 SINKS="w22a-sink-smtp w22a-sink-hook w22a-sink-db w22a-sink-dns"
 inbox() { docker exec "$BOX" "$@"; }
 
@@ -56,7 +57,8 @@ box() {
   inbox sh -c "mkdir -p $MIRROR_ROOT"
   inbox docker network create --subnet 10.212.0.0/24 pbr-agent >/dev/null
   docker save "$AGENT_IMAGE" | docker exec -i "$BOX" docker load >/dev/null
-  docker save "$DEMO_IMAGE" | docker exec -i "$BOX" docker load >/dev/null   # the demo stack's only image (the box has no registry access, on purpose)
+  docker tag "$DEMO_IMAGE" "$DEMO_WEB_IMAGE"
+  docker save "$DEMO_IMAGE" "$DEMO_WEB_IMAGE" | docker exec -i "$BOX" docker load >/dev/null   # the demo stack's images (the box has no registry access, on purpose)
 }
 # Start the runner agent INSIDE the box in MIRROR mode. EDGE_KEY comes from the caller's environment (never argv); the bundle comes on stdin (0600 inside the box).
 agent() {
@@ -77,6 +79,7 @@ capture() { # start|stop|show — wire-level ground truth for DNS egress on the 
 down() {
   # own objects only, idempotent
   docker rm -fv $BOX $SINKS w22a-agent-prod >/dev/null 2>&1 || true
+  docker rmi "$DEMO_WEB_IMAGE" >/dev/null 2>&1 || true
   docker volume rm -f $VOL >/dev/null 2>&1 || true
   docker network rm $LAB_NET $PROD_NET >/dev/null 2>&1 || true
 }

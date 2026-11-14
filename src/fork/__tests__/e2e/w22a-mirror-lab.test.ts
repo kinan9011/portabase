@@ -121,6 +121,7 @@ async function labWorld(poison: boolean): Promise<W17> {
     for (const f of ["compose.yml", "stack.env", "web", "uploads"]) cpSync(path.join(demo, f), path.join(src, f), {recursive: true});
     let yml = readFileSync(path.join(src, "compose.yml"), "utf8").replace('    ports: ["127.0.0.1:18080:8080"]\n', "").replaceAll("appdata", "data").replace("image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b", "image: postgres:17-alpine");
     yml = yml.replaceAll("postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b", "postgres:17-alpine"); // the box has the tag only (no registry)
+    yml = yml.replace(/(  web:[\s\S]*?image: )postgres:17-alpine/, "$1w22a-demo-web:lab"); // own image name for the web tier (see w22a.sh)
     if (poison) yml = yml.replace("      - data:/data\n", "      - data:/data\n      - /var/run/docker.sock:/var/run/docker.sock\n");
     writeFileSync(path.join(src, "compose.yml"), yml);
     writeFileSync(path.join(src, "uploads/hello.txt"), "hello from the backup\n");
@@ -150,8 +151,10 @@ async function drive(revisionId: string, o: {ms?: number; each?: (r: Record<stri
         await tickAllMirrors(mdeps());
         const r = await revRow(revisionId);
         await o.each?.(r);
+        if (process.env.W22A_FREEZE_AT_DB && (r.steps as {name: string; status: string}[]).some((x) => x.name === "restore_db" && x.status !== "pending")) { await sleep(20_000); throw new Error("frozen for debugging (W22A_FREEZE_AT_DB)"); }
         const active = ["requested", "planning", "validating", "staging", "restoring_files", "transforming", "restoring_db", "starting", "healthchecking"].includes(r.state);
         if (!active && (r.state === "ready" || WIPE_FINAL.includes(r.wipe_state))) return r;
+        if (!active && r.state !== "ready" && !process.env.W22A_QUIET) RUN.push(`terminal ${r.state}/${r.reason}; last tasks: ${JSON.stringify((await q("select type, status, result from fork_agent_task where agent_id=$1 order by seq desc limit 3", [runnerAgent])).map((x) => [x.type, x.status, x.result]))}`);
         if (Date.now() > end) throw new Error(`drive timeout: state=${r.state} reason=${r.reason} steps=${JSON.stringify(r.steps).slice(0, 600)}`);
         await sleep(1000);
     }
@@ -211,7 +214,7 @@ describe.skipIf(!LAB)("W22a-f1 mirror lab (Flow D): a test mirror is created fro
         try { lab(["fw-on"]); } catch { /* box gone */ }
         await stopDashboard();
         server?.close();
-        try { lab(["down"]); } catch { /* best effort */ }
+        if (!process.env.W22A_KEEP_LAB) { try { lab(["down"]); } catch { /* best effort */ } } // W22A_KEEP_LAB=1: debugging only, the caller runs `w22a.sh down`
         await t?.drop();
         rmSync(tmp, {recursive: true, force: true});
     });
@@ -223,7 +226,7 @@ describe.skipIf(!LAB)("W22a-f1 mirror lab (Flow D): a test mirror is created fro
         const seen = new Set<string>();
         const row = await drive(r.revisionId, {each: (x) => { seen.add(x.state); }});
         RUN.push(`L1 states seen: ${[...seen].join(" > ")}`);
-        expect(row.state, `reason=${row.reason} step=${row.failed_step} steps=${JSON.stringify(row.steps).slice(0, 800)}`).toBe("ready");
+        expect(row.state, `reason=${row.reason} step=${row.failed_step} tasks=${RUN.filter((x) => x.startsWith("terminal")).join(" || ")}`).toBe("ready");
         for (const g of ["expected_data", "db_health", "app_smoke", "isolation", "side_effects"]) expect(row.gates[g]?.ok, g).toBe(true);
         const fact = await startTestedFact(db, world.stack);
         expect(fact?.revisionId).toBe(r.revisionId);
