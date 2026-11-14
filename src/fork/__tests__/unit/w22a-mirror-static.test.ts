@@ -40,3 +40,17 @@ describe("W22a mirror module guards", () => {
         }
     });
 });
+
+import {DEFAULT_MIRROR_ROOT as VOCAB_ROOT} from "@/fork/mirror/vocab";
+import {DEFAULT_MIRROR_ROOT as ENV_ROOT, forkEnv} from "@/fork/env";
+
+describe("W22a mirror env", () => {
+    it("root default equals the vocabulary; invalid roots fall back; max hours + tick are bounded", () => {
+        expect(ENV_ROOT).toBe(VOCAB_ROOT);
+        expect(forkEnv({}).FORK_MIRROR_ROOT).toBe("/srv/portabase-mirrors");
+        expect(forkEnv({FORK_MIRROR_ROOT: "/var/lib/mirrors"}).FORK_MIRROR_ROOT).toBe("/var/lib/mirrors");
+        for (const bad of ["relative/x", "/", "/srv", "/etc/mirrors", "/srv/../etc/x", "/srv//x", "/srv/x/", "/srv/a b", "/home/x/y", "/tmp/x"]) expect(forkEnv({FORK_MIRROR_ROOT: bad}).FORK_MIRROR_ROOT, bad).toBe("/srv/portabase-mirrors");
+        for (const [v, want] of [["1", 1], ["24", 24], ["0", 4], ["25", 4], ["x", 4], ["", 4]] as const) expect(forkEnv({FORK_MIRROR_MAX_HOURS: v}).FORK_MIRROR_MAX_HOURS, v).toBe(want);
+        for (const [v, want] of [["0", 0], ["300", 300], ["301", 10], ["-1", 10], ["", 10]] as const) expect(forkEnv({FORK_MIRROR_TICK_SECONDS: v}).FORK_MIRROR_TICK_SECONDS, v).toBe(want);
+    });
+});

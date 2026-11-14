@@ -15,7 +15,7 @@ const quiesceFiles = walk("src/fork/quiesce");
 describe("W17b static guards", () => {
     it("only quiesce/enqueue.ts signs a quiesce-type task; the generic enqueue refuses the types", () => {
         const hits = execFileSync("grep", ["-rln", "insertSignedTask", "src/fork", "app", "--include=*.ts", "--include=*.tsx"], {cwd: ROOT, encoding: "utf8"}).split("\n").filter(Boolean).filter((f) => !f.includes("__tests__"));
-        expect(hits.sort()).toEqual(["src/fork/agent-channel/maint.ts", "src/fork/agent-channel/tasks.ts", "src/fork/quiesce/enqueue.ts", "src/fork/restore-tasks/enqueue.ts", "src/fork/runner/service.ts"].sort());
+        expect(hits.sort()).toEqual(["src/fork/agent-channel/maint.ts", "src/fork/agent-channel/tasks.ts", "src/fork/mirror/enqueue.ts", "src/fork/quiesce/enqueue.ts", "src/fork/restore-tasks/enqueue.ts", "src/fork/runner/service.ts"].sort()); // W22a adds mirror/enqueue.ts
         expect([...PUBLIC_TASK_TYPES]).toEqual(["noop"]);
         expect(code("src/fork/agent-channel/tasks.ts")).toMatch(/type: z\.enum\(PUBLIC_TASK_TYPES\)/);
     });
